@@ -1,6 +1,15 @@
--- Chipatala Registry application security and derived-data functions.
+-- TRACE application security: RLS helpers + policies.
 -- Run after the Drizzle schema migration. The application connection must use
 -- app_user (or a role granted app_user) for PostgreSQL RLS to be effective.
+--
+-- Visibility model (mirrors lib/actions/records.ts canViewRecord — the app is
+-- the primary gatekeeper, RLS is defense in depth):
+--   officer          -> own branch (all levels) + district-level in own
+--                       district + country-level domain-wide, own domain only
+--   district_monitor -> everything in own district, own domain
+--   country_monitor  -> country-level only, own domain (aggregates otherwise)
+--   court_liaison    -> only records with a live court_case_access grant
+--   everyone else    -> no case rows (admin/auditor/insurer/registrar)
 
 create extension if not exists pgcrypto;
 
@@ -18,8 +27,6 @@ alter default privileges in schema public grant select, insert, update, delete o
 
 -- Let the administrative connection role become app_user inside transactions
 -- (`set local role app_user` in lib/db-context.ts). Idempotent.
--- NOTE: `with set true` is required on PostgreSQL 16+ — memberships granted
--- by a CREATEROLE user default to SET false, which blocks SET ROLE.
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'app_user') then
@@ -60,7 +67,17 @@ language sql
 stable
 as $$ select nullif(current_setting('app.current_user_id', true), '') $$;
 
-create or replace function public.app_is_staff()
+-- ── Role helpers ──────────────────────────────────────────────────────────
+
+create or replace function public.app_my_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$ select role::text from public.users where id = public.app_user_id() $$;
+
+create or replace function public.app_is_police()
 returns boolean
 language sql
 stable
@@ -70,15 +87,11 @@ as $$
   select exists (
     select 1 from public.users
     where id = public.app_user_id()
-      and role in ('doctor', 'district_admin', 'country_admin')
+      and role in ('officer', 'district_monitor', 'country_monitor')
   )
 $$;
 
--- Administrators manage users, hospitals, codebooks and guidelines.
--- They are intentionally NOT staff: app_is_staff() and
--- app_can_read_patient() exclude them, so they can never open medical
--- records, analytics aggregates excluded.
-create or replace function public.app_is_administrator()
+create or replace function public.app_is_monitor()
 returns boolean
 language sql
 stable
@@ -88,360 +101,319 @@ as $$
   select exists (
     select 1 from public.users
     where id = public.app_user_id()
-      and role = 'administrator'
+      and role in ('district_monitor', 'country_monitor')
   )
 $$;
 
-create or replace function public.app_can_read_patient(patient_id text)
+create or replace function public.app_is_system_admin()
 returns boolean
 language sql
 stable
 security definer
 set search_path = public, pg_catalog
 as $$
-  select patient_id = public.app_user_id()
-      or exists (
-        select 1
-        from public.users actor
-        where actor.id = public.app_user_id()
+  select exists (
+    select 1 from public.users
+    where id = public.app_user_id() and role = 'system_admin'
+  )
+$$;
+
+create or replace function public.app_is_auditor()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select exists (
+    select 1 from public.users
+    where id = public.app_user_id() and role = 'compliance_auditor'
+  )
+$$;
+
+-- ── Core visibility predicate ─────────────────────────────────────────────
+
+create or replace function public.app_can_read_record(r public.records)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select exists (
+    select 1
+    from public.users actor
+    left join public.branches b on b.id = actor.branch_id
+    where actor.id = public.app_user_id()
+      and (
+        -- officer: own branch, district-level in own district, country domain-wide
+        (actor.role = 'officer'
+          and r.domain = coalesce(actor.domain, b.domain)
           and (
-            actor.role = 'country_admin'
-            or (actor.role = 'district_admin' and actor.district = (select district from public.users where id = patient_id))
-            or (actor.role = 'doctor' and exists (
-              select 1 from public.access_grants g
-              where g.profile_id = patient_id
-                and g.doctor_id = actor.id
-                and not g.is_revoked
-                and g.is_used
-                and g.expires_at > now()
-            ))
-          )
+            r.branch_id = actor.branch_id
+            or (r.access_level = 'district' and r.district = coalesce(b.district, actor.district))
+            or r.access_level = 'country'
+          ))
+        -- district monitor: everything in own district + domain
+        or (actor.role = 'district_monitor'
+          and r.domain = actor.domain
+          and r.district = actor.district)
+        -- country monitor: escalated-to-country only
+        or (actor.role = 'country_monitor'
+          and r.domain = actor.domain
+          and r.access_level = 'country')
+        -- court liaison: live per-case grant only
+        or (actor.role = 'court_liaison'
+          and exists (
+            select 1 from public.court_case_access g
+            where g.record_id = r.id
+              and g.court_liaison_id = actor.id
+              and g.revoked_at is null
+              and (g.expires_at is null or g.expires_at > now())
+          ))
       )
+  )
 $$;
 
--- redeem_access_code(p_code, p_doctor_name, p_license_no, p_hospital_name, p_district)
---
--- Atomically claims an unclaimed access code, sets the expiry window, writes a
--- full audit row, and returns the redeemed grant row.
---
--- Error codes (raised as SQLSTATE P0001 with a machine-readable prefix):
---   CODE_INVALID  — code not found, already used, revoked, or expired
---   PATIENT_NOT_FOUND — profile_id references a deleted/missing user row
---
--- Must be executed while app.current_user_id is set (i.e. inside withUserCtx).
-drop function if exists public.redeem_access_code(text);
-drop function if exists public.redeem_access_code(text, text, text, text, text);
+-- ── RLS policies (DROP … makes this file safe to re-run) ──────────────────
 
-create or replace function public.redeem_access_code(
-  p_code          text,
-  p_doctor_name   text    default null,
-  p_license_no    text    default null,
-  p_hospital_name text    default null,
-  p_district      text    default null
-)
-returns public.access_grants
-language plpgsql
-security definer
-set search_path = public, pg_catalog
-as $$
-declare
-  g      public.access_grants;
-  v_actor text := public.app_user_id();
-begin
-  if v_actor is null then
-    raise exception 'Authentication required';
-  end if;
-
-  -- Lock the unclaimed row. FOR UPDATE ensures concurrent redemptions can't
-  -- double-spend the same code.
-  select * into g
-    from public.access_grants
-   where code       = p_code
-     and doctor_id  is null
-     and not is_used
-     and not is_revoked
-     and created_at > now() - interval '24 hours'
-   for update;
-
-  if not found then
-    raise exception 'CODE_INVALID'
-      using errcode = 'P0001',
-            detail  = 'The code was not found, is already used, has been revoked, or has expired.';
-  end if;
-
-  -- Claim the code and open the access window atomically.
-  update public.access_grants
-     set is_used   = true,
-         used_at   = now(),
-         doctor_id = v_actor,
-         expires_at = now() + make_interval(secs => g.duration_seconds)
-   where id = g.id
-   returning * into g;
-
-  -- Verify the patient still exists (edge case: account deleted after code issued).
-  if not exists (select 1 from public.users where id = g.profile_id) then
-    raise exception 'PATIENT_NOT_FOUND'
-      using errcode = 'P0002',
-            detail  = 'The patient account for that code no longer exists.';
-  end if;
-
-  -- Write a full, denormalized audit row.
-  insert into public.actions (
-    profile_id, actor_id, action_type, access_grant_id,
-    reason, doctor_name, medical_license_no, hospital_name, district
-  ) values (
-    g.profile_id, v_actor, 'code_redeemed', g.id,
-    'Access code redeemed at point of care.',
-    p_doctor_name, p_license_no, p_hospital_name, p_district
-  );
-
-  return g;
-end;
-$$;
-
-revoke all on function public.redeem_access_code(text, text, text, text, text) from public;
-grant execute on function public.redeem_access_code(text, text, text, text, text) to app_user;
-
-create or replace function public.emergency_lookup(
-  p_national_id text default null,
-  p_phone_number text default null,
-  p_reason text default null
-)
-returns table (
-  user_id text,
-  name text,
-  date_of_birth date,
-  sex sex,
-  district district,
-  emergency_info jsonb
-)
-language plpgsql
-security definer
-set search_path = public, pg_catalog
-as $$
-declare
-  v_actor text := public.app_user_id();
-  v_found record;
-begin
-  if v_actor is null then
-    raise exception 'Authentication required';
-  end if;
-
-  if not public.app_is_staff() then
-    raise exception 'Only staff may perform emergency lookups';
-  end if;
-
-  if (p_national_id is null or length(trim(p_national_id)) = 0)
-     and (p_phone_number is null or length(trim(p_phone_number)) = 0) then
-    raise exception 'A national ID or phone number is required';
-  end if;
-
-  select u.id, u.name, u.date_of_birth, u.sex, u.district, u.emergency_info
-    into v_found
-    from public.users u
-    where (p_national_id is not null and u.national_id = p_national_id)
-       or (p_phone_number is not null and u.phone_number = p_phone_number)
-    limit 1;
-
-  -- Log the attempt regardless of whether a match was found.
-  insert into public.actions (
-    profile_id, actor_id, action_type, reason, created_at
-  ) values (
-    coalesce(v_found.id, v_actor), -- fall back so profile_id is never null
-    v_actor,
-    'emergency_access',
-    coalesce(p_reason, 'Emergency lookup') ||
-      case when v_found.id is null then ' (no match found)' else '' end,
-    now()
-  );
-
-  if v_found.id is null then
-    return;
-  end if;
-
-  return query select v_found.id, v_found.name, v_found.date_of_birth,
-                      v_found.sex, v_found.district, v_found.emergency_info;
-end;
-$$;
-
-revoke all on function public.emergency_lookup(text, text, text) from public;
-grant execute on function public.emergency_lookup(text, text, text) to app_user;
-
--- RLS policies. DROP makes this file safe to re-run during deployment.
 alter table public.users enable row level security;
-alter table public.medical_records enable row level security;
+alter table public.branches enable row level security;
+alter table public.organizations enable row level security;
+alter table public.records enable row level security;
 alter table public.record_attachments enable row level security;
-alter table public.access_grants enable row level security;
-alter table public.diagnoses enable row level security;
-alter table public.prescriptions enable row level security;
-alter table public.immunizations enable row level security;
+alter table public.persons_of_interest enable row level security;
+alter table public.vehicles enable row level security;
+alter table public.insurance_policies enable row level security;
+alter table public.court_case_access enable row level security;
+alter table public.missing_person_cases enable row level security;
+alter table public.wanted_person_cases enable row level security;
+alter table public.vehicle_cases enable row level security;
+alter table public.accidents enable row level security;
+alter table public.accident_vehicles enable row level security;
+alter table public.traffic_citations enable row level security;
 alter table public.actions enable row level security;
 
--- Do not FORCE RLS for the schema owner: the SECURITY DEFINER trigger below
--- must be able to write the derived tables. The application must connect as
--- app_user (not the migration/schema owner) to be subject to these policies.
-
+-- users: own row + staff directory (names on records/referrals); writes are
+-- system-admin-only (plus self profile reads). App enforces scope columns.
 drop policy if exists users_self on public.users;
 create policy users_self on public.users for select to app_user
   using (
     id = public.app_user_id()
-    or public.app_can_read_patient(id)
-    or public.app_is_administrator()
-    -- Staff profiles act as directory information: every signed-in user may
-    -- see who authored a record / who redeemed a code. Patient rows remain
-    -- fully gated by app_can_read_patient (administrators bypass via
-    -- app_is_administrator above, never via record access).
-    or role in ('doctor', 'district_admin', 'country_admin', 'administrator')
+    or public.app_is_system_admin()
+    or role in ('officer', 'district_monitor', 'country_monitor',
+                'court_liaison', 'insurance_portal_user', 'vehicle_registrar')
   );
-drop policy if exists users_admin_update on public.users;
-create policy users_admin_update on public.users for update to app_user
-  using (public.app_is_administrator())
-  with check (public.app_is_administrator());
-drop policy if exists users_admin_insert on public.users;
-create policy users_admin_insert on public.users for insert to app_user
-  with check (public.app_is_administrator());
-drop policy if exists users_admin_delete on public.users;
-create policy users_admin_delete on public.users for delete to app_user
-  using (public.app_is_administrator());
-drop policy if exists users_self_update on public.users;
-create policy users_self_update on public.users for update to app_user
-  using (id = public.app_user_id()) with check (id = public.app_user_id());
+drop policy if exists users_admin_write on public.users;
+create policy users_admin_write on public.users for all to app_user
+  using (public.app_is_system_admin())
+  with check (public.app_is_system_admin());
 
-drop policy if exists records_patient_or_granted on public.medical_records;
-create policy records_patient_or_granted on public.medical_records for select to app_user
-  using (public.app_can_read_patient(profile_id));
-drop policy if exists records_doctor_insert on public.medical_records;
-create policy records_doctor_insert on public.medical_records for insert to app_user
-  with check (
-    (created_by = public.app_user_id() and public.app_is_staff())
-    or profile_id = public.app_user_id()  -- patient self-reported entries
-  );
-drop policy if exists records_owner_update on public.medical_records;
-create policy records_owner_update on public.medical_records for update to app_user
-  using (created_by = public.app_user_id() or profile_id = public.app_user_id())
-  with check (created_by = public.app_user_id() or profile_id = public.app_user_id());
+-- branches / organizations: readable reference data; admin-written.
+drop policy if exists branches_read on public.branches;
+create policy branches_read on public.branches for select to app_user
+  using (public.app_user_id() is not null);
+drop policy if exists branches_admin_write on public.branches;
+create policy branches_admin_write on public.branches for all to app_user
+  using (public.app_is_system_admin())
+  with check (public.app_is_system_admin());
 
-drop policy if exists attachments_patient_or_granted on public.record_attachments;
-create policy attachments_patient_or_granted on public.record_attachments for select to app_user
-  using (exists (select 1 from public.medical_records r where r.id = record_id and public.app_can_read_patient(r.profile_id)));
-drop policy if exists attachments_staff_insert on public.record_attachments;
-create policy attachments_staff_insert on public.record_attachments for insert to app_user
-  with check (uploaded_by = public.app_user_id());
+drop policy if exists organizations_read on public.organizations;
+create policy organizations_read on public.organizations for select to app_user
+  using (public.app_user_id() is not null);
+drop policy if exists organizations_admin_write on public.organizations;
+create policy organizations_admin_write on public.organizations for all to app_user
+  using (public.app_is_system_admin())
+  with check (public.app_is_system_admin());
 
-drop policy if exists grants_patient_or_doctor on public.access_grants;
-create policy grants_patient_or_doctor on public.access_grants for select to app_user
+-- records: the visibility tiers above. Writes are police-only (app checks
+-- filer-vs-monitor + active-status rules before issuing UPDATE).
+drop policy if exists records_read on public.records;
+create policy records_read on public.records for select to app_user
+  using (public.app_can_read_record(records));
+drop policy if exists records_police_insert on public.records;
+create policy records_police_insert on public.records for insert to app_user
+  with check (reported_by = public.app_user_id() and public.app_is_police());
+drop policy if exists records_police_update on public.records;
+create policy records_police_update on public.records for update to app_user
   using (
-    profile_id = public.app_user_id()
-    or doctor_id = public.app_user_id()
-    -- Unclaimed codes are visible to the clinicians meant to redeem them.
-    -- UPDATE scans need this SELECT-side visibility to find the row at all.
-    or (
-      doctor_id is null
-      and not is_used
-      and not is_revoked
-      and public.app_is_staff()
+    public.app_can_read_record(records)
+    and (reported_by = public.app_user_id() or public.app_is_monitor())
+  )
+  with check (
+    public.app_can_read_record(records)
+    and (reported_by = public.app_user_id() or public.app_is_monitor())
+  );
+
+-- attachments inherit the parent record's visibility; uploaders see own rows.
+drop policy if exists attachments_read on public.record_attachments;
+create policy attachments_read on public.record_attachments for select to app_user
+  using (
+    uploaded_by = public.app_user_id()
+    or exists (
+      select 1 from public.records r
+      where r.id = record_id and public.app_can_read_record(r)
     )
   );
-drop policy if exists grants_patient_insert on public.access_grants;
-create policy grants_patient_insert on public.access_grants for insert to app_user
-  with check (profile_id = public.app_user_id() and issued_by = public.app_user_id());
-drop policy if exists grants_patient_update on public.access_grants;
-create policy grants_patient_update on public.access_grants for update to app_user
-  using (profile_id = public.app_user_id()) with check (profile_id = public.app_user_id());
--- Clinicians claim unclaimed codes by setting doctor_id to themselves.
-drop policy if exists grants_doctor_claim on public.access_grants;
-create policy grants_doctor_claim on public.access_grants for update to app_user
-  using (doctor_id is null and not is_used and not is_revoked)
-  with check (doctor_id = public.app_user_id());
--- Break-glass: a clinician opens a window directly, issued by themselves.
-drop policy if exists grants_doctor_break_glass on public.access_grants;
-create policy grants_doctor_break_glass on public.access_grants for insert to app_user
-  with check (issued_by = public.app_user_id() and doctor_id = public.app_user_id());
+drop policy if exists attachments_insert on public.record_attachments;
+create policy attachments_insert on public.record_attachments for insert to app_user
+  with check (uploaded_by = public.app_user_id());
 
-drop policy if exists diagnoses_patient_or_granted on public.diagnoses;
-create policy diagnoses_patient_or_granted on public.diagnoses for select to app_user
-  using (public.app_can_read_patient(profile_id));
-drop policy if exists prescriptions_patient_or_granted on public.prescriptions;
-create policy prescriptions_patient_or_granted on public.prescriptions for select to app_user
-  using (public.app_can_read_patient(profile_id));
-drop policy if exists immunizations_patient_or_granted on public.immunizations;
-create policy immunizations_patient_or_granted on public.immunizations for select to app_user
-  using (public.app_can_read_patient(profile_id));
+-- persons of interest: police-only.
+drop policy if exists persons_police on public.persons_of_interest;
+create policy persons_police on public.persons_of_interest for all to app_user
+  using (public.app_is_police())
+  with check (public.app_is_police());
 
-drop policy if exists actions_subject_or_actor on public.actions;
-create policy actions_subject_or_actor on public.actions for select to app_user
-  using (profile_id = public.app_user_id() or actor_id = public.app_user_id() or public.app_is_staff());
-drop policy if exists actions_actor_insert on public.actions;
-create policy actions_actor_insert on public.actions for insert to app_user
+-- vehicles: plate registry is reference data (flag boolean only); case detail
+-- stays behind records RLS and app-level checks. Officers create ad-hoc rows,
+-- registrars enrich them.
+drop policy if exists vehicles_read on public.vehicles;
+create policy vehicles_read on public.vehicles for select to app_user
+  using (public.app_user_id() is not null);
+drop policy if exists vehicles_write on public.vehicles;
+create policy vehicles_write on public.vehicles for insert to app_user
+  with check (public.app_is_police() or public.app_my_role() = 'vehicle_registrar');
+drop policy if exists vehicles_update on public.vehicles;
+create policy vehicles_update on public.vehicles for update to app_user
+  using (public.app_is_police() or public.app_my_role() = 'vehicle_registrar')
+  with check (public.app_is_police() or public.app_my_role() = 'vehicle_registrar');
+
+-- insurance policies: each insurer sees/edits its own org's rows only.
+drop policy if exists policies_own_org on public.insurance_policies;
+create policy policies_own_org on public.insurance_policies for all to app_user
+  using (
+    insurer_id = (
+      select organization_id from public.users where id = public.app_user_id()
+    )
+  )
+  with check (
+    insurer_id = (
+      select organization_id from public.users where id = public.app_user_id()
+    )
+  );
+
+-- court referrals: liaison + referrer + monitors can see; monitors create and
+-- renew/revoke; liaisons record outcomes (app enforces the field split).
+drop policy if exists court_access_read on public.court_case_access;
+create policy court_access_read on public.court_case_access for select to app_user
+  using (
+    court_liaison_id = public.app_user_id()
+    or referred_by = public.app_user_id()
+    or public.app_is_monitor()
+    or public.app_is_system_admin()
+  );
+drop policy if exists court_access_refer on public.court_case_access;
+create policy court_access_refer on public.court_case_access for insert to app_user
+  with check (referred_by = public.app_user_id() and public.app_is_monitor());
+drop policy if exists court_access_update on public.court_case_access;
+create policy court_access_update on public.court_case_access for update to app_user
+  using (
+    court_liaison_id = public.app_user_id()
+    or referred_by = public.app_user_id()
+    or public.app_is_monitor()
+  );
+
+-- coded projections: readable wherever the parent case is readable; written
+-- by the app alongside the parent record (police context).
+drop policy if exists coded_read on public.missing_person_cases;
+create policy coded_read on public.missing_person_cases for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists coded_write on public.missing_person_cases;
+create policy coded_write on public.missing_person_cases for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+drop policy if exists wanted_read on public.wanted_person_cases;
+create policy wanted_read on public.wanted_person_cases for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists wanted_write on public.wanted_person_cases;
+create policy wanted_write on public.wanted_person_cases for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+drop policy if exists vehicle_cases_read on public.vehicle_cases;
+create policy vehicle_cases_read on public.vehicle_cases for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists vehicle_cases_write on public.vehicle_cases;
+create policy vehicle_cases_write on public.vehicle_cases for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+drop policy if exists accidents_read on public.accidents;
+create policy accidents_read on public.accidents for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists accidents_write on public.accidents;
+create policy accidents_write on public.accidents for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+drop policy if exists accident_vehicles_read on public.accident_vehicles;
+create policy accident_vehicles_read on public.accident_vehicles for select to app_user
+  using (
+    exists (
+      select 1 from public.accidents a
+      join public.records r on r.id = a.record_id
+      where a.id = accident_id and public.app_can_read_record(r)
+    )
+  );
+drop policy if exists accident_vehicles_write on public.accident_vehicles;
+create policy accident_vehicles_write on public.accident_vehicles for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+drop policy if exists citations_read on public.traffic_citations;
+create policy citations_read on public.traffic_citations for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists citations_write on public.traffic_citations;
+create policy citations_write on public.traffic_citations for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+-- actions (append-only audit log): own entries + monitors/admin/auditor.
+-- District scoping for district monitors is applied in app code.
+drop policy if exists actions_read on public.actions;
+create policy actions_read on public.actions for select to app_user
+  using (
+    actor_id = public.app_user_id()
+    or public.app_is_monitor()
+    or public.app_is_system_admin()
+    or public.app_is_auditor()
+  );
+drop policy if exists actions_insert on public.actions;
+create policy actions_insert on public.actions for insert to app_user
   with check (actor_id = public.app_user_id());
 
--- Derived clinical facts ----------------------------------------------------
-create or replace function public.age_band(dob date, as_of date)
-returns text language sql immutable as $$
-  select case
-    when dob is null then null
-    when extract(year from age(as_of, dob)) < 5 then '0-4'
-    when extract(year from age(as_of, dob)) < 15 then '5-14'
-    when extract(year from age(as_of, dob)) < 25 then '15-24'
-    when extract(year from age(as_of, dob)) < 45 then '25-44'
-    when extract(year from age(as_of, dob)) < 65 then '45-64'
-    else '65+'
-  end
-$$;
-
-create or replace function public.populate_record_facts()
-returns trigger
-language plpgsql
-security definer
-set search_path = public, pg_catalog
-as $$
-declare
-  patient public.users%rowtype;
-  diagnosis_uuid uuid;
-  prescription_uuid uuid;
-  immunization_uuid uuid;
-  icd text;
-  medication text;
-  vaccine text;
-begin
-  select * into patient from public.users where id = new.profile_id;
-  icd := nullif(new.data->>'icd10_code', '');
-  medication := coalesce(nullif(new.data->>'medication_code', ''), nullif(new.data->>'medication', ''));
-  vaccine := coalesce(nullif(new.data->>'vaccine_code', ''), nullif(new.data->>'vaccine', ''));
-
-  if icd is not null and new.record_type in ('outpatient_visit','pathology_report','psychiatric_evaluation','discharge_summary') then
-    diagnosis_uuid := coalesce(nullif(new.data->>'diagnosis_id', '')::uuid, gen_random_uuid());
-    insert into public.diagnoses (id, record_id, profile_id, icd10_code, hospital_id, district, age_band, sex, notes, severity, diagnosed_at)
-    values (diagnosis_uuid, new.id, new.profile_id, icd, new.hospital_id, patient.district,
-      public.age_band(patient.date_of_birth, new.record_date), patient.sex,
-      coalesce(new.data->>'assessment', new.data->>'diagnosis', new.data->>'final_diagnosis'), new.data->>'grade', new.record_date)
-    on conflict (id) do update set notes = excluded.notes, severity = excluded.severity;
-  end if;
-
-  if medication is not null and new.record_type = 'medication_prescription' then
-    prescription_uuid := coalesce(nullif(new.data->>'prescription_id', '')::uuid, gen_random_uuid());
-    insert into public.prescriptions (id, record_id, profile_id, diagnosis_id, medication_code, dose, route, frequency, duration, indication, quantity, hospital_id, district, age_band, prescribed_at)
-    values (prescription_uuid, new.id, new.profile_id, nullif(new.data->>'diagnosis_id', '')::uuid, medication,
-      new.data->>'dose', (new.data->>'route')::route, new.data->>'frequency', new.data->>'duration', new.data->>'indication',
-      nullif(new.data->>'quantity', '')::numeric, new.hospital_id, patient.district,
-      public.age_band(patient.date_of_birth, new.record_date), new.record_date)
-    on conflict (id) do update set dose = excluded.dose, frequency = excluded.frequency, duration = excluded.duration;
-  end if;
-
-  if vaccine is not null and new.record_type = 'immunization_record' then
-    immunization_uuid := coalesce(nullif(new.data->>'immunization_id', '')::uuid, gen_random_uuid());
-    insert into public.immunizations (id, record_id, profile_id, vaccine_code, dose_number, manufacturer, hospital_id, district, administered_at)
-    values (immunization_uuid, new.id, new.profile_id, vaccine, (new.data->>'dose_number')::integer,
-      new.data->>'manufacturer', new.hospital_id, patient.district, (new.data->>'administered_at')::date)
-    on conflict (id) do update set manufacturer = excluded.manufacturer, administered_at = excluded.administered_at;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists medical_records_populate_facts on public.medical_records;
-create trigger medical_records_populate_facts
-after insert or update of record_type, data, profile_id, hospital_id, record_date on public.medical_records
-for each row execute function public.populate_record_facts();
-
+-- Append-only enforcement (also for records: cases are never hard-deleted).
 revoke update, delete on public.actions from app_user;
+revoke delete on public.records from app_user;
+revoke delete on public.missing_person_cases,
+  public.wanted_person_cases,
+  public.vehicle_cases,
+  public.accidents,
+  public.accident_vehicles,
+  public.traffic_citations from app_user;
+
+-- ── Scheduled jobs (pg_cron; guarded so the file still runs without it) ──
+-- 1. Expire lapsed court grants into an audit row (reads stay blocked by the
+--    expires_at check itself; this just records the lapse visibly).
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.schedule(
+      'trace-expire-court-grants',
+      '*/15 * * * *',
+      $$insert into public.actions (actor_id, action_type, record_id, reason)
+        select g.referred_by, 'court_access_expired', g.record_id,
+               'Court grant lapsed automatically.'
+        from public.court_case_access g
+        where g.revoked_at is null
+          and g.expires_at is not null
+          and g.expires_at <= now()
+          and not exists (
+            select 1 from public.actions a
+            where a.record_id = g.record_id
+              and a.action_type = 'court_access_expired'
+              and a.created_at > g.expires_at
+          )$$
+    );
+  else
+    raise warning 'pg_cron not installed — court-grant expiry sweep not scheduled.';
+  end if;
+exception when undefined_function or insufficient_privilege then
+  raise warning 'Could not schedule pg_cron jobs (missing extension or rights).';
+end $$;
