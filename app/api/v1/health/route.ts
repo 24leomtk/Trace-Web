@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 export function GET() {
   return Response.json({
     ok: true,
-    service: "chipatala-registry-api",
+    service: "trace-api",
     version: 1,
     time: new Date().toISOString(),
   })

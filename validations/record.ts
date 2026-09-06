@@ -1,185 +1,138 @@
 import * as z from "zod"
 
-export const routeOptions = ["ORAL", "IV", "IM", "SC", "TOPICAL"] as const
+export const dangerLevelOptions = ["low", "medium", "high", "extreme"] as const
 
-export const urgencyOptions = ["LOW", "MEDIUM", "HIGH"] as const
+// ---------------------------------------------------------------------------
+// Regular domain
+// ---------------------------------------------------------------------------
 
-export const triageOptions = ["RED", "YELLOW", "GREEN"] as const
-
-export const outpatientVisitSchema = z.object({
-  diagnosis_id: z.string().uuid().optional(),
-  icd10_code: z.string().min(1).optional(),
-  visit_type: z.literal("OUTPATIENT"),
-  chief_complaint: z.string().min(1),
-  history_of_present_illness: z.string().min(1),
-  physical_exam: z.object({
-    bp: z.string().min(1),
-    pulse: z.string().min(1),
-    temperature: z.string().min(1),
-  }),
-  assessment: z.string().min(1),
-  plan: z.string().min(1),
+export const missingPersonSchema = z.object({
+  person_id: z.uuid().optional(), // link to persons_of_interest if matched
+  full_name: z.string().min(1),
+  national_id: z.string().optional(),
+  age: z.number().int().min(0).optional(),
+  sex: z.enum(["male", "female", "other"]).optional(),
+  last_seen_location: z.string().min(1),
+  last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  distinguishing_features: z.string().optional(),
+  reporter_name: z.string().min(1),
+  reporter_relationship: z.string().min(1),
+  reporter_contact: z.string().min(1),
 })
 
-export const emergencyVisitSchema = z.object({
-  visit_type: z.literal("EMERGENCY"),
-  arrival_mode: z.string().min(1),
-  triage_level: z.enum(triageOptions),
-  presenting_symptoms: z.array(z.string().min(1)),
-  initial_interventions: z.array(z.string().min(1)),
+export const wantedPersonSchema = z.object({
+  person_id: z.uuid().optional(),
+  full_name: z.string().min(1),
+  national_id: z.string().optional(),
+  offense: z.string().min(1),
+  danger_level: z.enum(dangerLevelOptions),
+  warrant_number: z.string().optional(),
+  last_known_location: z.string().optional(),
+  description: z.string().min(1),
 })
 
-export const inpatientAdmissionSchema = z.object({
-  admission_reason: z.string().min(1),
-  admission_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  ward: z.string().min(1),
-  bed_number: z.string().min(1),
-  attending_physician: z.string().min(1),
+export const stolenPropertySchema = z.object({
+  item_description: z.string().min(1),
+  category: z.string().min(1),
+  estimated_value: z.number().nonnegative().optional(),
+  serial_number: z.string().optional(),
+  location_stolen: z.string().min(1),
+  date_stolen: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  owner_name: z.string().min(1),
+  owner_contact: z.string().min(1),
 })
 
-export const labTestResultSchema = z.object({
-  test_name: z.string().min(1),
-  specimen: z.string().min(1),
-  results: z.array(
+export const crimeIncidentSchema = z.object({
+  incident_type: z.string().min(1),
+  description: z.string().min(1),
+  location: z.string().min(1),
+  date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  victims: z.array(z.string().min(1)).default([]),
+  witnesses: z.array(z.string().min(1)).default([]),
+  linked_person_ids: z.array(z.uuid()).default([]),
+})
+
+export const arrestRecordSchema = z.object({
+  person_id: z.uuid().optional(),
+  full_name: z.string().min(1),
+  national_id: z.string().optional(),
+  charges: z.array(z.string().min(1)),
+  arrest_location: z.string().min(1),
+  arrest_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  arresting_officer: z.string().min(1),
+  linked_wanted_record_id: z.uuid().optional(),
+})
+
+// ---------------------------------------------------------------------------
+// Traffic domain
+// ---------------------------------------------------------------------------
+
+export const missingVehicleSchema = z.object({
+  plate_number: z.string().min(1),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  color: z.string().optional(),
+  last_seen_location: z.string().min(1),
+  last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reporter_name: z.string().min(1),
+  reporter_contact: z.string().min(1),
+})
+
+export const vehicleOffenseSchema = z.object({
+  plate_number: z.string().min(1),
+  offense_type: z.string().min(1),
+  description: z.string().min(1),
+  location: z.string().min(1),
+  date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  linked_crime_record_id: z.uuid().optional(),
+})
+
+export const roadAccidentSchema = z.object({
+  location: z.string().min(1),
+  accident_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  description: z.string().min(1),
+  cause: z.string().optional(),
+  vehicles_involved: z.array(
     z.object({
-      parameter: z.string().min(1),
-      value: z.string().min(1),
-      unit: z.string().min(1),
-      reference_range: z.string().min(1),
+      plate_number: z.string().min(1),
+      role: z.string().optional(), // e.g. "at_fault", "involved"
     })
   ),
-  performed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  fatalities: z.number().int().min(0).default(0),
+  injuries: z.number().int().min(0).default(0),
 })
 
-export const imagingReportSchema = z.object({
-  modality: z.string().min(1),
-  body_part: z.string().min(1),
-  findings: z.string().min(1),
-  impression: z.string().min(1),
-  radiologist: z.string().min(1),
+export const trafficCitationSchema = z.object({
+  plate_number: z.string().min(1),
+  driver_name: z.string().optional(),
+  driver_license_no: z.string().optional(),
+  violation_type: z.string().min(1),
+  fine_amount: z.number().nonnegative(),
+  location: z.string().min(1),
+  date_issued: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 })
 
-export const pathologyReportSchema = z.object({
-  diagnosis_id: z.string().uuid().optional(),
-  icd10_code: z.string().min(1).optional(),
-  specimen_type: z.string().min(1),
-  site: z.string().min(1),
-  histological_findings: z.string().min(1),
-  diagnosis: z.string().min(1),
-  grade: z.string().min(1),
-})
-
-export const medicationPrescriptionSchema = z.object({
-  diagnosis_id: z.string().uuid().optional(),
-  prescription_id: z.string().uuid().optional(),
-  medication_code: z.string().min(1).optional(),
-  medication: z.string().min(1),
-  dose: z.string().min(1),
-  route: z.enum(routeOptions),
-  frequency: z.string().min(1),
-  duration: z.string().min(1),
-  indication: z.string().min(1),
-})
-
-export const medicationAdministrationSchema = z.object({
-  medication: z.string().min(1),
-  dose: z.string().min(1),
-  route: z.enum(routeOptions),
-  administered_at: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
-  administered_by: z.string().min(1),
-})
-
-export const surgicalProcedureSchema = z.object({
-  procedure_name: z.string().min(1),
-  procedure_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  surgeon: z.string().min(1),
-  anesthesia: z.string().min(1),
-  complications: z.string().optional(),
-})
-
-export const nursingNotesSchema = z.object({
-  shift: z.string().min(1),
-  observations: z.string().min(1),
-  vital_signs: z.object({
-    bp: z.string().min(1),
-    pulse: z.string().min(1),
-  }),
-  notes: z.string().min(1),
-})
-
-export const intakeOutputChartSchema = z.object({
-  intake: z.object({
-    oral: z.string().min(1),
-    iv: z.string().min(1),
-  }),
-  output: z.object({
-    urine: z.string().min(1),
-  }),
-  net_balance: z.string().min(1),
-})
-
-export const immunizationRecordSchema = z.object({
-  immunization_id: z.string().uuid().optional(),
-  vaccine_code: z.string().min(1).optional(),
-  vaccine: z.string().min(1),
-  dose_number: z.number().int().min(1),
-  manufacturer: z.string().min(1),
-  administered_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-})
-
-export const screeningTestSchema = z.object({
-  screening_type: z.string().min(1),
-  result: z.string().min(1),
-  recommended_follow_up: z.string().min(1),
-})
-
-export const psychiatricEvaluationSchema = z.object({
-  diagnosis_id: z.string().uuid().optional(),
-  icd10_code: z.string().min(1).optional(),
-  presenting_problem: z.string().min(1),
-  mental_status_exam: z.object({
-    mood: z.string().min(1),
-    affect: z.string().min(1),
-    thought_process: z.string().min(1),
-  }),
-  diagnosis: z.string().min(1),
-  risk_assessment: z.string().min(1),
-})
-
-export const dischargeSummarySchema = z.object({
-  diagnosis_id: z.string().uuid().optional(),
-  icd10_code: z.string().min(1).optional(),
-  admission_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  discharge_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  final_diagnosis: z.string().min(1),
-  treatments_given: z.array(z.string().min(1)),
-  discharge_medications: z.array(z.string().min(1)),
-  follow_up_instructions: z.string().min(1),
-})
-
-export const referralRecordSchema = z.object({
-  referred_to: z.string().min(1),
+export const vehicleImpoundmentSchema = z.object({
+  plate_number: z.string().min(1),
   reason: z.string().min(1),
-  urgency: z.enum(urgencyOptions),
+  impound_location: z.string().min(1),
+  impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  release_conditions: z.string().optional(),
 })
+
+// ---------------------------------------------------------------------------
 
 export const recordSchemas = {
-  outpatient_visit: outpatientVisitSchema,
-  emergency_visit: emergencyVisitSchema,
-  inpatient_admission: inpatientAdmissionSchema,
-  lab_test_result: labTestResultSchema,
-  imaging_report: imagingReportSchema,
-  pathology_report: pathologyReportSchema,
-  medication_prescription: medicationPrescriptionSchema,
-  medication_administration: medicationAdministrationSchema,
-  surgical_procedure: surgicalProcedureSchema,
-  nursing_notes: nursingNotesSchema,
-  intake_output_chart: intakeOutputChartSchema,
-  immunization_record: immunizationRecordSchema,
-  screening_test: screeningTestSchema,
-  psychiatric_evaluation: psychiatricEvaluationSchema,
-  discharge_summary: dischargeSummarySchema,
-  referral_record: referralRecordSchema,
+  missing_person: missingPersonSchema,
+  wanted_person: wantedPersonSchema,
+  stolen_property: stolenPropertySchema,
+  crime_incident: crimeIncidentSchema,
+  arrest_record: arrestRecordSchema,
+  missing_vehicle: missingVehicleSchema,
+  vehicle_offense: vehicleOffenseSchema,
+  road_accident: roadAccidentSchema,
+  traffic_citation: trafficCitationSchema,
+  vehicle_impoundment: vehicleImpoundmentSchema,
 }
 
 export type RecordType = keyof typeof recordSchemas

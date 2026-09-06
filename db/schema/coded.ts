@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm"
 import {
   pgTable,
   uuid,
@@ -6,181 +5,185 @@ import {
   date,
   integer,
   numeric,
+  boolean,
   timestamp,
   index,
 } from "drizzle-orm/pg-core"
-import { users } from "./auth"
-import { hospitals } from "./hospitals"
-import { medicalRecords } from "./records"
-import { diagnosisCodes, medicationCodes, immunizationCodes } from "./clinical"
-import { districtEnum, sexEnum, routeEnum } from "./enums"
+import { records } from "./records"
+import { personsOfInterest } from "./persons"
+import { vehicles } from "./vehicles"
+import { districtEnum, caseStatusEnum, dangerLevelEnum } from "./enums"
 
 // ---------------------------------------------------------------------------
-// diagnoses  — one row per confirmed diagnosis coded from a medical record.
-//
-// Populated by a DB trigger on medical_records INSERT for record types:
-//   outpatient_visit, emergency_visit, psychiatric_evaluation,
-//   pathology_report, discharge_summary
-//
-// Aligns with: outpatientVisitSchema.assessment, psychiatricEvaluationSchema.diagnosis,
-//              pathologyReportSchema.diagnosis
+// missing_person_cases — populated by a trigger on records INSERT/UPDATE
+// where record_type = 'missing_person'.
 // ---------------------------------------------------------------------------
 
-export const diagnoses = pgTable(
-  "diagnoses",
+export const missingPersonCases = pgTable(
+  "missing_person_cases",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     recordId: uuid("record_id")
       .notNull()
-      .references(() => medicalRecords.id, { onDelete: "cascade" }),
-    profileId: text("profile_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    icd10Code: text("icd10_code")
-      .notNull()
-      .references(() => diagnosisCodes.icd10Code),
-    // Facility links are cleared when a hospital is removed; coded history
-    // is never deleted with it.
-    hospitalId: uuid("hospital_id").references(() => hospitals.id, {
-      onDelete: "set null",
-    }),
+      .references(() => records.id, { onDelete: "cascade" }),
+    personId: uuid("person_id").references(() => personsOfInterest.id),
 
-    // Denormalized from users at insert time (trigger copies them) for fast analytics
+    fullName: text("full_name").notNull(),
+    age: integer("age"),
+    lastSeenLocation: text("last_seen_location"),
+    lastSeenDate: date("last_seen_date"),
     district: districtEnum("district"),
-    ageBand: text("age_band"), // e.g. "0-4", "5-14" — computed by trigger from DOB
-    sex: sexEnum("sex"), // copied from users.sex
+    status: caseStatusEnum("status").notNull(),
 
-    // Diagnosis narrative — free text complement to the ICD-10 code
-    notes: text("notes"), // assessment text, psych diagnosis, pathology finding
-    severity: text("severity"), // pathology grade or clinical severity descriptor
-
-    diagnosedAt: date("diagnosed_at")
-      .default(sql`current_date`)
-      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (table) => [
-    index("diagnoses_district_date_idx").on(table.district, table.diagnosedAt),
-    index("diagnoses_icd10_code_idx").on(table.icd10Code),
-    index("diagnoses_profile_id_idx").on(table.profileId),
-    index("diagnoses_record_id_idx").on(table.recordId),
+    index("missing_person_cases_record_id_idx").on(table.recordId),
+    index("missing_person_cases_district_idx").on(table.district),
+    index("missing_person_cases_status_idx").on(table.status),
   ]
 )
 
 // ---------------------------------------------------------------------------
-// prescriptions  — one row per medication prescribed, from a medical record.
-//
-// Populated by a DB trigger on medical_records INSERT for record types:
-//   medication_prescription, medication_administration, discharge_summary
-//
-// Column shape mirrors medicationPrescriptionSchema exactly, so the trigger
-// can directly extract from data->>'medication', data->>'dose', etc.
+// wanted_person_cases — record_type = 'wanted_person'
 // ---------------------------------------------------------------------------
 
-export const prescriptions = pgTable(
-  "prescriptions",
+export const wantedPersonCases = pgTable(
+  "wanted_person_cases",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     recordId: uuid("record_id")
       .notNull()
-      .references(() => medicalRecords.id, { onDelete: "cascade" }),
-    profileId: text("profile_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    diagnosisId: uuid("diagnosis_id").references(() => diagnoses.id, {
-      onDelete: "set null",
-    }), // link to coded diagnosis if known
-    medicationCode: text("medication_code")
-      .notNull()
-      .references(() => medicationCodes.code),
+      .references(() => records.id, { onDelete: "cascade" }),
+    personId: uuid("person_id").references(() => personsOfInterest.id),
 
-    // Direct mirrors of medicationPrescriptionSchema fields
-    dose: text("dose").notNull(),
-    route: routeEnum("route").notNull(),
-    frequency: text("frequency"),
-    duration: text("duration"),
-    indication: text("indication"), // why this drug was prescribed
-
-    quantity: numeric("quantity"),
-    hospitalId: uuid("hospital_id").references(() => hospitals.id, {
-      onDelete: "set null",
-    }),
-
-    // Denormalized from users at insert time (trigger)
+    fullName: text("full_name").notNull(),
+    offense: text("offense").notNull(),
+    dangerLevel: dangerLevelEnum("danger_level"),
     district: districtEnum("district"),
-    ageBand: text("age_band"),
+    status: caseStatusEnum("status").notNull(),
 
-    prescribedAt: date("prescribed_at")
-      .default(sql`current_date`)
-      .notNull(),
-    administeredAt: timestamp("administered_at", { withTimezone: true }),
-    administeredBy: text("administered_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (table) => [
-    index("prescriptions_district_date_idx").on(
-      table.district,
-      table.prescribedAt
-    ),
-    index("prescriptions_medication_code_idx").on(table.medicationCode),
-    index("prescriptions_profile_id_idx").on(table.profileId),
-    index("prescriptions_record_id_idx").on(table.recordId),
+    index("wanted_person_cases_record_id_idx").on(table.recordId),
+    index("wanted_person_cases_district_idx").on(table.district),
+    index("wanted_person_cases_status_idx").on(table.status),
+    index("wanted_person_cases_danger_idx").on(table.dangerLevel),
   ]
 )
 
 // ---------------------------------------------------------------------------
-// immunizations  — one row per vaccine dose administered, from a medical record.
-//
-// Populated by a DB trigger on medical_records INSERT for record type:
-//   immunization_record
-//
-// Aligns with immunizationRecordSchema exactly.
+// vehicle_cases — record_type IN (missing_vehicle, vehicle_offense,
+// vehicle_impoundment). One shared lookup table since they all boil down to
+// "this plate has an active case of type X".
 // ---------------------------------------------------------------------------
 
-export const immunizations = pgTable(
-  "immunizations",
+export const vehicleCases = pgTable(
+  "vehicle_cases",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     recordId: uuid("record_id")
       .notNull()
-      .references(() => medicalRecords.id, { onDelete: "cascade" }),
-    profileId: text("profile_id")
+      .references(() => records.id, { onDelete: "cascade" }),
+    vehicleId: uuid("vehicle_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    vaccineCode: text("vaccine_code")
-      .notNull()
-      .references(() => immunizationCodes.vaccineCode),
-    doseNumber: integer("dose_number").notNull(),
+      .references(() => vehicles.id),
 
-    // Direct mirror of immunizationRecordSchema.manufacturer
-    manufacturer: text("manufacturer"),
-
-    hospitalId: uuid("hospital_id").references(() => hospitals.id, {
-      onDelete: "set null",
-    }),
-
-    // Denormalized from users at insert time (trigger)
+    caseType: text("case_type").notNull(), // mirrors records.record_type
+    plateNumber: text("plate_number").notNull(), // denormalized for fast search
     district: districtEnum("district"),
+    status: caseStatusEnum("status").notNull(),
 
-    administeredAt: date("administered_at")
-      .default(sql`current_date`)
-      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (table) => [
-    index("immunizations_district_vaccine_idx").on(
-      table.district,
-      table.vaccineCode
-    ),
-    index("immunizations_profile_id_idx").on(table.profileId),
-    index("immunizations_record_id_idx").on(table.recordId),
+    index("vehicle_cases_record_id_idx").on(table.recordId),
+    index("vehicle_cases_vehicle_id_idx").on(table.vehicleId),
+    index("vehicle_cases_plate_number_idx").on(table.plateNumber),
+    index("vehicle_cases_type_idx").on(table.caseType),
+  ]
+)
+
+// ---------------------------------------------------------------------------
+// accidents — record_type = 'road_accident'. A single accident can involve
+// several vehicles, so they hang off a junction table rather than one FK.
+// ---------------------------------------------------------------------------
+
+export const accidents = pgTable(
+  "accidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => records.id, { onDelete: "cascade" }),
+
+    accidentDate: date("accident_date").notNull(),
+    location: text("location").notNull(),
+    district: districtEnum("district"),
+    fatalities: integer("fatalities").default(0).notNull(),
+    injuries: integer("injuries").default(0).notNull(),
+    status: caseStatusEnum("status").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("accidents_record_id_idx").on(table.recordId),
+    index("accidents_district_date_idx").on(table.district, table.accidentDate),
+  ]
+)
+
+export const accidentVehicles = pgTable(
+  "accident_vehicles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accidentId: uuid("accident_id")
+      .notNull()
+      .references(() => accidents.id, { onDelete: "cascade" }),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    role: text("role"), // e.g. "at_fault", "involved"
+  },
+  (table) => [
+    index("accident_vehicles_accident_id_idx").on(table.accidentId),
+    index("accident_vehicles_vehicle_id_idx").on(table.vehicleId),
+  ]
+)
+
+// ---------------------------------------------------------------------------
+// traffic_citations — record_type = 'traffic_citation'
+// ---------------------------------------------------------------------------
+
+export const trafficCitations = pgTable(
+  "traffic_citations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => records.id, { onDelete: "cascade" }),
+    vehicleId: uuid("vehicle_id").references(() => vehicles.id),
+
+    violationType: text("violation_type").notNull(),
+    fineAmount: numeric("fine_amount"),
+    isPaid: boolean("is_paid").default(false).notNull(),
+    district: districtEnum("district"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("traffic_citations_record_id_idx").on(table.recordId),
+    index("traffic_citations_vehicle_id_idx").on(table.vehicleId),
+    index("traffic_citations_district_idx").on(table.district),
   ]
 )

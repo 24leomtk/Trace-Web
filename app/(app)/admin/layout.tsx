@@ -10,19 +10,18 @@ export default async function AdminLayout({
 }) {
   const user = await getCurrentUser()
   if (!user) redirect("/sign-in")
-  if (user.role !== "ADMINISTRATOR") redirect("/")
+  if (user.role !== "SYSTEM_ADMIN") redirect("/")
 
   return (
     <div className="flex flex-col gap-6">
       <header>
         <p className="text-xs tracking-wide text-muted-foreground uppercase">
-          Registry administration
+          TRACE administration
         </p>
         <h1 className="mt-1 text-xl font-medium">Manage</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Users, hospitals, clinical codebooks and treatment guidelines. Your
-          own chart lives on the home screen — nobody else&apos;s records are
-          reachable from here.
+          Users, branches, and organizations. Case data is out of scope for
+          this role — provisioning only.
         </p>
       </header>
       <AdminSectionNav />

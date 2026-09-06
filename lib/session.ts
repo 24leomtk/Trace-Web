@@ -2,74 +2,67 @@ import { headers } from "next/headers"
 import { eq } from "drizzle-orm"
 
 import { db } from "@/db"
-import { hospitals, users } from "@/db/schema"
+import { branches, organizations, users } from "@/db/schema"
 import { auth } from "@/lib/auth"
-import { formatDistrict, toUiRole, isStaffRole } from "@/lib/roles"
-import type { EmergencyInfo, User } from "@/lib/types"
-
-type DbEmergencyInfo = {
-  blood_type?: string
-  allergies?: string[]
-  chronic_conditions?: string[]
-  emergency_contact_name?: string
-  emergency_contact_phone?: string
-  emergency_contact_relation?: string
-}
+import { formatDistrict, toUiRole } from "@/lib/roles"
+import type { Domain, User } from "@/lib/types"
 
 type UserRow = typeof users.$inferSelect & {
-  hospitalName: string | null
-}
-
-export function mapEmergencyInfo(raw: DbEmergencyInfo): EmergencyInfo {
-  const contact =
-    raw.emergency_contact_name && raw.emergency_contact_phone
-      ? {
-          name: raw.emergency_contact_name,
-          phone: raw.emergency_contact_phone,
-          relation: raw.emergency_contact_relation,
-        }
-      : undefined
-  return {
-    bloodType: raw.blood_type,
-    allergies: raw.allergies ?? [],
-    chronicConditions: raw.chronic_conditions ?? [],
-    emergencyContact: contact,
-  }
+  branchName: string | null
+  branchDomain: Domain | null
+  branchDistrict: string | null
+  organizationName: string | null
 }
 
 export function mapUserRow(row: UserRow): User {
   const uiRole = toUiRole(row.role)
+  const district =
+    formatDistrict(row.district ?? row.branchDistrict) || undefined
+  const domain = (row.domain ?? row.branchDomain ?? undefined) as
+    | Domain
+    | undefined
+  const posting =
+    row.branchName && row.branchDomain
+      ? `${row.branchName} (${row.branchDomain === "regular" ? "Regular" : "Traffic"})`
+      : (row.organizationName ??
+        (uiRole === "SYSTEM_ADMIN"
+          ? "TRACE Administration"
+          : uiRole === "COMPLIANCE_AUDITOR"
+            ? "Compliance Oversight"
+            : undefined))
   return {
     id: row.id,
     name: row.name,
     phone: row.phoneNumber ?? "",
     role: uiRole,
-    nationalId: row.nationalId ?? undefined,
-    dateOfBirth: row.dateOfBirth ?? undefined,
-    sex: row.sex ?? undefined,
-    district: formatDistrict(row.district) || undefined,
-    facility:
-      row.hospitalName ??
-      (isStaffRole(uiRole)
-        ? `${formatDistrict(row.district) || "National"} Health Office`
-        : uiRole === "ADMINISTRATOR"
-          ? "Registry Administration"
-          : undefined),
-    licenseNumber: row.medicalLicenseNo ?? undefined,
-    emergencyInfo: mapEmergencyInfo(row.emergencyInfo),
+    badgeNumber: row.badgeNumber ?? undefined,
+    domain,
+    branchId: row.branchId ?? undefined,
+    branchName: row.branchName ?? undefined,
+    district,
+    organizationId: row.organizationId ?? undefined,
+    organizationName: row.organizationName ?? undefined,
+    posting,
   }
 }
 
 export async function getUserById(userId: string): Promise<User | null> {
   const [row] = await db
-    .select({ user: users, hospitalName: hospitals.name })
+    .select({
+      user: users,
+      branchName: branches.name,
+      branchDomain: branches.domain,
+      branchDistrict: branches.district,
+      organizationName: organizations.name,
+    })
     .from(users)
-    .leftJoin(hospitals, eq(users.hospitalId, hospitals.id))
+    .leftJoin(branches, eq(users.branchId, branches.id))
+    .leftJoin(organizations, eq(users.organizationId, organizations.id))
     .where(eq(users.id, userId))
     .limit(1)
 
   if (!row) return null
-  return mapUserRow({ ...row.user, hospitalName: row.hospitalName })
+  return mapUserRow({ ...row.user, ...row })
 }
 
 /** Full app user for the current session, or null when signed out. */

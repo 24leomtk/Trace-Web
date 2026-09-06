@@ -1,21 +1,35 @@
 "use server"
 
-import { and, desc, eq, gt, gte, inArray, lte } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
-  accessGrants,
-  hospitals,
-  medicalRecords,
+  accidentVehicles,
+  accidents,
+  branches,
+  courtCaseAccess,
+  missingPersonCases,
   recordAttachments,
+  records,
+  trafficCitations,
   users,
+  vehicleCases,
+  vehicles,
+  wantedPersonCases,
 } from "@/db/schema"
-import { withUserCtx } from "@/lib/db-context"
+import { withUserCtx, type DbTransaction } from "@/lib/db-context"
+import { domainForRecordType } from "@/lib/record-meta"
 import { describeRecord } from "@/lib/record-view"
-import { isStaffRole, toUiRole } from "@/lib/roles"
+import { toUiRole } from "@/lib/roles"
 import { requireUser } from "@/lib/session"
 import { writeAuditTx } from "@/lib/server/audit"
-import type { MedicalRecord } from "@/lib/types"
+import type {
+  AccessLevel,
+  CaseStatus,
+  Domain,
+  Role,
+  TraceRecord,
+} from "@/lib/types"
 import { recordSchemas, type RecordType } from "@/validations/record"
 
 export interface Page<T> {
@@ -31,190 +45,444 @@ export interface UploadedAttachment {
   fileSizeBytes: number
 }
 
-/** True when `doctorId` currently holds a redeemed, unrevoked, unexpired
- * access window (regular or break-glass) for `patientId`. */
-async function hasActiveGrant(
-  patientId: string,
-  doctorId: string
-): Promise<boolean> {
-  const [grant] = await db
-    .select({ id: accessGrants.id })
-    .from(accessGrants)
+export interface ViewerScope {
+  id: string
+  name: string
+  role: Role
+  domain: Domain | null
+  branchId: string | null
+  branchDistrict: string | null
+  district: string | null
+  organizationId: string | null
+}
+
+/** Raw (unformatted) scope for permission checks — never use display fields. */
+export async function getViewerScope(): Promise<ViewerScope> {
+  const sessionUser = await requireUser()
+  const [row] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      role: users.role,
+      domain: users.domain,
+      branchId: users.branchId,
+      district: users.district,
+      organizationId: users.organizationId,
+      branchDistrict: branches.district,
+      branchDomain: branches.domain,
+    })
+    .from(users)
+    .leftJoin(branches, eq(users.branchId, branches.id))
+    .where(eq(users.id, sessionUser.id))
+    .limit(1)
+  if (!row) throw new Error("Account not found.")
+  return {
+    id: row.id,
+    name: row.name,
+    role: toUiRole(row.role),
+    domain: (row.domain ?? row.branchDomain ?? null) as Domain | null,
+    branchId: row.branchId,
+    branchDistrict: row.branchDistrict,
+    district: row.district,
+    organizationId: row.organizationId,
+  }
+}
+
+type RecordRow = typeof records.$inferSelect
+
+function viewerDistrict(scope: ViewerScope): string | null {
+  return scope.district ?? scope.branchDistrict
+}
+
+/** Can this police viewer open this record directly? (Court grants handled separately.) */
+export function canViewRecord(scope: ViewerScope, record: RecordRow): boolean {
+  if (scope.role === "OFFICER") {
+    if (record.domain !== scope.domain) return false
+    if (record.branchId === scope.branchId) return true
+    // Escalated records: district-level in own district, country-level domain-wide.
+    if (record.accessLevel === "district") {
+      return record.district === (scope.branchDistrict ?? scope.district)
+    }
+    if (record.accessLevel === "country") return true
+    return false
+  }
+  if (scope.role === "DISTRICT_MONITOR") {
+    return record.domain === scope.domain && record.district === scope.district
+  }
+  if (scope.role === "COUNTRY_MONITOR") {
+    // Aggregates + escalated-to-country only (no raw branch-level reads).
+    return record.domain === scope.domain && record.accessLevel === "country"
+  }
+  // System admin, auditor, and external roles have no direct case access.
+  return false
+}
+
+/** Can this viewer file a record of this type? Creation is locked to own domain. */
+function canCreateType(scope: ViewerScope, type: RecordType): boolean {
+  if (scope.role !== "OFFICER" && !isMonitor(scope)) return false
+  return domainForRecordType(type) === scope.domain
+}
+
+function isMonitor(scope: ViewerScope): boolean {
+  return scope.role === "DISTRICT_MONITOR" || scope.role === "COUNTRY_MONITOR"
+}
+
+/** Resolve the branch a new record files under, enforcing scope. */
+async function resolveFilingBranch(
+  scope: ViewerScope,
+  requestedBranchId?: string | null
+): Promise<{ branchId: string; district: string }> {
+  if (scope.role === "OFFICER") {
+    if (!scope.branchId || !scope.branchDistrict) {
+      throw new Error("Your account is not attached to a branch.")
+    }
+    return { branchId: scope.branchId, district: scope.branchDistrict }
+  }
+  if (scope.role === "DISTRICT_MONITOR") {
+    if (!requestedBranchId) {
+      throw new Error("Choose a branch in your district to file under.")
+    }
+    const [branch] = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.id, requestedBranchId))
+      .limit(1)
+    if (!branch || branch.district !== scope.district || branch.domain !== scope.domain) {
+      throw new Error("That branch is outside your district.")
+    }
+    return { branchId: branch.id, district: branch.district }
+  }
+  // Country monitor — national bulletins filed under any branch in their domain.
+  if (!requestedBranchId) throw new Error("Choose a branch to file under.")
+  const [branch] = await db
+    .select()
+    .from(branches)
+    .where(eq(branches.id, requestedBranchId))
+    .limit(1)
+  if (!branch || branch.domain !== scope.domain) {
+    throw new Error("That branch is outside your domain.")
+  }
+  return { branchId: branch.id, district: branch.district }
+}
+
+function str(data: Record<string, unknown>, key: string): string {
+  const value = data[key]
+  return typeof value === "string" ? value.trim() : ""
+}
+
+/** Find-or-create an ad-hoc vehicle row for a plate (is_verified: false). */
+async function resolveVehicleByPlate(
+  tx: DbTransaction,
+  plate: string
+) {
+  const normalized = plate.trim().toUpperCase()
+  if (!normalized) return null
+  const [existing] = await tx
+    .select()
+    .from(vehicles)
+    .where(eq(vehicles.plateNumber, normalized))
+    .limit(1)
+  if (existing) return existing
+  const [created] = await tx
+    .insert(vehicles)
+    .values({ plateNumber: normalized })
+    .returning()
+  return created
+}
+
+/** A vehicle is flagged while an active missing/offense/impound case points at it. */
+async function refreshVehicleFlag(
+  tx: DbTransaction,
+  vehicleId: string
+): Promise<void> {
+  const rows = await tx
+    .select({ id: vehicleCases.id })
+    .from(vehicleCases)
     .where(
       and(
-        eq(accessGrants.profileId, patientId),
-        eq(accessGrants.doctorId, doctorId),
-        eq(accessGrants.isUsed, true),
-        eq(accessGrants.isRevoked, false),
-        gt(accessGrants.expiresAt, new Date())
+        eq(vehicleCases.vehicleId, vehicleId),
+        eq(vehicleCases.status, "active"),
+        inArray(vehicleCases.caseType, [
+          "missing_vehicle",
+          "vehicle_offense",
+          "vehicle_impoundment",
+        ])
       )
     )
     .limit(1)
-  return Boolean(grant)
+  await tx
+    .update(vehicles)
+    .set({ isFlagged: rows.length > 0, updatedAt: new Date() })
+    .where(eq(vehicles.id, vehicleId))
 }
 
-async function resolveHospitalIdByName(name: string): Promise<string | null> {
-  const [facility] = await db
-    .select({ id: hospitals.id })
-    .from(hospitals)
-    .where(eq(hospitals.name, name))
+/** Write the coded projection rows for a record (kept in app code, not triggers). */
+async function writeCodedProjections(
+  tx: DbTransaction,
+  record: RecordRow,
+  data: Record<string, unknown>
+): Promise<void> {
+  // Clear stale projections for this record, then rewrite.
+  await tx.delete(missingPersonCases).where(eq(missingPersonCases.recordId, record.id))
+  await tx.delete(wantedPersonCases).where(eq(wantedPersonCases.recordId, record.id))
+  await tx.delete(vehicleCases).where(eq(vehicleCases.recordId, record.id))
+  await tx.delete(trafficCitations).where(eq(trafficCitations.recordId, record.id))
+  const [accident] = await tx
+    .select({ id: accidents.id })
+    .from(accidents)
+    .where(eq(accidents.recordId, record.id))
     .limit(1)
-  return facility?.id ?? null
+  if (accident) await tx.delete(accidents).where(eq(accidents.id, accident.id))
+
+  switch (record.recordType) {
+    case "missing_person": {
+      await tx.insert(missingPersonCases).values({
+        recordId: record.id,
+        personId: record.personId ?? undefined,
+        fullName: str(data, "full_name"),
+        age: typeof data.age === "number" ? data.age : undefined,
+        lastSeenLocation: str(data, "last_seen_location") || undefined,
+        lastSeenDate: str(data, "last_seen_date") || undefined,
+        district: record.district,
+        status: record.status,
+      })
+      break
+    }
+    case "wanted_person": {
+      const danger = str(data, "danger_level")
+      await tx.insert(wantedPersonCases).values({
+        recordId: record.id,
+        personId: record.personId ?? undefined,
+        fullName: str(data, "full_name"),
+        offense: str(data, "offense"),
+        dangerLevel: (["low", "medium", "high", "extreme"] as const).includes(
+          danger as "low"
+        )
+          ? (danger as "low" | "medium" | "high" | "extreme")
+          : undefined,
+        district: record.district,
+        status: record.status,
+      })
+      break
+    }
+    case "missing_vehicle":
+    case "vehicle_offense":
+    case "vehicle_impoundment": {
+      const plate = str(data, "plate_number")
+      if (plate && record.vehicleId) {
+        await tx.insert(vehicleCases).values({
+          recordId: record.id,
+          vehicleId: record.vehicleId,
+          caseType: record.recordType,
+          plateNumber: plate.trim().toUpperCase(),
+          district: record.district,
+          status: record.status,
+        })
+        await refreshVehicleFlag(tx, record.vehicleId)
+      }
+      break
+    }
+    case "road_accident": {
+      const [row] = await tx
+        .insert(accidents)
+        .values({
+          recordId: record.id,
+          accidentDate: str(data, "accident_date"),
+          location: str(data, "location"),
+          district: record.district,
+          fatalities: typeof data.fatalities === "number" ? data.fatalities : 0,
+          injuries: typeof data.injuries === "number" ? data.injuries : 0,
+          status: record.status,
+        })
+        .returning({ id: accidents.id })
+      const involved = Array.isArray(data.vehicles_involved)
+        ? (data.vehicles_involved as Array<Record<string, unknown>>)
+        : []
+      for (const entry of involved) {
+        const plate = typeof entry.plate_number === "string" ? entry.plate_number : ""
+        if (!plate.trim()) continue
+        const vehicle = await resolveVehicleByPlate(tx, plate)
+        if (!vehicle) continue
+        await tx.insert(accidentVehicles).values({
+          accidentId: row.id,
+          vehicleId: vehicle.id,
+          role: typeof entry.role === "string" ? entry.role : undefined,
+        })
+      }
+      break
+    }
+    case "traffic_citation": {
+      await tx.insert(trafficCitations).values({
+        recordId: record.id,
+        vehicleId: record.vehicleId ?? undefined,
+        violationType: str(data, "violation_type"),
+        fineAmount: typeof data.fine_amount === "number" ? String(data.fine_amount) : undefined,
+        district: record.district,
+      })
+      break
+    }
+    default:
+      break
+  }
 }
 
-interface GetPatientRecordsInput {
-  patientId: string
+async function toTraceRecord(
+  tx: DbTransaction,
+  record: RecordRow
+): Promise<TraceRecord> {
+  const [reporter] = record.reportedBy
+    ? await tx
+        .select({ name: users.name, role: users.role })
+        .from(users)
+        .where(eq(users.id, record.reportedBy))
+        .limit(1)
+    : []
+  const [branch] = await tx
+    .select({ name: branches.name })
+    .from(branches)
+    .where(eq(branches.id, record.branchId))
+    .limit(1)
+  const attachments = await tx
+    .select()
+    .from(recordAttachments)
+    .where(eq(recordAttachments.recordId, record.id))
+  const view = describeRecord(
+    record.recordType as RecordType,
+    (record.data ?? {}) as Record<string, unknown>
+  )
+  return {
+    id: record.id,
+    recordType: record.recordType as RecordType,
+    domain: record.domain as Domain,
+    branchId: record.branchId,
+    branchName: branch?.name,
+    district: record.district,
+    vehicleId: record.vehicleId ?? undefined,
+    personId: record.personId ?? undefined,
+    accessLevel: record.accessLevel as AccessLevel,
+    status: record.status as CaseStatus,
+    reportedBy: record.reportedBy,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+    title: view.title,
+    summary: view.summary,
+    author: {
+      name: reporter?.name ?? "Unknown officer",
+      role: reporter ? toUiRole(reporter.role) : "OFFICER",
+    },
+    badges: view.badges,
+    attachments: attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.storagePath.split("/").pop() ?? "file",
+      sizeBytes: 0,
+      kind: "image" as const,
+      url: attachment.url,
+    })),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Listing + detail (police roles; court-liaison reads live in access.ts)
+// ---------------------------------------------------------------------------
+
+interface ListRecordsInput {
   cursor?: number
   limit?: number
   type?: RecordType
-  dateFrom?: string
-  dateTo?: string
+  status?: CaseStatus
 }
 
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
-
-export async function getPatientRecords({
-  patientId,
+export async function listRecords({
   cursor = 0,
-  limit = 8,
+  limit = 10,
   type,
-  dateFrom,
-  dateTo,
-}: GetPatientRecordsInput): Promise<Page<MedicalRecord>> {
-  const viewer = await requireUser()
-  const isSelfRead = viewer.id === patientId
-
-  if (!isSelfRead) {
-    if (isStaffRole(viewer.role)) {
-      throw new Error(
-        "Admins work with aggregate reports instead of opening raw charts."
-      )
-    }
-    const granted = await hasActiveGrant(patientId, viewer.id)
-    if (!granted) {
-      throw new Error("You don't have an active access window for this patient.")
-    }
+  status,
+}: ListRecordsInput = {}): Promise<Page<TraceRecord>> {
+  const scope = await getViewerScope()
+  if (
+    scope.role !== "OFFICER" &&
+    scope.role !== "DISTRICT_MONITOR" &&
+    scope.role !== "COUNTRY_MONITOR"
+  ) {
+    throw new Error("Your role does not have a case feed.")
   }
 
-  return withUserCtx(viewer.id, async (tx) => {
-    // RLS (`app_can_read_patient`) is the real gatekeeper here; the checks
-    // above exist to fail fast with a friendly message.
-    const conditions = [eq(medicalRecords.profileId, patientId)]
-    if (type) conditions.push(eq(medicalRecords.recordType, type))
-    if (dateFrom && ISO_DAY.test(dateFrom)) {
-      conditions.push(
-        gte(medicalRecords.createdAt, new Date(`${dateFrom}T00:00:00.000Z`))
-      )
-    }
-    if (dateTo && ISO_DAY.test(dateTo)) {
-      conditions.push(
-        lte(medicalRecords.createdAt, new Date(`${dateTo}T23:59:59.999Z`))
-      )
+  return withUserCtx(scope.id, async (tx) => {
+    const conditions = [eq(records.domain, scope.domain!)]
+    if (type) conditions.push(eq(records.recordType, type))
+    if (status) conditions.push(eq(records.status, status))
+    // Narrow server-side per role; canViewRecord is the final gate below.
+    if (scope.role === "DISTRICT_MONITOR") {
+      conditions.push(eq(records.district, scope.district as never))
+    } else if (scope.role === "COUNTRY_MONITOR") {
+      conditions.push(eq(records.accessLevel, "country"))
+    } else if (scope.branchId) {
+      // Officers: own branch + escalated records in scope are filtered post-read
+      // via canViewRecord; keep the query domain-wide and paginate after filter.
     }
 
     const rows = await tx
-      .select({
-        record: medicalRecords,
-        authorName: users.name,
-        authorRole: users.role,
-        hospitalName: hospitals.name,
-      })
-      .from(medicalRecords)
-      .leftJoin(users, eq(medicalRecords.createdBy, users.id))
-      .leftJoin(hospitals, eq(medicalRecords.hospitalId, hospitals.id))
+      .select()
+      .from(records)
       .where(and(...conditions))
-      .orderBy(desc(medicalRecords.createdAt), desc(medicalRecords.id))
-      .limit(limit + 1)
-      .offset(cursor)
+      .orderBy(desc(records.createdAt), desc(records.id))
+      .limit(200)
 
-    const pageRows = rows.length > limit ? rows.slice(0, limit) : rows
-
-    const recordIds = pageRows.map((row) => row.record.id)
-    const attachments = recordIds.length
-      ? await tx
-          .select()
-          .from(recordAttachments)
-          .where(inArray(recordAttachments.recordId, recordIds))
-      : []
-
-    const items: MedicalRecord[] = pageRows.map((row) => {
-      const view = describeRecord(
-        row.record.recordType,
-        (row.record.data ?? {}) as Record<string, unknown>
-      )
-      return {
-        id: row.record.id,
-        patientId: row.record.profileId,
-        recordedAt: row.record.createdAt.toISOString(),
-        type: row.record.recordType,
-        title: view.title,
-        summary: view.summary,
-        author: {
-          name: row.authorName ?? "Self-reported",
-          role: row.authorRole ? toUiRole(row.authorRole) : "PATIENT",
-        },
-        facility: row.hospitalName ?? "",
-        badges: view.badges,
-        attachments: attachments
-          .filter((attachment) => attachment.recordId === row.record.id)
-          .map((attachment) => ({
-            id: attachment.id,
-            name: attachment.storagePath.split("/").pop() ?? "image",
-            sizeBytes: attachment.fileSizeBytes ?? 0,
-            kind: "image" as const,
-            url: attachment.url,
-          })),
-      }
-    })
-
-    if (!isSelfRead && cursor === 0 && items.length > 0) {
-      await writeAuditTx(tx, {
-        profileId: patientId,
-        actorId: viewer.id,
-        actionType: "foreign_access",
-        reason:
-          "Opened the patient's full history during an active access window.",
-        doctorName: viewer.name,
-        medicalLicenseNo: viewer.licenseNumber ?? null,
-        hospitalName: viewer.facility ?? null,
-        district: viewer.district ?? null,
-      })
-    }
-
-    return {
-      items,
-      nextCursor: rows.length > limit ? cursor + limit : null,
-    }
+    const visible = rows.filter((row) => canViewRecord(scope, row))
+    const page = visible.slice(cursor, cursor + limit)
+    const items: TraceRecord[] = []
+    for (const row of page) items.push(await toTraceRecord(tx, row))
+    return { items, nextCursor: cursor + limit < visible.length ? cursor + limit : null }
   })
 }
 
+export async function getRecord(id: string): Promise<TraceRecord> {
+  const scope = await getViewerScope()
+  return withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+    if (!canViewRecord(scope, record)) {
+      throw new Error("You don't have access to this record.")
+    }
+    const crossedBranch = scope.role === "OFFICER" && record.branchId !== scope.branchId
+    const crossedDistrict =
+      crossedBranch && record.district !== (scope.branchDistrict ?? scope.district)
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: crossedDistrict
+        ? "cross_district_access"
+        : crossedBranch
+          ? "cross_branch_access"
+          : "record_viewed",
+      recordId: record.id,
+      reason: crossedBranch ? "Opened a record outside own branch." : undefined,
+    })
+    return toTraceRecord(tx, record)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Creation (officer / monitor, own domain only)
+// ---------------------------------------------------------------------------
+
 interface CreateRecordInput {
-  patientId: string
   type: RecordType
   data: Record<string, unknown>
-  attachments: UploadedAttachment[]
+  accessLevel?: AccessLevel
+  branchId?: string
+  attachments?: UploadedAttachment[]
 }
 
 export async function createRecord({
-  patientId,
   type,
   data,
-  attachments,
+  accessLevel = "branch",
+  branchId,
+  attachments = [],
 }: CreateRecordInput): Promise<{ id: string }> {
-  const user = await requireUser()
-
-  if (user.id === patientId) {
-    throw new Error(
-      "Records can only be added while viewing a patient's chart."
-    )
-  }
-  if (isStaffRole(user.role)) {
-    throw new Error("Admins cannot create records.")
-  }
-
-  const granted = await hasActiveGrant(patientId, user.id)
-  if (!granted) {
-    throw new Error("You don't have an active access window for this patient.")
+  const scope = await getViewerScope()
+  if (!canCreateType(scope, type)) {
+    throw new Error("You can't file this type of record.")
   }
 
   const schema = recordSchemas[type]
@@ -222,39 +490,239 @@ export async function createRecord({
   if (!parsed.success) {
     throw new Error("The record payload didn't pass validation.")
   }
+  const payload = parsed.data as Record<string, unknown>
 
-  // Attach the recording clinician's facility when they belong to one.
-  let facilityId: string | null = null
-  if (user.facility) {
-    facilityId = await resolveHospitalIdByName(user.facility)
+  // Officers file at branch level; monitors may escalate at creation.
+  const level: AccessLevel =
+    scope.role === "OFFICER" && accessLevel !== "branch"
+      ? accessLevel // officers may mark district/country on their own record
+      : accessLevel
+  if (scope.role === "OFFICER" && !["branch", "district", "country"].includes(level)) {
+    throw new Error("Invalid access level.")
   }
 
-  return withUserCtx(user.id, async (tx) => {
+  const filing = await resolveFilingBranch(scope, branchId)
+
+  return withUserCtx(scope.id, async (tx) => {
+    // Link person when the payload references a known profile.
+    const personId =
+      typeof payload.person_id === "string" && payload.person_id
+        ? (payload.person_id as string)
+        : undefined
+    // Link (or ad-hoc create) the vehicle when a plate is present.
+    let vehicleId: string | undefined
+    const plate =
+      typeof payload.plate_number === "string" ? payload.plate_number : ""
+    if (plate.trim()) {
+      const vehicle = await resolveVehicleByPlate(tx, plate)
+      vehicleId = vehicle?.id
+    }
+
     const [inserted] = await tx
-      .insert(medicalRecords)
+      .insert(records)
       .values({
-        profileId: patientId,
-        createdBy: user.id,
-        hospitalId: facilityId,
         recordType: type,
-        recordDate: new Date().toISOString().slice(0, 10),
-        data: parsed.data as unknown as Record<string, unknown>,
+        domain: domainForRecordType(type),
+        reportedBy: scope.id,
+        branchId: filing.branchId,
+        district: filing.district as RecordRow["district"],
+        vehicleId,
+        personId,
+        accessLevel: level,
+        status: "active",
+        data: payload,
       })
-      .returning({ id: medicalRecords.id })
+      .returning()
+
+    await writeCodedProjections(tx, inserted, payload)
 
     if (attachments.length > 0) {
       await tx.insert(recordAttachments).values(
         attachments.map((attachment) => ({
           recordId: inserted.id,
           url: attachment.url,
-          storagePath: `${attachment.publicId}`,
+          storagePath: attachment.publicId,
           fileType: attachment.fileType,
-          fileSizeBytes: attachment.fileSizeBytes,
-          uploadedBy: user.id,
+          uploadedBy: scope.id,
         }))
       )
     }
 
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_created",
+      recordId: inserted.id,
+    })
     return { id: inserted.id }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Updates, status, access level
+// ---------------------------------------------------------------------------
+
+export async function updateRecord({
+  id,
+  data,
+}: {
+  id: string
+  data: Record<string, unknown>
+}): Promise<void> {
+  const scope = await getViewerScope()
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+    if (!canViewRecord(scope, record)) throw new Error("You don't have access to this record.")
+
+    const isFiler = record.reportedBy === scope.id
+    const monitorInScope =
+      isMonitor(scope) &&
+      record.domain === scope.domain &&
+      (scope.role === "COUNTRY_MONITOR"
+        ? record.accessLevel === "country"
+        : record.district === scope.district)
+
+    if (record.status !== "active") {
+      // After active: content is locked; use status/notes flows instead.
+      throw new Error("Only active records can be edited. Change status or add a follow-up note instead.")
+    }
+    if (!isFiler && !monitorInScope) {
+      throw new Error("Only the filing officer or a monitor in scope can edit this record.")
+    }
+
+    const schema = recordSchemas[record.recordType as RecordType]
+    const parsed = schema.safeParse(data)
+    if (!parsed.success) throw new Error("The record payload didn't pass validation.")
+
+    await tx
+      .update(records)
+      .set({ data: parsed.data as Record<string, unknown>, updatedAt: new Date() })
+      .where(eq(records.id, id))
+    const [updated] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    await writeCodedProjections(tx, updated, parsed.data as Record<string, unknown>)
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: id,
+      reason: isFiler ? "Filing officer edit." : "Monitor reviewed change.",
+    })
+  })
+}
+
+export async function changeStatus({
+  id,
+  status,
+}: {
+  id: string
+  status: CaseStatus
+}): Promise<void> {
+  const scope = await getViewerScope()
+  if (!isMonitor(scope)) throw new Error("Only monitors can change case status.")
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+    const inScope =
+      record.domain === scope.domain &&
+      (scope.role === "COUNTRY_MONITOR"
+        ? record.accessLevel === "country"
+        : record.district === scope.district)
+    if (!inScope) throw new Error("That case is outside your scope.")
+    await tx
+      .update(records)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(records.id, id))
+    // Keep coded projections + flag in sync with the new status.
+    const [updated] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    await writeCodedProjections(tx, updated, (updated.data ?? {}) as Record<string, unknown>)
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "status_changed",
+      recordId: id,
+      reason: `Status → ${status}.`,
+    })
+  })
+}
+
+export async function setAccessLevel({
+  id,
+  level,
+}: {
+  id: string
+  level: AccessLevel
+}): Promise<void> {
+  const scope = await getViewerScope()
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+
+    if (scope.role === "OFFICER") {
+      if (record.reportedBy !== scope.id) {
+        throw new Error("Officers can only set the access level on records they filed.")
+      }
+      // Officers may widen their own record; pulling back down is monitor-only.
+      const order = { branch: 0, district: 1, country: 2 } as const
+      if (order[level] < order[record.accessLevel as AccessLevel]) {
+        throw new Error("De-escalation is a monitor action.")
+      }
+    } else if (scope.role === "DISTRICT_MONITOR") {
+      if (record.domain !== scope.domain || record.district !== scope.district) {
+        throw new Error("That case is outside your district.")
+      }
+    } else if (scope.role === "COUNTRY_MONITOR") {
+      if (record.domain !== scope.domain) throw new Error("That case is outside your domain.")
+      if (level !== "country") throw new Error("Country monitors can only escalate to country.")
+    } else {
+      throw new Error("Your role can't change access levels.")
+    }
+
+    await tx
+      .update(records)
+      .set({ accessLevel: level, updatedAt: new Date() })
+      .where(eq(records.id, id))
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: id,
+      reason: `Access level → ${level}.`,
+    })
+  })
+}
+
+/** Cases referred to the current court liaison (their only case visibility). */
+export async function getMyReferrals(): Promise<
+  { referralId: string; expiresAt: string | null; record: TraceRecord }[]
+> {
+  const scope = await getViewerScope()
+  if (scope.role !== "COURT_LIAISON") throw new Error("Court liaisons only.")
+  return withUserCtx(scope.id, async (tx) => {
+    const now = new Date()
+    const grants = await tx
+      .select()
+      .from(courtCaseAccess)
+      .where(eq(courtCaseAccess.courtLiaisonId, scope.id))
+    const live = grants.filter(
+      (grant) =>
+        !grant.revokedAt && (!grant.expiresAt || grant.expiresAt > now)
+    )
+    const out: { referralId: string; expiresAt: string | null; record: TraceRecord }[] = []
+    for (const grant of live) {
+      const [record] = await tx
+        .select()
+        .from(records)
+        .where(eq(records.id, grant.recordId))
+        .limit(1)
+      if (!record) continue
+      await writeAuditTx(tx, {
+        actorId: scope.id,
+        actionType: "court_case_viewed",
+        recordId: record.id,
+      })
+      out.push({
+        referralId: grant.id,
+        expiresAt: grant.expiresAt?.toISOString() ?? null,
+        record: await toTraceRecord(tx, record),
+      })
+    }
+    return out
   })
 }

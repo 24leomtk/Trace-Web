@@ -13,8 +13,10 @@ import {
 } from "@/lib/actions/records"
 import { getUploadCredentials } from "@/lib/actions/uploads"
 import { uploadImageToCloudinary } from "@/lib/upload"
+import { domainForRecordType } from "@/lib/record-meta"
 import { recordSchemas } from "@/validations/record"
 import type { RecordType } from "@/validations/record"
+import type { AccessLevel } from "@/lib/types"
 import { useFileUpload } from "@/hooks/use-file-upload"
 import {
   DynamicFields,
@@ -28,8 +30,17 @@ import { RecordTypeSelector } from "@/components/app/record-form/record-type-sel
 import { AttachmentsField } from "@/components/app/record-form/attachments-field"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { useHomeView } from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
+
+const NUMERIC_PATHS = new Set([
+  "age",
+  "estimated_value",
+  "fine_amount",
+  "fatalities",
+  "injuries",
+  "year",
+  "dose_number",
+])
 
 function initialValues(fields: AnyFieldDef[]): FormValues {
   const values: FormValues = {}
@@ -59,16 +70,10 @@ function setDeep(
 }
 
 function normalizeValue(path: string, value: unknown): unknown {
-  if (
-    typeof value === "string" &&
-    path.endsWith("_at") &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
-  ) {
-    return `${value}:00Z`
-  }
   if (typeof value === "string" && value.trim() === "") return undefined
-  if (path === "dose_number" && typeof value === "string" && value !== "") {
-    return Number.parseInt(value, 10)
+  if (NUMERIC_PATHS.has(path) && typeof value === "string" && value !== "") {
+    const num = Number(value)
+    return Number.isNaN(num) ? value : num
   }
   return value
 }
@@ -76,19 +81,24 @@ function normalizeValue(path: string, value: unknown): unknown {
 export default function NewRecordPage() {
   const router = useRouter()
   const { user } = useUser()
-  const homeView = useHomeView()
 
-  const activePatient = user.role === "DOCTOR" ? homeView.activePatient : null
-  const canCreate = user.role === "DOCTOR" && !!activePatient
+  const canCreate =
+    user.role === "OFFICER" ||
+    user.role === "DISTRICT_MONITOR" ||
+    user.role === "COUNTRY_MONITOR"
 
   useEffect(() => {
     if (!canCreate) router.replace("/")
   }, [canCreate, router])
 
-  const [recordType, setRecordType] = useState<RecordType>("outpatient_visit")
+  const defaultType: RecordType =
+    user.domain === "traffic" ? "vehicle_offense" : "crime_incident"
+  const [recordType, setRecordType] = useState<RecordType>(defaultType)
   const [values, setValues] = useState<FormValues>(() =>
-    initialValues(RECORD_FORM_FIELDS.outpatient_visit)
+    initialValues(RECORD_FORM_FIELDS[defaultType])
   )
+  const [accessLevel, setAccessLevel] = useState<AccessLevel>("branch")
+  const [branchId, setBranchId] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [fileState, fileActions] = useFileUpload({
@@ -99,8 +109,15 @@ export default function NewRecordPage() {
   })
 
   const fields = RECORD_FORM_FIELDS[recordType]
+  const needsBranchPicker =
+    user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
 
   function chooseType(next: RecordType) {
+    // Filing is locked to the filer's own domain.
+    if (user.domain && domainForRecordType(next) !== user.domain) {
+      toast.error(`Your domain files ${user.domain} records only.`)
+      return
+    }
     setRecordType(next)
     setValues(initialValues(RECORD_FORM_FIELDS[next]))
     setErrors({})
@@ -119,9 +136,8 @@ export default function NewRecordPage() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
 
-    if (!activePatient) {
-      toast.error("Select a patient chart before recording.")
-      router.replace("/")
+    if (needsBranchPicker && !branchId) {
+      toast.error("Choose the branch to file this under.")
       return
     }
 
@@ -178,15 +194,16 @@ export default function NewRecordPage() {
       }
 
       await createRecord({
-        patientId: activePatient.id,
         type: recordType,
         data: payload,
+        accessLevel,
+        branchId: needsBranchPicker ? branchId : undefined,
         attachments: uploadedAttachments,
       })
-      toast.success("Record saved to the timeline.")
+      toast.success("Case filed.")
       router.push("/")
     } catch {
-      toast.error("Could not save the record. Try again.")
+      toast.error("Could not file the case. Try again.")
       setSubmitting(false)
     }
   }
@@ -207,14 +224,12 @@ export default function NewRecordPage() {
             <ArrowLeftIcon />
           </Link>
         </Button>
-        <h2 className="text-base font-medium">
-          New record · {activePatient.name}
-        </h2>
+        <h2 className="text-base font-medium">File a case</h2>
       </div>
 
       <section className="flex flex-col gap-3">
         <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Record type
+          Case type · {user.domain === "traffic" ? "Traffic" : "Regular"} domain
         </span>
         <RecordTypeSelector value={recordType} onChange={chooseType} />
       </section>
@@ -227,16 +242,64 @@ export default function NewRecordPage() {
         errors={errors}
       />
 
+      {needsBranchPicker && (
+        <section className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground">
+            Filing branch
+          </span>
+          <DynamicFields
+            fields={[
+              {
+                kind: "ref",
+                ref: "branch",
+                domain: user.domain ?? "regular",
+                path: "__branch",
+                label: "Branch",
+              },
+            ]}
+            values={{ __branch: branchId }}
+            setValue={(_, value) => setBranchId(String(value ?? ""))}
+            errors={{}}
+          />
+        </section>
+      )}
+
+      <section className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground">
+          Visibility
+        </span>
+        <div className="flex gap-2">
+          {(["branch", "district", "country"] as AccessLevel[]).map((level) => (
+            <Button
+              key={level}
+              type="button"
+              variant={accessLevel === level ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAccessLevel(level)}
+            >
+              {level === "branch"
+                ? "Branch only"
+                : level === "district"
+                  ? "District-wide"
+                  : "Country-wide"}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Escalation is deliberate and logged. Branch-only stays at your station.
+        </p>
+      </section>
+
       <AttachmentsField state={fileState} actions={fileActions} />
 
       <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? (
           <>
             <LoaderCircleIcon className="size-4 animate-spin" />
-            Saving…
+            Filing…
           </>
         ) : (
-          "Save record"
+          "File case"
         )}
       </Button>
     </form>

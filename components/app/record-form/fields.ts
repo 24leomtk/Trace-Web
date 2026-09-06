@@ -1,4 +1,5 @@
-import { routeOptions, triageOptions, urgencyOptions } from "@/validations/record"
+import { dangerLevelOptions } from "@/validations/record"
+import type { Domain } from "@/lib/types"
 
 export interface PlainFieldDef {
   kind?: undefined
@@ -26,11 +27,13 @@ export interface RowListDef {
   fields: PlainFieldDef[]
 }
 
-export type CatalogRef = "diagnosis" | "medication" | "vaccine"
+export type CatalogRef = "branch"
 
 export interface RefFieldDef {
   kind: "ref"
   ref: CatalogRef
+  /** Branch pickers are domain-scoped (monitors filing under a branch). */
+  domain: Domain
   path: string
   label: string
   placeholder?: string
@@ -48,173 +51,105 @@ function f(
   return { path, label, required: true, ...extra }
 }
 
+function o(path: string, label: string, extra: Partial<PlainFieldDef> = {}): PlainFieldDef {
+  return { path, label, required: false, ...extra }
+}
+
 export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
-  outpatient_visit: [
-    {
-      kind: "ref",
-      ref: "diagnosis",
-      path: "icd10_code",
-      label: "Diagnosis (ICD-10)",
-      required: false,
-    },
-    f("chief_complaint", "Chief complaint"),
-    f("history_of_present_illness", "History of present illness", {
-      type: "textarea",
-    }),
-    f("physical_exam.bp", "Blood pressure", { half: true, placeholder: "118/76" }),
-    f("physical_exam.pulse", "Pulse (bpm)", { half: true, placeholder: "78" }),
-    f("physical_exam.temperature", "Temperature (°C)", {
-      half: true,
-      placeholder: "36.8",
-    }),
-    f("assessment", "Assessment", { type: "textarea" }),
-    f("plan", "Plan", { type: "textarea" }),
+  missing_person: [
+    f("full_name", "Full name"),
+    o("national_id", "National ID", { half: true }),
+    o("age", "Age", { type: "number", half: true }),
+    o("sex", "Sex", { options: ["male", "female", "other"], half: true }),
+    f("last_seen_location", "Last seen location"),
+    f("last_seen_date", "Last seen date", { type: "date", half: true }),
+    o("distinguishing_features", "Distinguishing features", { type: "textarea" }),
+    f("reporter_name", "Reporter name", { half: true }),
+    f("reporter_relationship", "Reporter relationship", { half: true }),
+    f("reporter_contact", "Reporter contact", { half: true }),
   ],
-  emergency_visit: [
-    f("arrival_mode", "Arrival mode", { placeholder: "Ambulance, taxi…" }),
-    f("triage_level", "Triage level", { options: triageOptions }),
-    { kind: "stringlist", path: "presenting_symptoms", label: "Presenting symptoms", placeholder: "Type a symptom and press Enter" },
-    { kind: "stringlist", path: "initial_interventions", label: "Initial interventions", placeholder: "Type an intervention and press Enter" },
+  wanted_person: [
+    f("full_name", "Full name"),
+    o("national_id", "National ID", { half: true }),
+    f("offense", "Offense"),
+    f("danger_level", "Danger level", { options: dangerLevelOptions, half: true }),
+    o("warrant_number", "Warrant number", { half: true }),
+    o("last_known_location", "Last known location"),
+    f("description", "Description", { type: "textarea" }),
   ],
-  inpatient_admission: [
-    f("admission_reason", "Admission reason"),
-    f("admission_date", "Admission date", { type: "date", half: true }),
-    f("ward", "Ward", { half: true }),
-    f("bed_number", "Bed number", { half: true }),
-    f("attending_physician", "Attending physician", { half: true }),
+  stolen_property: [
+    f("item_description", "Item description"),
+    f("category", "Category", { half: true, placeholder: "Electronics, vehicle part…" }),
+    o("estimated_value", "Estimated value", { type: "number", half: true }),
+    o("serial_number", "Serial number", { half: true }),
+    f("location_stolen", "Location stolen"),
+    f("date_stolen", "Date stolen", { type: "date", half: true }),
+    f("owner_name", "Owner name", { half: true }),
+    f("owner_contact", "Owner contact", { half: true }),
   ],
-  lab_test_result: [
-    f("test_name", "Test name"),
-    f("specimen", "Specimen", { half: true, placeholder: "Venous blood" }),
-    f("performed_at", "Performed at", { type: "date", half: true }),
+  crime_incident: [
+    f("incident_type", "Incident type", { placeholder: "Burglary, assault…" }),
+    f("location", "Location"),
+    f("date_occurred", "Date occurred", { type: "date", half: true }),
+    f("description", "Description", { type: "textarea" }),
+    { kind: "stringlist", path: "victims", label: "Victims", placeholder: "Type a name and press Enter" },
+    { kind: "stringlist", path: "witnesses", label: "Witnesses", placeholder: "Type a name and press Enter" },
+  ],
+  arrest_record: [
+    f("full_name", "Full name"),
+    o("national_id", "National ID", { half: true }),
+    { kind: "stringlist", path: "charges", label: "Charges", placeholder: "Type a charge and press Enter" },
+    f("arrest_location", "Arrest location"),
+    f("arrest_date", "Arrest date", { type: "date", half: true }),
+    f("arresting_officer", "Arresting officer", { half: true }),
+  ],
+  missing_vehicle: [
+    f("plate_number", "Plate number", { half: true, placeholder: "e.g. MH 1234" }),
+    o("make", "Make", { half: true }),
+    o("model", "Model", { half: true }),
+    o("color", "Color", { half: true }),
+    f("last_seen_location", "Last seen location"),
+    f("last_seen_date", "Last seen date", { type: "date", half: true }),
+    f("reporter_name", "Reporter name", { half: true }),
+    f("reporter_contact", "Reporter contact", { half: true }),
+  ],
+  vehicle_offense: [
+    f("plate_number", "Plate number", { half: true }),
+    f("offense_type", "Offense type", { half: true, placeholder: "Speeding, no license…" }),
+    f("location", "Location"),
+    f("date_occurred", "Date occurred", { type: "date", half: true }),
+    f("description", "Description", { type: "textarea" }),
+  ],
+  road_accident: [
+    f("location", "Location"),
+    f("accident_date", "Accident date", { type: "date", half: true }),
+    o("cause", "Cause", { half: true, placeholder: "Speeding, brake failure…" }),
     {
       kind: "rowlist",
-      path: "results",
-      label: "Results",
-      itemLabel: "Parameter",
+      path: "vehicles_involved",
+      label: "Vehicles involved",
+      itemLabel: "Vehicle",
       fields: [
-        f("parameter", "Parameter"),
-        f("value", "Value"),
-        f("unit", "Unit"),
-        f("reference_range", "Reference range"),
+        f("plate_number", "Plate number"),
+        o("role", "Role", { placeholder: "at_fault, involved…" }),
       ],
     },
+    f("description", "Description", { type: "textarea" }),
   ],
-  imaging_report: [
-    f("modality", "Modality", { half: true, placeholder: "X-ray, ultrasound…" }),
-    f("body_part", "Body part", { half: true }),
-    f("findings", "Findings", { type: "textarea" }),
-    f("impression", "Impression", { type: "textarea" }),
-    f("radiologist", "Radiologist"),
+  traffic_citation: [
+    f("plate_number", "Plate number", { half: true }),
+    f("violation_type", "Violation type", { half: true }),
+    f("fine_amount", "Fine amount", { type: "number", half: true }),
+    o("driver_name", "Driver name", { half: true }),
+    o("driver_license_no", "Driver license no.", { half: true }),
+    f("location", "Location"),
+    f("date_issued", "Date issued", { type: "date", half: true }),
   ],
-  pathology_report: [
-    f("specimen_type", "Specimen type"),
-    f("site", "Site"),
-    {
-      kind: "ref",
-      ref: "diagnosis",
-      path: "icd10_code",
-      label: "Coded diagnosis (ICD-10)",
-      required: false,
-    },
-    f("histological_findings", "Histological findings", { type: "textarea" }),
-    f("diagnosis", "Diagnosis"),
-    f("grade", "Grade", { half: true }),
-  ],
-  medication_prescription: [
-    {
-      kind: "ref",
-      ref: "medication",
-      path: "medication",
-      label: "Medication",
-      placeholder: "Search the formulary…",
-    },
-    f("dose", "Dose", { half: true, placeholder: "20mg" }),
-    f("route", "Route", { options: routeOptions, half: true }),
-    f("frequency", "Frequency", { half: true, placeholder: "Twice daily" }),
-    f("duration", "Duration", { half: true, placeholder: "5 days" }),
-    f("indication", "Indication"),
-  ],
-  medication_administration: [
-    f("medication", "Medication"),
-    f("dose", "Dose", { half: true }),
-    f("route", "Route", { options: routeOptions, half: true }),
-    f("administered_at", "Administered at", { type: "datetime-local" }),
-    f("administered_by", "Administered by"),
-  ],
-  surgical_procedure: [
-    f("procedure_name", "Procedure name"),
-    f("procedure_date", "Procedure date", { type: "date", half: true }),
-    f("surgeon", "Surgeon", { half: true }),
-    f("anesthesia", "Anesthesia", { half: true }),
-    f("complications", "Complications (optional)", {
-      type: "textarea",
-      required: false,
-    }),
-  ],
-  nursing_notes: [
-    f("shift", "Shift"),
-    f("vital_signs.bp", "Blood pressure", { half: true }),
-    f("vital_signs.pulse", "Pulse", { half: true }),
-    f("observations", "Observations", { type: "textarea" }),
-    f("notes", "Notes", { type: "textarea" }),
-  ],
-  intake_output_chart: [
-    f("intake.oral", "Oral intake", { half: true }),
-    f("intake.iv", "IV intake", { half: true }),
-    f("output.urine", "Urine output", { half: true }),
-    f("net_balance", "Net balance", { half: true }),
-  ],
-  immunization_record: [
-    {
-      kind: "ref",
-      ref: "vaccine",
-      path: "vaccine",
-      label: "Vaccine",
-      placeholder: "Search vaccines…",
-    },
-    f("dose_number", "Dose number", { type: "number", half: true }),
-    f("manufacturer", "Manufacturer", { half: true }),
-    f("administered_at", "Administered at", { type: "date", half: true }),
-  ],
-  screening_test: [
-    f("screening_type", "Screening type"),
-    f("result", "Result"),
-    f("recommended_follow_up", "Recommended follow-up", { type: "textarea" }),
-  ],
-  psychiatric_evaluation: [
-    f("presenting_problem", "Presenting problem", { type: "textarea" }),
-    {
-      kind: "ref",
-      ref: "diagnosis",
-      path: "icd10_code",
-      label: "Coded diagnosis (ICD-10)",
-      required: false,
-    },
-    f("mental_status_exam.mood", "Mood", { half: true }),
-    f("mental_status_exam.affect", "Affect", { half: true }),
-    f("mental_status_exam.thought_process", "Thought process"),
-    f("diagnosis", "Diagnosis"),
-    f("risk_assessment", "Risk assessment", { type: "textarea" }),
-  ],
-  discharge_summary: [
-    f("admission_date", "Admission date", { type: "date", half: true }),
-    f("discharge_date", "Discharge date", { type: "date", half: true }),
-    f("final_diagnosis", "Final diagnosis"),
-    {
-      kind: "ref",
-      ref: "diagnosis",
-      path: "icd10_code",
-      label: "Coded diagnosis (ICD-10)",
-      required: false,
-    },
-    { kind: "stringlist", path: "treatments_given", label: "Treatments given", placeholder: "Type a treatment and press Enter" },
-    { kind: "stringlist", path: "discharge_medications", label: "Discharge medications", placeholder: "Type a medicine and press Enter" },
-    f("follow_up_instructions", "Follow-up instructions", { type: "textarea" }),
-  ],
-  referral_record: [
-    f("referred_to", "Referred to"),
-    f("urgency", "Urgency", { options: urgencyOptions, half: true }),
-    f("reason", "Reason", { type: "textarea" }),
+  vehicle_impoundment: [
+    f("plate_number", "Plate number", { half: true }),
+    f("reason", "Reason"),
+    f("impound_location", "Impound location"),
+    f("impounded_date", "Impounded date", { type: "date", half: true }),
+    o("release_conditions", "Release conditions", { type: "textarea" }),
   ],
 }

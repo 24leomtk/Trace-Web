@@ -12,11 +12,7 @@ import {
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
-import {
-  listDiagnosisOptions,
-  listMedicationOptions,
-  listVaccineOptions,
-} from "@/lib/actions/catalog"
+import { listBranchOptions } from "@/lib/actions/catalog"
 import { formatDateKey, fromDateKey, toDateKey } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -200,7 +196,7 @@ function FieldError({ message }: { message?: string }) {
 const FIELD_TRIGGER_CLASS =
   "flex h-8 w-full items-center justify-between rounded-2xl border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/20"
 
-interface CatalogOption {
+interface BranchOption {
   value: string
   label: string
   detail?: string
@@ -221,44 +217,24 @@ function CatalogField({
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(0)
 
+  // Branch picker for monitors filing under a branch in scope.
   const { data, isLoading } = useQuery({
-    queryKey: ["catalog", field.ref],
-    queryFn: async (): Promise<CatalogOption[]> => {
-      if (field.ref === "diagnosis") {
-        const rows = await listDiagnosisOptions()
-        return rows.map((row) => ({
-          value: row.icd10Code,
-          label: row.name,
-          detail: row.icd10Code,
-        }))
-      }
-      if (field.ref === "medication") {
-        const rows = await listMedicationOptions()
-        return rows.map((row) => ({
-          value: row.code,
-          label: row.name,
-          detail: row.category ?? row.code,
-        }))
-      }
-      const rows = await listVaccineOptions()
+    queryKey: ["branches", field.domain],
+    queryFn: async (): Promise<BranchOption[]> => {
+      const rows = await listBranchOptions(field.domain)
       return rows.map((row) => ({
-        value: row.vaccineCode,
+        value: row.id,
         label: row.name,
-        detail: row.vaccineCode,
+        detail: row.district.replace(/_/g, " "),
       }))
     },
-    staleTime: Infinity,
+    staleTime: 60_000,
   })
   const options = data ?? []
 
   const raw = typeof value === "string" ? value : ""
-  const selected = options.find((option) =>
-    field.ref === "diagnosis"
-      ? option.value === raw
-      : option.label === raw || option.value === raw
-  )
-  const display =
-    field.ref === "diagnosis" && !raw ? "" : (selected?.label ?? raw)
+  const selected = options.find((option) => option.value === raw)
+  const display = selected?.label ?? raw
 
   const query = search.trim().toLowerCase()
   const matches = options.filter(
@@ -282,13 +258,8 @@ function CatalogField({
     }
   }
 
-  function choose(option: CatalogOption) {
-    if (field.ref === "diagnosis") {
-      setPathValue(field.path, option.value)
-    } else {
-      setPathValue(field.path, option.label)
-      setPathValue(`${field.path}_code`, option.value)
-    }
+  function choose(option: BranchOption) {
+    setPathValue(field.path, option.value)
     handleOpenChange(false)
   }
 

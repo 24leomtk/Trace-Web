@@ -1,20 +1,11 @@
 /**
  * Drizzle v1 relations — defineRelations replaces the old `relations()` helper.
  *
- * API shape:
- *   defineRelations(schema, (r) => ({
- *     tableName: {
- *       relationFieldName: r.one.targetTable({ from: r.tableName.col, to: r.targetTable.col }),
- *       relationFieldName: r.many.targetTable({ from: r.tableName.col, to: r.targetTable.col }),
- *     },
- *   }))
- *
  * NOTE: for BOTH one and many, `from` must always be a column of the table the
- * relation is declared on, and `to` a column of the target table. Drizzle
- * throws `all "from" columns must belong to table "<name>"` otherwise.
+ * relation is declared on, and `to` a column of the target table.
  *
  * Use `alias` when a table has multiple FK columns pointing to the same target
- * table (e.g. actions.profileId, actions.actorId, actions.reviewedBy → users).
+ * table (e.g. records.reportedBy vs courtCaseAccess.referredBy → users).
  */
 
 import { defineRelations } from "drizzle-orm"
@@ -33,52 +24,39 @@ export const appRelations = defineRelations(schema, (r) => ({
       from: r.users.id,
       to: r.accounts.userId,
     }),
-    hospital: r.one.hospitals({
-      from: r.users.hospitalId,
-      to: r.hospitals.id,
+    branch: r.one.branches({
+      from: r.users.branchId,
+      to: r.branches.id,
       optional: true,
     }),
-    // Records this user owns (patient)
-    medicalRecords: r.many.medicalRecords({
-      from: r.users.id,
-      to: r.medicalRecords.profileId,
-      alias: "records_as_patient",
+    organization: r.one.organizations({
+      from: r.users.organizationId,
+      to: r.organizations.id,
+      optional: true,
     }),
-    // Records this user created (doctor/clinician)
-    createdRecords: r.many.medicalRecords({
+    // Case records this user filed (officer / monitor)
+    filedRecords: r.many.records({
       from: r.users.id,
-      to: r.medicalRecords.createdBy,
-      alias: "records_as_doctor",
+      to: r.records.reportedBy,
+      alias: "records_as_reporter",
     }),
-    diagnoses: r.many.diagnoses({
+    // Vehicles this registrar verified
+    verifiedVehicles: r.many.vehicles({
       from: r.users.id,
-      to: r.diagnoses.profileId,
+      to: r.vehicles.registeredBy,
+      alias: "vehicles_as_registrar",
     }),
-    prescriptions: r.many.prescriptions({
+    // Court referrals made by this police user
+    referralsMade: r.many.courtCaseAccess({
       from: r.users.id,
-      to: r.prescriptions.profileId,
+      to: r.courtCaseAccess.referredBy,
+      alias: "referrals_as_referrer",
     }),
-    immunizations: r.many.immunizations({
+    // Court referrals granted to this liaison
+    referralsReceived: r.many.courtCaseAccess({
       from: r.users.id,
-      to: r.immunizations.profileId,
-    }),
-    // Access grants where this user is the patient
-    accessGrantsAsPatient: r.many.accessGrants({
-      from: r.users.id,
-      to: r.accessGrants.profileId,
-      alias: "grants_as_patient",
-    }),
-    // Access grants where this user is the doctor
-    accessGrantsAsDoctor: r.many.accessGrants({
-      from: r.users.id,
-      to: r.accessGrants.doctorId,
-      alias: "grants_as_doctor",
-    }),
-    // Audit actions where this user's data was touched
-    actionsAsSubject: r.many.actions({
-      from: r.users.id,
-      to: r.actions.profileId,
-      alias: "actions_as_subject",
+      to: r.courtCaseAccess.courtLiaisonId,
+      alias: "referrals_as_liaison",
     }),
     // Audit actions this user performed
     actionsAsActor: r.many.actions({
@@ -105,66 +83,67 @@ export const appRelations = defineRelations(schema, (r) => ({
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // hospitals
+  // branches
   // ══════════════════════════════════════════════════════════════════════════
-  hospitals: {
+  branches: {
     staff: r.many.users({
-      from: r.hospitals.id,
-      to: r.users.hospitalId,
+      from: r.branches.id,
+      to: r.users.branchId,
     }),
-    medicalRecords: r.many.medicalRecords({
-      from: r.hospitals.id,
-      to: r.medicalRecords.hospitalId,
-    }),
-    diagnoses: r.many.diagnoses({
-      from: r.hospitals.id,
-      to: r.diagnoses.hospitalId,
-    }),
-    prescriptions: r.many.prescriptions({
-      from: r.hospitals.id,
-      to: r.prescriptions.hospitalId,
-    }),
-    immunizations: r.many.immunizations({
-      from: r.hospitals.id,
-      to: r.immunizations.hospitalId,
+    records: r.many.records({
+      from: r.branches.id,
+      to: r.records.branchId,
     }),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // medical_records
+  // organizations
   // ══════════════════════════════════════════════════════════════════════════
-  medicalRecords: {
-    patient: r.one.users({
-      from: r.medicalRecords.profileId,
-      to: r.users.id,
-      alias: "record_patient",
+  organizations: {
+    staff: r.many.users({
+      from: r.organizations.id,
+      to: r.users.organizationId,
     }),
-    doctor: r.one.users({
-      from: r.medicalRecords.createdBy,
+    policies: r.many.insurancePolicies({
+      from: r.organizations.id,
+      to: r.insurancePolicies.insurerId,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // records
+  // ══════════════════════════════════════════════════════════════════════════
+  records: {
+    reporter: r.one.users({
+      from: r.records.reportedBy,
       to: r.users.id,
+      alias: "record_reporter",
+    }),
+    branch: r.one.branches({
+      from: r.records.branchId,
+      to: r.branches.id,
+    }),
+    vehicle: r.one.vehicles({
+      from: r.records.vehicleId,
+      to: r.vehicles.id,
       optional: true,
-      alias: "record_doctor",
     }),
-    hospital: r.one.hospitals({
-      from: r.medicalRecords.hospitalId,
-      to: r.hospitals.id,
+    person: r.one.personsOfInterest({
+      from: r.records.personId,
+      to: r.personsOfInterest.id,
       optional: true,
     }),
     attachments: r.many.recordAttachments({
-      from: r.medicalRecords.id,
+      from: r.records.id,
       to: r.recordAttachments.recordId,
     }),
-    diagnoses: r.many.diagnoses({
-      from: r.medicalRecords.id,
-      to: r.diagnoses.recordId,
+    courtReferrals: r.many.courtCaseAccess({
+      from: r.records.id,
+      to: r.courtCaseAccess.recordId,
     }),
-    prescriptions: r.many.prescriptions({
-      from: r.medicalRecords.id,
-      to: r.prescriptions.recordId,
-    }),
-    immunizations: r.many.immunizations({
-      from: r.medicalRecords.id,
-      to: r.immunizations.recordId,
+    actions: r.many.actions({
+      from: r.records.id,
+      to: r.actions.recordId,
     }),
   },
 
@@ -172,9 +151,20 @@ export const appRelations = defineRelations(schema, (r) => ({
   // record_attachments
   // ══════════════════════════════════════════════════════════════════════════
   recordAttachments: {
-    record: r.one.medicalRecords({
+    record: r.one.records({
       from: r.recordAttachments.recordId,
-      to: r.medicalRecords.id,
+      to: r.records.id,
+      optional: true,
+    }),
+    person: r.one.personsOfInterest({
+      from: r.recordAttachments.personId,
+      to: r.personsOfInterest.id,
+      optional: true,
+    }),
+    vehicle: r.one.vehicles({
+      from: r.recordAttachments.vehicleId,
+      to: r.vehicles.id,
+      optional: true,
     }),
     uploader: r.one.users({
       from: r.recordAttachments.uploadedBy,
@@ -184,106 +174,150 @@ export const appRelations = defineRelations(schema, (r) => ({
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // diagnoses
+  // persons_of_interest
   // ══════════════════════════════════════════════════════════════════════════
-  diagnoses: {
-    record: r.one.medicalRecords({
-      from: r.diagnoses.recordId,
-      to: r.medicalRecords.id,
+  personsOfInterest: {
+    records: r.many.records({
+      from: r.personsOfInterest.id,
+      to: r.records.personId,
     }),
-    patient: r.one.users({
-      from: r.diagnoses.profileId,
-      to: r.users.id,
-    }),
-    hospital: r.one.hospitals({
-      from: r.diagnoses.hospitalId,
-      to: r.hospitals.id,
-      optional: true,
-    }),
-    icd10: r.one.diagnosisCodes({
-      from: r.diagnoses.icd10Code,
-      to: r.diagnosisCodes.icd10Code,
-    }),
-    // Prescriptions that were written against this diagnosis
-    prescriptions: r.many.prescriptions({
-      from: r.diagnoses.id,
-      to: r.prescriptions.diagnosisId,
+    attachments: r.many.recordAttachments({
+      from: r.personsOfInterest.id,
+      to: r.recordAttachments.personId,
     }),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // prescriptions
+  // vehicles
   // ══════════════════════════════════════════════════════════════════════════
-  prescriptions: {
-    record: r.one.medicalRecords({
-      from: r.prescriptions.recordId,
-      to: r.medicalRecords.id,
-    }),
-    patient: r.one.users({
-      from: r.prescriptions.profileId,
+  vehicles: {
+    registrar: r.one.users({
+      from: r.vehicles.registeredBy,
       to: r.users.id,
-    }),
-    diagnosis: r.one.diagnoses({
-      from: r.prescriptions.diagnosisId,
-      to: r.diagnoses.id,
       optional: true,
+      alias: "vehicle_registrar",
     }),
-    hospital: r.one.hospitals({
-      from: r.prescriptions.hospitalId,
-      to: r.hospitals.id,
-      optional: true,
+    records: r.many.records({
+      from: r.vehicles.id,
+      to: r.records.vehicleId,
     }),
-    medication: r.one.medicationCodes({
-      from: r.prescriptions.medicationCode,
-      to: r.medicationCodes.code,
+    policies: r.many.insurancePolicies({
+      from: r.vehicles.id,
+      to: r.insurancePolicies.vehicleId,
     }),
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // immunizations
-  // ══════════════════════════════════════════════════════════════════════════
-  immunizations: {
-    record: r.one.medicalRecords({
-      from: r.immunizations.recordId,
-      to: r.medicalRecords.id,
-    }),
-    patient: r.one.users({
-      from: r.immunizations.profileId,
-      to: r.users.id,
-    }),
-    hospital: r.one.hospitals({
-      from: r.immunizations.hospitalId,
-      to: r.hospitals.id,
-      optional: true,
-    }),
-    vaccine: r.one.immunizationCodes({
-      from: r.immunizations.vaccineCode,
-      to: r.immunizationCodes.vaccineCode,
-    }),
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // access_grants
-  // ══════════════════════════════════════════════════════════════════════════
-  accessGrants: {
-    patient: r.one.users({
-      from: r.accessGrants.profileId,
-      to: r.users.id,
-      alias: "grant_patient",
-    }),
-    doctor: r.one.users({
-      from: r.accessGrants.doctorId,
-      to: r.users.id,
-      alias: "grant_doctor",
-    }),
-    issuer: r.one.users({
-      from: r.accessGrants.issuedBy,
-      to: r.users.id,
-      alias: "grant_issuer",
+    attachments: r.many.recordAttachments({
+      from: r.vehicles.id,
+      to: r.recordAttachments.vehicleId,
     }),
     actions: r.many.actions({
-      from: r.accessGrants.id,
-      to: r.actions.accessGrantId,
+      from: r.vehicles.id,
+      to: r.actions.vehicleId,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // insurance_policies
+  // ══════════════════════════════════════════════════════════════════════════
+  insurancePolicies: {
+    vehicle: r.one.vehicles({
+      from: r.insurancePolicies.vehicleId,
+      to: r.vehicles.id,
+    }),
+    insurer: r.one.organizations({
+      from: r.insurancePolicies.insurerId,
+      to: r.organizations.id,
+    }),
+    enteredByUser: r.one.users({
+      from: r.insurancePolicies.enteredBy,
+      to: r.users.id,
+      optional: true,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // court_case_access
+  // ══════════════════════════════════════════════════════════════════════════
+  courtCaseAccess: {
+    record: r.one.records({
+      from: r.courtCaseAccess.recordId,
+      to: r.records.id,
+    }),
+    courtLiaison: r.one.users({
+      from: r.courtCaseAccess.courtLiaisonId,
+      to: r.users.id,
+      alias: "referral_liaison",
+    }),
+    referrer: r.one.users({
+      from: r.courtCaseAccess.referredBy,
+      to: r.users.id,
+      alias: "referral_referrer",
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // coded projections
+  // ══════════════════════════════════════════════════════════════════════════
+  missingPersonCases: {
+    record: r.one.records({
+      from: r.missingPersonCases.recordId,
+      to: r.records.id,
+    }),
+    person: r.one.personsOfInterest({
+      from: r.missingPersonCases.personId,
+      to: r.personsOfInterest.id,
+      optional: true,
+    }),
+  },
+  wantedPersonCases: {
+    record: r.one.records({
+      from: r.wantedPersonCases.recordId,
+      to: r.records.id,
+    }),
+    person: r.one.personsOfInterest({
+      from: r.wantedPersonCases.personId,
+      to: r.personsOfInterest.id,
+      optional: true,
+    }),
+  },
+  vehicleCases: {
+    record: r.one.records({
+      from: r.vehicleCases.recordId,
+      to: r.records.id,
+    }),
+    vehicle: r.one.vehicles({
+      from: r.vehicleCases.vehicleId,
+      to: r.vehicles.id,
+    }),
+  },
+  accidents: {
+    record: r.one.records({
+      from: r.accidents.recordId,
+      to: r.records.id,
+    }),
+    vehicles: r.many.accidentVehicles({
+      from: r.accidents.id,
+      to: r.accidentVehicles.accidentId,
+    }),
+  },
+  accidentVehicles: {
+    accident: r.one.accidents({
+      from: r.accidentVehicles.accidentId,
+      to: r.accidents.id,
+    }),
+    vehicle: r.one.vehicles({
+      from: r.accidentVehicles.vehicleId,
+      to: r.vehicles.id,
+    }),
+  },
+  trafficCitations: {
+    record: r.one.records({
+      from: r.trafficCitations.recordId,
+      to: r.records.id,
+    }),
+    vehicle: r.one.vehicles({
+      from: r.trafficCitations.vehicleId,
+      to: r.vehicles.id,
+      optional: true,
     }),
   },
 
@@ -291,76 +325,20 @@ export const appRelations = defineRelations(schema, (r) => ({
   // actions (audit log)
   // ══════════════════════════════════════════════════════════════════════════
   actions: {
-    subject: r.one.users({
-      from: r.actions.profileId,
-      to: r.users.id,
-      alias: "action_subject",
-    }),
     actor: r.one.users({
       from: r.actions.actorId,
       to: r.users.id,
       alias: "action_actor",
     }),
-    reviewer: r.one.users({
-      from: r.actions.reviewedBy,
-      to: r.users.id,
-      optional: true,
-      alias: "action_reviewer",
-    }),
-    accessGrant: r.one.accessGrants({
-      from: r.actions.accessGrantId,
-      to: r.accessGrants.id,
+    record: r.one.records({
+      from: r.actions.recordId,
+      to: r.records.id,
       optional: true,
     }),
-  },
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Clinical reference tables
-  // ══════════════════════════════════════════════════════════════════════════
-  diagnosisCodes: {
-    diagnoses: r.many.diagnoses({
-      from: r.diagnosisCodes.icd10Code,
-      to: r.diagnoses.icd10Code,
-    }),
-    treatmentGuidelines: r.many.standardTreatmentGuidelines({
-      from: r.diagnosisCodes.icd10Code,
-      to: r.standardTreatmentGuidelines.icd10Code,
-    }),
-  },
-  medicationCodes: {
-    prescriptions: r.many.prescriptions({
-      from: r.medicationCodes.code,
-      to: r.prescriptions.medicationCode,
-    }),
-    treatmentGuidelines: r.many.standardTreatmentGuidelines({
-      from: r.medicationCodes.code,
-      to: r.standardTreatmentGuidelines.medicationCode,
-    }),
-  },
-  immunizationCodes: {
-    immunizations: r.many.immunizations({
-      from: r.immunizationCodes.vaccineCode,
-      to: r.immunizations.vaccineCode,
-    }),
-    schedule: r.many.immunizationSchedule({
-      from: r.immunizationCodes.vaccineCode,
-      to: r.immunizationSchedule.vaccineCode,
-    }),
-  },
-  immunizationSchedule: {
-    vaccine: r.one.immunizationCodes({
-      from: r.immunizationSchedule.vaccineCode,
-      to: r.immunizationCodes.vaccineCode,
-    }),
-  },
-  standardTreatmentGuidelines: {
-    diagnosis: r.one.diagnosisCodes({
-      from: r.standardTreatmentGuidelines.icd10Code,
-      to: r.diagnosisCodes.icd10Code,
-    }),
-    medication: r.one.medicationCodes({
-      from: r.standardTreatmentGuidelines.medicationCode,
-      to: r.medicationCodes.code,
+    vehicle: r.one.vehicles({
+      from: r.actions.vehicleId,
+      to: r.vehicles.id,
+      optional: true,
     }),
   },
 }))

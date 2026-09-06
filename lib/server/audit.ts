@@ -1,29 +1,33 @@
-import { sql } from "drizzle-orm"
-
 import { db } from "@/db"
 import { actions } from "@/db/schema"
 
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
+export type AuditActionType =
+  | "record_created"
+  | "record_viewed"
+  | "record_updated"
+  | "status_changed"
+  | "cross_district_access"
+  | "cross_branch_access"
+  | "report_generated"
+  | "court_case_referred"
+  | "court_case_viewed"
+  | "court_case_outcome_recorded"
+  | "court_access_renewed"
+  | "court_access_expired"
+  | "policy_entered"
+  | "policy_updated"
+  | "insurer_flag_lookup"
+  | "vehicle_registered"
+  | "user_provisioned"
+
 export type AuditInput = {
-  profileId: string // whose data was touched
   actorId: string // who did it
-  actionType:
-    | "code_issued"
-    | "code_redeemed"
-    | "code_expired"
-    | "code_revoked"
-    | "foreign_access"
-    | "admin_access"
-    | "emergency_access"
-    | "analytics_report_access"
-  accessGrantId?: string | null
+  actionType: AuditActionType
+  recordId?: string | null // the case concerned, if any
+  vehicleId?: string | null // the vehicle concerned, if any (flag lookups)
   reason?: string | null
-  doctorName?: string | null
-  medicalLicenseNo?: string | null
-  hospitalName?: string | null
-  district?: string | null
-  location?: string | null
 }
 
 /** Append an audit entry using an existing transaction (preferred — runs under
@@ -34,15 +38,11 @@ export async function writeAuditTx(
 ): Promise<void> {
   try {
     await tx.insert(actions).values({
-      profileId: input.profileId,
       actorId: input.actorId,
       actionType: input.actionType,
-      accessGrantId: input.accessGrantId ?? undefined,
+      recordId: input.recordId ?? undefined,
+      vehicleId: input.vehicleId ?? undefined,
       reason: input.reason ?? undefined,
-      doctorName: input.doctorName ?? undefined,
-      medicalLicenseNo: input.medicalLicenseNo ?? undefined,
-      hospitalName: input.hospitalName ?? undefined,
-      district: input.district ?? undefined,
     })
   } catch (error) {
     console.error("[audit] failed to record action", error)
@@ -54,15 +54,11 @@ export async function writeAuditTx(
 export async function writeAudit(input: AuditInput): Promise<void> {
   try {
     await db.insert(actions).values({
-      profileId: input.profileId,
       actorId: input.actorId,
       actionType: input.actionType,
-      accessGrantId: input.accessGrantId ?? undefined,
+      recordId: input.recordId ?? undefined,
+      vehicleId: input.vehicleId ?? undefined,
       reason: input.reason ?? undefined,
-      doctorName: input.doctorName ?? undefined,
-      medicalLicenseNo: input.medicalLicenseNo ?? undefined,
-      hospitalName: input.hospitalName ?? undefined,
-      district: input.district ?? undefined,
     })
   } catch (error) {
     console.error("[audit] failed to record action", error)

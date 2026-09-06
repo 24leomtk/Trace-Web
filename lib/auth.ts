@@ -9,7 +9,7 @@ import * as schema from "@/db/schema"
 import { bearer, phoneNumber } from "better-auth/plugins"
 
 export const auth = betterAuth({
-  appName: "Chipatala Registry",
+  appName: "TRACE",
   baseURL: process.env.BETTER_AUTH_URL,
   secret: process.env.BETTER_AUTH_SECRET,
   emailAndPassword: {

@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 
 import { RECORD_TYPE_META, RECORD_TYPE_ORDER } from "@/lib/record-meta"
+import type { Domain } from "@/lib/types"
 import type { RecordType } from "@/validations/record"
 import { Button } from "@/components/ui/button"
 import {
@@ -29,11 +30,14 @@ const PAGE_SIZE = 20
 interface RecordTypeSelectorProps {
   value: RecordType
   onChange: (type: RecordType) => void
+  /** When set, only types in this domain are listed (filing is domain-locked). */
+  domain?: Domain
 }
 
 export function RecordTypeSelector({
   value,
   onChange,
+  domain,
 }: RecordTypeSelectorProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
@@ -42,6 +46,7 @@ export function RecordTypeSelector({
   const query = search.trim().toLowerCase()
   const matches = RECORD_TYPE_ORDER.filter((type) => {
     const meta = RECORD_TYPE_META[type]
+    if (domain && meta.domain !== domain) return false
     return (
       meta.label.toLowerCase().includes(query) ||
       meta.shortLabel.toLowerCase().includes(query)

@@ -1,37 +1,22 @@
-import { actions } from "./actions"
-import { accounts, sessions, users, verifications } from "./auth"
-import {
-  diagnosisCodes,
-  medicationCodes,
-  immunizationCodes,
-  immunizationSchedule,
-  standardTreatmentGuidelines,
-} from "./clinical"
-import { diagnoses, immunizations, prescriptions } from "./coded"
-import { accessGrants } from "./grants"
-import { hospitals } from "./hospitals"
-import { medicalRecords, recordAttachments } from "./records"
-
-// Auth tables (better-auth managed + profile fields)
+// Org structure
+export * from "./enums"
+export * from "./branches"
+export * from "./organizations"
 export * from "./auth"
 
-// Core domain
-export * from "./hospitals"
+// Reference entities shared across record types
+export * from "./persons"
+export * from "./vehicles"
 
-// Medical records
+// Insurance (entered via insurer portal accounts)
+export * from "./insurance"
+
+// Case records
 export * from "./records"
-
-// Clinical reference / codebook (administrator-managed)
-export * from "./clinical"
-
-// Coded analytics facts (written by DB triggers)
 export * from "./coded"
 
-// Access control
-export * from "./grants"
+// Court referrals
+export * from "./court"
 
 // Audit log
 export * from "./actions"
-
-// Enums (re-export so callers only need one import path)
-export * from "./enums"

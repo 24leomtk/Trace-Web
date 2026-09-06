@@ -1,6 +1,6 @@
 import * as z from "zod"
 
-import { createRecord, getPatientRecords } from "@/lib/actions/records"
+import { createRecord, listRecords } from "@/lib/actions/records"
 import {
   ApiError,
   parseJsonBody,
@@ -10,30 +10,20 @@ import {
 } from "@/lib/api/http"
 import { getCurrentUser } from "@/lib/session"
 import { recordSchemas, type RecordType } from "@/validations/record"
+import type { AccessLevel } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
 
 const recordTypes = Object.keys(recordSchemas) as [RecordType, ...RecordType[]]
 
 const listQuerySchema = z.object({
-  // Defaults to the signed-in user, so patients read their own history by
-  // simply omitting it; doctors pass the patient they have access to.
-  patientId: z.string().optional(),
   cursor: z.coerce.number().int().min(0).default(0),
-  limit: z.coerce.number().int().min(1).max(50).default(8),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
   type: z.enum(recordTypes).optional(),
-  dateFrom: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  dateTo: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  status: z.enum(["active", "resolved", "closed", "archived"]).optional(),
 })
 
 const attachmentSchema = z.object({
-  // Display-only on the web app; not persisted. Kept optional for mobile.
   name: z.string().min(1).optional(),
   url: z.string().min(1),
   publicId: z.string().min(1),
@@ -42,42 +32,38 @@ const attachmentSchema = z.object({
 })
 
 const createBodySchema = z.object({
-  patientId: z.string(),
   type: z.enum(recordTypes),
-  // Typed per record type; validated below (and re-validated by the action).
   data: z.unknown(),
+  accessLevel: z.enum(["branch", "district", "country"]).default("branch"),
+  branchId: z.string().uuid().optional(),
   attachments: z.array(attachmentSchema).max(10).default([]),
 })
 
-/** Paginated medical records for a patient — the viewer must be the patient
- * themselves or a clinician with an active access window (RLS enforced). */
+/** Paginated case feed scoped to the caller's branch/district/domain. */
 export const GET = route(async (request: Request) => {
   const viewer = await getCurrentUser()
   if (!viewer) throw new ApiError(401, "You must be signed in.")
 
   const query = parseWith(listQuerySchema, queryOf(request))
-  return getPatientRecords({
-    patientId: query.patientId ?? viewer.id,
+  return listRecords({
     cursor: query.cursor,
     limit: query.limit,
     type: query.type,
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
+    status: query.status,
   })
 })
 
-/** Adds a record to a patient's history during an active encounter. */
+/** Files a case in the caller's own domain. */
 export const POST = route(async (request: Request) => {
   const body = parseWith(createBodySchema, await parseJsonBody(request))
 
-  // Validate the typed payload up front so the client gets per-field issues;
-  // the action re-validates before persisting.
   parseWith(recordSchemas[body.type], body.data)
 
   return createRecord({
-    patientId: body.patientId,
     type: body.type,
     data: body.data as Record<string, unknown>,
+    accessLevel: body.accessLevel as AccessLevel,
+    branchId: body.branchId,
     attachments: body.attachments.map((attachment) => ({
       ...attachment,
       name: attachment.name ?? "image",

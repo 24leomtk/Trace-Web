@@ -27,12 +27,12 @@ const ACTION_ERROR_RULES: Array<{ status: number; pattern: RegExp }> = [
   { status: 422, pattern: /didn't pass validation|meaningful reason/i },
   {
     status: 404,
-    pattern: /wasn't found|could not be found|no patient found|isn't valid/i,
+    pattern: /wasn't found|could not be found|not found|isn't valid/i,
   },
   {
     status: 403,
     pattern:
-      /only patients|only clinicians|only administrators|admins cannot|don't have an active access window|aggregate reports|emergency lookup is for|don't upload files|can only be added while viewing/i,
+      /only monitors|only officers|monitors only|only system administrators|don't have access|outside your (scope|branch|district)|your role can't|your role does not|locked to|police users|police only|registrars only|insurer portal users only|court liaisons only/i,
   },
 ]
 

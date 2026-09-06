@@ -1,11 +1,20 @@
 import type { RecordType } from "@/validations/record"
 
 export type Role =
-  | "PATIENT"
-  | "DOCTOR"
-  | "DISTRICT_ADMIN"
-  | "NATIONAL_ADMIN"
-  | "ADMINISTRATOR"
+  | "OFFICER"
+  | "DISTRICT_MONITOR"
+  | "COUNTRY_MONITOR"
+  | "SYSTEM_ADMIN"
+  | "COMPLIANCE_AUDITOR"
+  | "COURT_LIAISON"
+  | "INSURANCE_PORTAL_USER"
+  | "VEHICLE_REGISTRAR"
+
+export type Domain = "regular" | "traffic"
+
+export type AccessLevel = "branch" | "district" | "country"
+
+export type CaseStatus = "active" | "resolved" | "closed" | "archived"
 
 export type Tone =
   | "emerald"
@@ -24,31 +33,25 @@ export type Tone =
   | "red"
   | "slate"
 
-export interface EmergencyContact {
-  name: string
-  phone: string
-  relation?: string
-}
-
-export interface EmergencyInfo {
-  bloodType?: string
-  allergies?: string[]
-  chronicConditions?: string[]
-  emergencyContact?: EmergencyContact
-}
-
 export interface User {
   id: string
   name: string
   phone: string
   role: Role
-  nationalId?: string
-  dateOfBirth?: string
-  sex?: "male" | "female" | "other"
+  badgeNumber?: string
+  // Police scope: officer -> branchId (+ domain); district monitor -> district
+  // (+ domain); country monitor -> domain only. District derived from branch
+  // for officers; stored for district monitors.
+  domain?: Domain
+  branchId?: string
+  branchName?: string
   district?: string
-  facility?: string
-  licenseNumber?: string
-  emergencyInfo?: EmergencyInfo
+  // External scope: the organization this user belongs to.
+  organizationId?: string
+  organizationName?: string
+  // Human-readable posting label, e.g. "Lilongwe Central (Regular)" or
+  // "Blantyre Magistrate Court".
+  posting?: string
 }
 
 export interface RecordAuthor {
@@ -71,28 +74,44 @@ export interface RecordBadge {
   tone: Tone
 }
 
-export interface MedicalRecord {
+export interface TraceRecord {
   id: string
-  patientId: string
-  recordedAt: string
-  type: RecordType
+  recordType: RecordType
+  domain: Domain
+  branchId: string
+  branchName?: string
+  district: string
+  vehicleId?: string
+  personId?: string
+  accessLevel: AccessLevel
+  status: CaseStatus
+  reportedBy: string
+  createdAt: string
+  updatedAt: string
   title: string
   summary: string
   author: RecordAuthor
-  facility: string
   badges: RecordBadge[]
   attachments: AttachmentMeta[]
 }
 
-export interface PatientSummary {
+export interface VehicleSummary {
   id: string
-  name: string
-  phone: string
-  sex: "F" | "M"
-  age: number
-  lastVisitAt: string
-  primaryCondition: string
-  accessExpiresAt?: string
+  plateNumber: string
+  make?: string
+  model?: string
+  color?: string
+  isFlagged: boolean
+  isVerified: boolean
+  activeCases: number
+}
+
+export interface PersonSummary {
+  id: string
+  fullName: string
+  nationalId?: string
+  homeDistrict?: string
+  linkedCases: number
 }
 
 export interface AnalyticsMetric {
@@ -118,48 +137,21 @@ export interface AnalyticsEntry {
   severity: "info" | "warning" | "critical"
 }
 
-export interface DiseaseHotspot {
-  label: string
-  cases: number
-  share: number
-}
-
-export type DiseaseStatus = "stable" | "watch" | "outbreak"
-
-export interface DiseaseStat {
+export interface CourtReferralSummary {
   id: string
-  name: string
-  totalCases: number
-  weeklyCounts: number[]
-  deltaPct: number
-  status: DiseaseStatus
-  hotspots: DiseaseHotspot[]
-}
-
-export interface AccessGrant {
-  id: string
-  doctorName: string
-  facility: string
-  grantedAt: string
-  expiresAt: string
+  recordId: string
+  recordTitle: string
+  liaisonName: string
+  reason?: string
+  expiresAt?: string
+  outcome: string
+  revokedAt?: string
 }
 
 export interface AccessLogEntry {
   id: string
   actorName: string
-  actorFacility: string
-  action: "view" | "grant" | "revoke" | "emergency" | "break_glass"
+  action: string
   at: string
   detail?: string
-}
-
-export interface EmergencyLookupEntry {
-  userId: string
-  name: string
-  nationalId: string
-  phone: string
-  dateOfBirth: string
-  sex: "F" | "M"
-  district: string
-  emergencyInfo: EmergencyInfo
 }

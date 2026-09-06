@@ -1,358 +1,194 @@
 "use server"
 
-import { and, eq, gte, sql } from "drizzle-orm"
+import { and, count, eq, sql } from "drizzle-orm"
 
-import {
-  diagnoses,
-  diagnosisCodes,
-  hospitals,
-  immunizations,
-  prescriptions,
-} from "@/db/schema"
-import { withUserCtx, type DbTransaction } from "@/lib/db-context"
-import { requireUser } from "@/lib/session"
-import type { AnalyticsEntry, DiseaseStat, Role } from "@/lib/types"
-
-const WEEKS = 8
-
-type ThreatLevel = "none" | "moderate" | "high" | "critical"
+import { accidents, records, trafficCitations } from "@/db/schema"
+import { withUserCtx } from "@/lib/db-context"
+import { formatDistrict } from "@/lib/roles"
+import { writeAuditTx } from "@/lib/server/audit"
+import type { AnalyticsEntry, Domain } from "@/lib/types"
+import { getViewerScope } from "@/lib/actions/records"
 
 interface Scope {
   userId: string
-  role: Role
-  /** Raw PG enum district for district-scoped admins, null for national. */
+  domain: Domain
+  /** Raw district enum for district monitors, null for country monitors. */
   district: string | null
 }
 
 async function resolveScope(): Promise<Scope> {
-  const user = await requireUser()
-  let district: string | null = null
-  if (user.role === "DISTRICT_ADMIN") {
-    // user.district is display-formatted; read the raw enum back for queries.
-    district = (user.district ?? "").toLowerCase().replace(/ /g, "_") || null
+  const scope = await getViewerScope()
+  if (scope.role !== "DISTRICT_MONITOR" && scope.role !== "COUNTRY_MONITOR") {
+    throw new Error("Reports are for monitors.")
   }
-  return { userId: user.id, role: user.role, district }
+  if (!scope.domain) throw new Error("Your account has no domain.")
+  return {
+    userId: scope.id,
+    domain: scope.domain,
+    district: scope.role === "DISTRICT_MONITOR" ? scope.district : null,
+  }
 }
 
 function scopeLabel(scope: Scope): string {
-  if (!scope.district) return "National · all districts"
-  const label = scope.district.replace(/_/g, " ")
-  return `${label.charAt(0).toUpperCase()}${label.slice(1)} district`
+  const domain = scope.domain === "regular" ? "Regular" : "Traffic"
+  if (!scope.district) return `${domain} · national · all districts`
+  return `${domain} · ${formatDistrict(scope.district)} district`
 }
 
-// Integer window constants are inlined (sql.raw) because Postgres cannot
-// infer a type for `current_date - $1` from an untyped bind parameter.
-function weeksAgoSql(weeks: number) {
-  return sql.raw(`current_date - ${weeks * 7}`)
+function scopedConditions(scope: Scope, table: typeof records) {
+  const conditions = [eq(table.domain, scope.domain)]
+  if (scope.district) conditions.push(eq(table.district, scope.district as never))
+  return conditions
 }
 
-function weekBucketSql() {
-  return sql.raw(`least(floor((current_date - "diagnoses"."diagnosed_at") / 7), ${WEEKS - 1})`)
-}
-
-/** Weekly case rows per ICD-10 code inside the trailing window,
- * already scoped to the viewer's jurisdiction. */
-async function infectiousCaseRows(
-  tx: DbTransaction,
-  scope: Scope
-): Promise<
-  Array<{ icd10Code: string; name: string; threatLevel: ThreatLevel; weeksAgo: number; count: number }>
-> {
-  const conditions = [
-    eq(diagnosisCodes.isInfectious, true),
-    gte(diagnoses.diagnosedAt, weeksAgoSql(WEEKS - 1)),
-  ]
-  if (scope.district) {
-    conditions.push(eq(diagnoses.district, scope.district as never))
-  }
-
-  const bucket = weekBucketSql()
-  const rows = await tx
-    .select({
-      icd10Code: diagnoses.icd10Code,
-      name: diagnosisCodes.name,
-      threatLevel: diagnosisCodes.threatLevel,
-      weeksAgo: sql<number>`${bucket}::int`,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(diagnoses)
-    .innerJoin(diagnosisCodes, eq(diagnoses.icd10Code, diagnosisCodes.icd10Code))
-    .where(and(...conditions))
-    .groupBy(
-      diagnoses.icd10Code,
-      diagnosisCodes.name,
-      diagnosisCodes.threatLevel,
-      bucket
-    )
-
-  return rows.map((row) => ({
-    icd10Code: row.icd10Code,
-    name: row.name,
-    threatLevel: (row.threatLevel ?? "none") as ThreatLevel,
-    weeksAgo: row.weeksAgo,
-    count: row.count,
-  }))
-}
-
-async function hotspotRows(
-  tx: DbTransaction,
-  scope: Scope,
-  icd10Code: string
-): Promise<Array<{ label: string; cases: number }>> {
-  const conditions = [
-    eq(diagnoses.icd10Code, icd10Code),
-    gte(diagnoses.diagnosedAt, weeksAgoSql(WEEKS - 1)),
-  ]
-  if (scope.district) {
-    conditions.push(eq(diagnoses.district, scope.district as never))
-  }
-
-  if (scope.role === "DISTRICT_ADMIN") {
-    // Hospital-level detail inside the district.
-    const rows = await tx
-      .select({
-        label: sql<string>`coalesce(${hospitals.name}, 'Other facilities')`,
-        cases: sql<number>`count(*)::int`,
-      })
-      .from(diagnoses)
-      .leftJoin(hospitals, eq(diagnoses.hospitalId, hospitals.id))
-      .where(and(...conditions))
-      .groupBy(sql`coalesce(${hospitals.name}, 'Other facilities')`)
-      .orderBy(sql`count(*) desc`)
-    return rows.map((row) => ({ label: row.label, cases: row.cases }))
-  }
-
-  // district is a PG enum — cast to text before coalescing with a string.
-  const labelExpr = sql<string>`coalesce(${diagnoses.district}::text, 'unknown')`
-  const rows = await tx
-    .select({
-      label: labelExpr,
-      cases: sql<number>`count(*)::int`,
-    })
-    .from(diagnoses)
-    .where(and(...conditions))
-    .groupBy(labelExpr)
-    .orderBy(sql`count(*) desc`)
-  return rows.map((row) => ({
-    label: row.label.replace(/_/g, " "),
-    cases: row.cases,
-  }))
-}
-
-function buildStat(
-  icd10Code: string,
-  name: string,
-  threatLevel: ThreatLevel,
-  weeklyCounts: number[],
-  hotspots: Array<{ label: string; cases: number }>
-): DiseaseStat {
-  const totalCases = weeklyCounts.reduce((sum, count) => sum + count, 0)
-  const thisWeek = weeklyCounts[0] ?? 0
-  const prevWeek = weeklyCounts[1] ?? 0
-  const deltaPct =
-    prevWeek === 0 ? (thisWeek > 0 ? 100 : 0) : Math.round(((thisWeek - prevWeek) / prevWeek) * 100)
-
-  const threshold = 5
-  const status =
-    (threatLevel === "critical" && thisWeek >= threshold) ||
-    (thisWeek >= threshold && deltaPct >= 50)
-      ? "outbreak"
-      : (threatLevel === "critical" || threatLevel === "high") && thisWeek > 0
-        ? "watch"
-        : "stable"
-
-  // k-anonymity: suppress groups smaller than 5.
-  const visibleHotspots = hotspots.filter((hotspot) => hotspot.cases >= threshold)
-  const hotTotal = visibleHotspots.reduce((sum, hotspot) => sum + hotspot.cases, 0)
-
-  return {
-    id: icd10Code,
-    name,
-    totalCases,
-    weeklyCounts,
-    deltaPct,
-    status,
-    hotspots: visibleHotspots.map((hotspot) => ({
-      label: hotspot.label,
-      cases: hotspot.cases,
-      share: hotTotal > 0 ? Math.round((hotspot.cases / hotTotal) * 100) : 0,
-    })),
-  }
-}
-
-export async function getDiseaseStats(): Promise<DiseaseStat[]> {
-  const scope = await resolveScope()
-  if (scope.role !== "DISTRICT_ADMIN" && scope.role !== "NATIONAL_ADMIN") {
-    throw new Error("Analytics are only available to administrators.")
-  }
-
-  // RLS (`app_can_read_patient`) permits country admins nationwide and
-  // district admins within their district, so aggregates only ever see
-  // permitted rows.
-  return withUserCtx(scope.userId, async (tx) => {
-    const rows = await infectiousCaseRows(tx, scope)
-    const grouped = new Map<
-      string,
-      { name: string; threatLevel: ThreatLevel; weeks: number[] }
-    >()
-
-    for (const row of rows) {
-      let entry = grouped.get(row.icd10Code)
-      if (!entry) {
-        entry = { name: row.name, threatLevel: row.threatLevel ?? "none", weeks: new Array(WEEKS).fill(0) }
-        grouped.set(row.icd10Code, entry)
-      }
-      entry.weeks[row.weeksAgo] += row.count
-    }
-
-    const stats: DiseaseStat[] = []
-    for (const [icd10Code, entry] of grouped.entries()) {
-      stats.push(
-        buildStat(
-          icd10Code,
-          entry.name,
-          entry.threatLevel,
-          entry.weeks,
-          await hotspotRows(tx, scope, icd10Code)
-        )
-      )
-    }
-
-    const order = { outbreak: 0, watch: 1, stable: 2 } as const
-    return stats.sort(
-      (a, b) => order[a.status] - order[b.status] || b.weeklyCounts[0] - a.weeklyCounts[0]
-    )
-  })
-}
-
-export interface DiseaseOption {
-  id: string
-  name: string
-  status: string
-}
-
-export async function listDiseaseOptions(): Promise<DiseaseOption[]> {
-  const stats = await getDiseaseStats()
-  return stats.map(({ id, name, status }) => ({ id, name, status }))
-}
-
-// ---------------------------------------------------------------------------
-// Aggregate feed
-// ---------------------------------------------------------------------------
-
+/** v1 catalog (Q28: E) — volumes, resolution rates, accident trends, citations. */
 export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
   const scope = await resolveScope()
-  if (scope.role !== "DISTRICT_ADMIN" && scope.role !== "NATIONAL_ADMIN") {
-    throw new Error("Analytics are only available to administrators.")
-  }
+  return withUserCtx(scope.userId, async (tx) => {
+    const entries: AnalyticsEntry[] = []
+    const base = scopedConditions(scope, records)
+    const today = new Date().toISOString().slice(0, 10)
 
-  const today = new Date().toISOString().slice(0, 10)
-  const entries: AnalyticsEntry[] = []
-  const label = scopeLabel(scope)
-
-  const stats = await getDiseaseStats()
-
-  const thisWeekTotal = stats.reduce((sum, stat) => sum + stat.weeklyCounts[0], 0)
-  const prevWeekTotal = stats.reduce((sum, stat) => sum + stat.weeklyCounts[1], 0)
-  const feedDelta =
-    prevWeekTotal === 0
-      ? thisWeekTotal > 0
-        ? 100
-        : 0
-      : Math.round(((thisWeekTotal - prevWeekTotal) / prevWeekTotal) * 100)
-
-  const [prescriptionRow, immunizationRow] = await withUserCtx(
-    scope.userId,
-    async (tx) => {
-      const [rx] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(prescriptions)
-        .where(
-          and(
-            gte(prescriptions.prescribedAt, weeksAgoSql(1)),
-            scope.district
-              ? eq(prescriptions.district, scope.district as never)
-              : undefined
-          )
-        )
-      const [im] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(immunizations)
-        .where(
-          and(
-            gte(immunizations.administeredAt, weeksAgoSql(1)),
-            scope.district
-              ? eq(immunizations.district, scope.district as never)
-              : undefined
-          )
-        )
-      return [rx, im] as const
-    }
-  )
-
-  const outbreaks = stats.filter((stat) => stat.status === "outbreak")
-  const watching = stats.filter((stat) => stat.status === "watch")
-
-  entries.push({
-    id: "weekly-digest",
-    date: today,
-    scopeLabel: label,
-    title: "Weekly surveillance digest",
-    description: `Infectious-disease notifications recorded across your jurisdiction in the last seven days, compared with the week before.`,
-    severity: outbreaks.length > 0 ? "critical" : watching.length > 0 ? "warning" : "info",
-    metrics: [
-      { label: "Infections this week", value: String(thisWeekTotal), deltaPct: feedDelta },
-      {
-        label: "Active outbreaks",
-        value: String(outbreaks.length),
-      },
-      {
-        label: "New prescriptions",
-        value: String(prescriptionRow?.count ?? 0),
-      },
-      {
-        label: "Doses administered",
-        value: String(immunizationRow?.count ?? 0),
-      },
-    ],
-  })
-
-  const notable = [...outbreaks, ...watching].slice(0, 3)
-  for (const stat of notable) {
+    // 1. Case volumes by type.
+    const volumes = await tx
+      .select({
+        recordType: records.recordType,
+        total: sql<number>`count(*)::int`,
+        active: sql<number>`count(*) filter (where ${records.status} = 'active')::int`,
+      })
+      .from(records)
+      .where(and(...base))
+      .groupBy(records.recordType)
+    const totalCases = volumes.reduce((sum, row) => sum + row.total, 0)
     entries.push({
-      id: `disease-${stat.id}`,
+      id: "volumes",
       date: today,
-      scopeLabel: label,
-      title: `${stat.name}: ${stat.status === "outbreak" ? "cluster detected" : "continued transmission"}`,
-      description:
-        stat.status === "outbreak"
-          ? `Case counts meet the outbreak threshold this week (${stat.weeklyCounts[0]} new notifications, ${stat.deltaPct >= 0 ? "+" : ""}${stat.deltaPct}% vs prior week). Rapid response actions apply.`
-          : `${stat.weeklyCounts[0]} new notification${stat.weeklyCounts[0] === 1 ? "" : "s"} this week (${stat.deltaPct >= 0 ? "+" : ""}${stat.deltaPct}% vs prior week). Monitoring continues.`,
-      severity: stat.status === "outbreak" ? "critical" : "warning",
-      metrics: [
-        { label: "Cases this week", value: String(stat.weeklyCounts[0]), deltaPct: stat.deltaPct },
-        { label: `Total · ${WEEKS} weeks`, value: String(stat.totalCases) },
-      ],
-      breakdown: stat.hotspots.slice(0, 4).map((hotspot) => ({
-        label: hotspot.label,
-        count: hotspot.cases,
-        share: hotspot.share,
+      scopeLabel: scopeLabel(scope),
+      title: "Case volumes by type",
+      description: `${totalCases} cases on file in scope.`,
+      metrics: volumes.slice(0, 4).map((row) => ({
+        label: row.recordType.replace(/_/g, " "),
+        value: String(row.total),
       })),
-    })
-  }
-
-  if (entries.length === 1 && thisWeekTotal === 0) {
-    entries.push({
-      id: "all-clear",
-      date: today,
-      scopeLabel: label,
-      title: "No notifiable activity",
-      description:
-        "Zero infectious-disease notifications were recorded in your jurisdiction this week.",
+      breakdown: volumes.map((row) => ({
+        label: row.recordType.replace(/_/g, " "),
+        count: row.total,
+        share: totalCases > 0 ? row.total / totalCases : 0,
+      })),
       severity: "info",
-      metrics: [{ label: "Infections this week", value: "0", deltaPct: 0 }],
     })
-  }
 
-  return entries
+    // 2. Resolution rate.
+    const [resolution] = await tx
+      .select({
+        total: sql<number>`count(*)::int`,
+        resolved: sql<number>`count(*) filter (where ${records.status} in ('resolved','closed'))::int`,
+      })
+      .from(records)
+      .where(and(...base))
+    const rate =
+      resolution.total > 0 ? Math.round((resolution.resolved / resolution.total) * 100) : 0
+    entries.push({
+      id: "resolution",
+      date: today,
+      scopeLabel: scopeLabel(scope),
+      title: "Resolution rate",
+      description: `${resolution.resolved} of ${resolution.total} cases resolved or closed.`,
+      metrics: [{ label: "Resolved", value: `${rate}%` }],
+      severity: rate < 30 ? "warning" : "info",
+    })
+
+    // 3. Accident trends (traffic domain): fatalities + injuries, last 30 days.
+    if (scope.domain === "traffic") {
+      const accidentRows = await tx
+        .select({
+          fatalities: accidents.fatalities,
+          injuries: accidents.injuries,
+        })
+        .from(accidents)
+        .innerJoin(records, eq(accidents.recordId, records.id))
+        .where(
+          and(
+            ...scopedConditions(scope, records),
+            sql`${accidents.accidentDate} >= current_date - 30`
+          )
+        )
+      const fatalities = accidentRows.reduce((sum, row) => sum + (row.fatalities ?? 0), 0)
+      const injuries = accidentRows.reduce((sum, row) => sum + (row.injuries ?? 0), 0)
+      entries.push({
+        id: "accidents",
+        date: today,
+        scopeLabel: scopeLabel(scope),
+        title: "Road accidents — last 30 days",
+        description: `${accidentRows.length} accidents recorded.`,
+        metrics: [
+          { label: "Fatalities", value: String(fatalities) },
+          { label: "Injuries", value: String(injuries) },
+        ],
+        severity: fatalities > 0 ? "critical" : injuries > 5 ? "warning" : "info",
+      })
+
+      // 4. Citations: totals + collection.
+      const citationRows = await tx
+        .select({
+          isPaid: trafficCitations.isPaid,
+          fine: trafficCitations.fineAmount,
+        })
+        .from(trafficCitations)
+        .innerJoin(records, eq(trafficCitations.recordId, records.id))
+        .where(and(...scopedConditions(scope, records)))
+      const paid = citationRows.filter((row) => row.isPaid).length
+      entries.push({
+        id: "citations",
+        date: today,
+        scopeLabel: scopeLabel(scope),
+        title: "Traffic citations",
+        description: `${citationRows.length} citations issued, ${paid} paid.`,
+        metrics: [
+          { label: "Issued", value: String(citationRows.length) },
+          { label: "Paid", value: String(paid) },
+        ],
+        severity: "info",
+      })
+    }
+
+    // 5. District breakdown (country monitors: where is the load?).
+    if (!scope.district) {
+      const byDistrict = await tx
+        .select({
+          district: records.district,
+          total: count(),
+        })
+        .from(records)
+        .where(eq(records.domain, scope.domain))
+        .groupBy(records.district)
+        .orderBy(sql`count(*) desc`)
+        .limit(8)
+      const districtTotal = byDistrict.reduce((sum, row) => sum + row.total, 0)
+      entries.push({
+        id: "districts",
+        date: today,
+        scopeLabel: scopeLabel(scope),
+        title: "Caseload by district",
+        description: "Top districts by open + closed volume.",
+        metrics: byDistrict.slice(0, 3).map((row) => ({
+          label: formatDistrict(row.district),
+          value: String(row.total),
+        })),
+        breakdown: byDistrict.map((row) => ({
+          label: formatDistrict(row.district),
+          count: row.total,
+          share: districtTotal > 0 ? row.total / districtTotal : 0,
+        })),
+        severity: "info",
+      })
+    }
+
+    await writeAuditTx(tx, {
+      actorId: scope.userId,
+      actionType: "report_generated",
+      reason: `Pulled ${scope.domain} analytics feed (${scope.district ?? "national"}).`,
+    })
+    return entries
+  })
 }

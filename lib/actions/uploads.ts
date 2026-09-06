@@ -16,13 +16,12 @@ export interface UploadCredentialsResult {
 export async function getUploadCredentials(): Promise<UploadCredentialsResult> {
   const user = await requireUser()
   if (
-    user.role === "DISTRICT_ADMIN" ||
-    user.role === "NATIONAL_ADMIN" ||
-    user.role === "ADMINISTRATOR"
+    user.role === "SYSTEM_ADMIN" ||
+    user.role === "COMPLIANCE_AUDITOR"
   ) {
     throw new Error("Administrators don't upload files.")
   }
 
-  const credentials = buildUploadCredentials(`chipatala/records/${user.id}`)
+  const credentials = buildUploadCredentials(`trace/records/${user.id}`)
   return credentials
 }

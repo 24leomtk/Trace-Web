@@ -1,11 +1,14 @@
 import type { Role } from "@/lib/types"
 
 export type DbRole =
-  | "patient"
-  | "doctor"
-  | "district_admin"
-  | "country_admin"
-  | "administrator"
+  | "officer"
+  | "district_monitor"
+  | "country_monitor"
+  | "system_admin"
+  | "compliance_auditor"
+  | "court_liaison"
+  | "insurance_portal_user"
+  | "vehicle_registrar"
 export type DbDistrict =
   | "balaka"
   | "blantyre"
@@ -36,24 +39,32 @@ export type DbDistrict =
   | "thyolo"
   | "zomba"
 
+export type DbDomain = "regular" | "traffic"
+
 const DB_TO_UI: Record<DbRole, Role> = {
-  patient: "PATIENT",
-  doctor: "DOCTOR",
-  district_admin: "DISTRICT_ADMIN",
-  country_admin: "NATIONAL_ADMIN",
-  administrator: "ADMINISTRATOR",
+  officer: "OFFICER",
+  district_monitor: "DISTRICT_MONITOR",
+  country_monitor: "COUNTRY_MONITOR",
+  system_admin: "SYSTEM_ADMIN",
+  compliance_auditor: "COMPLIANCE_AUDITOR",
+  court_liaison: "COURT_LIAISON",
+  insurance_portal_user: "INSURANCE_PORTAL_USER",
+  vehicle_registrar: "VEHICLE_REGISTRAR",
 }
 
 const UI_TO_DB: Record<Role, DbRole> = {
-  PATIENT: "patient",
-  DOCTOR: "doctor",
-  DISTRICT_ADMIN: "district_admin",
-  NATIONAL_ADMIN: "country_admin",
-  ADMINISTRATOR: "administrator",
+  OFFICER: "officer",
+  DISTRICT_MONITOR: "district_monitor",
+  COUNTRY_MONITOR: "country_monitor",
+  SYSTEM_ADMIN: "system_admin",
+  COMPLIANCE_AUDITOR: "compliance_auditor",
+  COURT_LIAISON: "court_liaison",
+  INSURANCE_PORTAL_USER: "insurance_portal_user",
+  VEHICLE_REGISTRAR: "vehicle_registrar",
 }
 
 export function toUiRole(role: string): Role {
-  return DB_TO_UI[role as DbRole] ?? "PATIENT"
+  return DB_TO_UI[role as DbRole] ?? "OFFICER"
 }
 
 export function toDbRole(role: Role): DbRole {
@@ -69,12 +80,36 @@ export function formatDistrict(district: string | null | undefined): string {
     .join(" ")
 }
 
-export function isStaffRole(role: Role): boolean {
-  return role === "DISTRICT_ADMIN" || role === "NATIONAL_ADMIN"
+/** Police roles: officer + both monitor tiers (domain-scoped, case-data access). */
+export function isPoliceRole(role: Role): boolean {
+  return (
+    role === "OFFICER" ||
+    role === "DISTRICT_MONITOR" ||
+    role === "COUNTRY_MONITOR"
+  )
+}
+
+/** District or country monitor — can review, escalate, and refer to court. */
+export function isMonitorRole(role: Role): boolean {
+  return role === "DISTRICT_MONITOR" || role === "COUNTRY_MONITOR"
+}
+
+/** Court / insurer / registry staff — scoped by organization, not branch. */
+export function isExternalRole(role: Role): boolean {
+  return (
+    role === "COURT_LIAISON" ||
+    role === "INSURANCE_PORTAL_USER" ||
+    role === "VEHICLE_REGISTRAR"
+  )
+}
+
+/** Platform roles with no case-data access. */
+export function isPlatformRole(role: Role): boolean {
+  return role === "SYSTEM_ADMIN" || role === "COMPLIANCE_AUDITOR"
 }
 
 export function isAdministratorRole(role: Role): boolean {
-  return role === "ADMINISTRATOR"
+  return role === "SYSTEM_ADMIN"
 }
 
 export const DISTRICT_OPTIONS: DbDistrict[] = [
@@ -107,3 +142,5 @@ export const DISTRICT_OPTIONS: DbDistrict[] = [
   "thyolo",
   "zomba",
 ]
+
+export const DOMAIN_OPTIONS: DbDomain[] = ["regular", "traffic"]

@@ -20,15 +20,6 @@ function sentence(parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ")
 }
 
-/** Accept unknown JSON values and only surface readable scalars. */
-function scalar(value: unknown): string | false {
-  if (typeof value === "string" && value.trim()) return value
-  if (typeof value === "number") return String(value)
-  return false
-}
-
-const ABNORMAL_HINTS = ["positive", "reactive", "detected", "abnormal"]
-
 export interface RecordView {
   title: string
   summary: string
@@ -40,230 +31,150 @@ export function describeRecord(type: RecordType, data: Data): RecordView {
   const meta = RECORD_TYPE_META[type]
 
   switch (type) {
-    case "outpatient_visit": {
-      const complaint = str(data, "chief_complaint")
-      const assessment = str(data, "assessment")
-      const plan = str(data, "plan")
+    case "missing_person": {
       return {
-        title: complaint || meta.label,
+        title: str(data, "full_name") || meta.label,
         summary: sentence([
-          assessment,
-          plan && `Plan: ${plan}`,
+          str(data, "last_seen_location") &&
+            `Last seen at ${str(data, "last_seen_location")}`,
+          str(data, "last_seen_date") && `on ${str(data, "last_seen_date")}.`,
+          str(data, "reporter_name") &&
+            `Reported by ${str(data, "reporter_name")}.`,
         ]),
-        badges: [{ label: "OPD visit", tone: "sky" }],
+        badges: [{ label: "Missing", tone: "amber" }],
       }
     }
 
-    case "emergency_visit": {
-      const symptoms = list(data, "presenting_symptoms")
-      const interventions = list(data, "initial_interventions")
-      const triage = str(data, "triage_level")
-      const tone =
-        triage === "RED" ? "red" : triage === "YELLOW" ? "amber" : "emerald"
+    case "wanted_person": {
+      const danger = str(data, "danger_level")
       return {
-        title:
-          symptoms[0] ??
-          (str(data, "arrival_mode")
-            ? `Emergency arrival — ${str(data, "arrival_mode").toLowerCase()}`
-            : meta.label),
+        title: str(data, "full_name") || meta.label,
         summary: sentence([
-          symptoms.length > 0 && `Presented with ${symptoms.join(", ").toLowerCase()}.`,
-          interventions.length > 0 &&
-            `Initial care: ${interventions.join(", ").toLowerCase()}.`,
+          str(data, "offense"),
+          str(data, "last_known_location") &&
+            `Last known: ${str(data, "last_known_location")}.`,
         ]),
         badges: [
-          triage
-            ? { label: `Triage ${triage}`, tone }
-            : { label: "Emergency", tone: "red" },
+          danger
+            ? {
+                label: `Danger: ${danger}`,
+                tone:
+                  danger === "extreme"
+                    ? "red"
+                    : danger === "high"
+                      ? "rose"
+                      : danger === "medium"
+                        ? "amber"
+                        : "emerald",
+              }
+            : { label: "Wanted", tone: "rose" },
         ],
       }
     }
 
-    case "inpatient_admission":
+    case "stolen_property":
       return {
-        title: str(data, "admission_reason") || meta.label,
+        title: str(data, "item_description") || meta.label,
         summary: sentence([
-          str(data, "ward") && `Ward ${str(data, "ward")}`,
-          str(data, "bed_number") && `Bed ${str(data, "bed_number")}`,
-          str(data, "attending_physician") &&
-            `Attending: ${str(data, "attending_physician")}`,
-        ]),
-        badges: [{ label: "Admitted", tone: "violet" }],
-      }
-
-    case "lab_test_result": {
-      const results = data["results"]
-      const rows = Array.isArray(results)
-        ? (results as Data[]).map((row) =>
-            sentence([
-              typeof row.parameter === "string" ? row.parameter : "",
-              typeof row.value === "string" || typeof row.value === "number"
-                ? String(row.value)
-                : "",
-              typeof row.unit === "string" ? row.unit : "",
-            ])
-          )
-        : []
-      const abnormal =
-        rows.some((row) =>
-          ABNORMAL_HINTS.some((hint) => row.toLowerCase().includes(hint))
-        ) || false
-      return {
-        title: str(data, "test_name") || meta.label,
-        summary: rows.join(" · "),
-        badges: [
-          abnormal
-            ? { label: "Review result", tone: "amber" }
-            : { label: "Result ready", tone: "emerald" },
-        ],
-      }
-    }
-
-    case "imaging_report":
-      return {
-        title: sentence([str(data, "modality"), str(data, "body_part")]) || meta.label,
-        summary: str(data, "impression") || str(data, "findings"),
-        badges: [{ label: "Imaging", tone: "cyan" }],
-      }
-
-    case "pathology_report":
-      return {
-        title: str(data, "diagnosis") || meta.label,
-        summary: sentence([
-          str(data, "site") && `Site: ${str(data, "site")}`,
-          str(data, "histological_findings"),
+          str(data, "location_stolen") &&
+            `Stolen at ${str(data, "location_stolen")}`,
+          str(data, "date_stolen") && `on ${str(data, "date_stolen")}.`,
+          str(data, "owner_name") && `Owner: ${str(data, "owner_name")}.`,
         ]),
         badges: [
-          str(data, "grade")
-            ? { label: str(data, "grade"), tone: "rose" }
-            : { label: "Histology", tone: "rose" },
+          str(data, "category")
+            ? { label: str(data, "category"), tone: "orange" }
+            : { label: "Stolen", tone: "orange" },
         ],
       }
 
-    case "medication_prescription":
+    case "crime_incident": {
+      const victims = list(data, "victims")
       return {
-        title: sentence([str(data, "medication"), "prescribed"]) || meta.label,
+        title: str(data, "incident_type") || meta.label,
         summary: sentence([
-          str(data, "dose"),
-          str(data, "route") && `· ${str(data, "route")}`,
-          str(data, "frequency") && `· ${str(data, "frequency")}`,
-          str(data, "duration") && `· ${str(data, "duration")}`,
-          str(data, "indication") && `— for ${str(data, "indication").toLowerCase()}`,
+          str(data, "description"),
+          str(data, "location") && `Location: ${str(data, "location")}.`,
+          victims.length > 0 && `Victims: ${victims.join(", ")}.`,
         ]),
-        badges: [{ label: "Prescription", tone: "amber" }],
-      }
-
-    case "medication_administration":
-      return {
-        title:
-          sentence([str(data, "medication"), "administered"]) || meta.label,
-        summary: sentence([
-          str(data, "dose"),
-          str(data, "route") && `· ${str(data, "route")}`,
-          str(data, "administered_at") && `at ${str(data, "administered_at")}`,
-          str(data, "administered_by") && `by ${str(data, "administered_by")}`,
-        ]),
-        badges: [{ label: "Given", tone: "teal" }],
-      }
-
-    case "surgical_procedure":
-      return {
-        title: str(data, "procedure_name") || meta.label,
-        summary: sentence([
-          str(data, "surgeon") && `Surgeon: ${str(data, "surgeon")}`,
-          str(data, "anesthesia") && `Anaesthesia: ${str(data, "anesthesia")}`,
-          str(data, "complications") &&
-            `Complications: ${str(data, "complications")}`,
-        ]),
-        badges: [{ label: "Procedure", tone: "fuchsia" }],
-      }
-
-    case "nursing_notes":
-      return {
-        title:
-          sentence(["Nursing notes", str(data, "shift")]) || meta.label,
-        summary: str(data, "notes") || str(data, "observations"),
-        badges: [{ label: "Nursing", tone: "lime" }],
-      }
-
-    case "intake_output_chart": {
-      const intake = data["intake"] as Data | undefined
-      const output = data["output"] as Data | undefined
-      return {
-        title: meta.label,
-        summary: sentence([
-          scalar(intake?.oral) && `Oral ${scalar(intake?.oral)}`,
-          scalar(intake?.iv) && `IV ${scalar(intake?.iv)}`,
-          scalar(output?.urine) && `Urine ${scalar(output?.urine)}`,
-          str(data, "net_balance") && `Net: ${str(data, "net_balance")}`,
-        ]),
-        badges: [{ label: "Chart", tone: "blue" }],
+        badges: [{ label: "Incident", tone: "red" }],
       }
     }
 
-    case "immunization_record": {
-      const dose = data["dose_number"]
+    case "arrest_record": {
+      const charges = list(data, "charges")
       return {
-        title: str(data, "vaccine") || meta.label,
+        title: str(data, "full_name") || meta.label,
         summary: sentence([
-          typeof dose === "number" ? `Dose ${dose}` : "",
-          str(data, "manufacturer") && `· ${str(data, "manufacturer")}`,
-          str(data, "administered_at") && `· given ${str(data, "administered_at")}`,
+          charges.length > 0 && `Charges: ${charges.join(", ")}.`,
+          str(data, "arrest_location") &&
+            `Arrested at ${str(data, "arrest_location")}`,
+          str(data, "arrest_date") && `on ${str(data, "arrest_date")}.`,
         ]),
-        badges: [{ label: "Immunization", tone: "lime" }],
+        badges: [{ label: "Arrest", tone: "violet" }],
       }
     }
 
-    case "screening_test":
+    case "missing_vehicle":
       return {
-        title: str(data, "screening_type") || meta.label,
+        title: str(data, "plate_number") || meta.label,
         summary: sentence([
-          str(data, "result"),
-          str(data, "recommended_follow_up") &&
-            `Follow-up: ${str(data, "recommended_follow_up")}`,
+          sentence([str(data, "make"), str(data, "model"), str(data, "color")]),
+          str(data, "last_seen_location") &&
+            `Last seen at ${str(data, "last_seen_location")}`,
+          str(data, "last_seen_date") && `on ${str(data, "last_seen_date")}.`,
         ]),
-        badges: [{ label: "Screening", tone: "orange" }],
+        badges: [{ label: "Missing vehicle", tone: "amber" }],
       }
 
-    case "psychiatric_evaluation":
+    case "vehicle_offense":
       return {
-        title: str(data, "diagnosis") || str(data, "presenting_problem") || meta.label,
+        title: sentence([str(data, "plate_number"), str(data, "offense_type")]) ||
+          meta.label,
         summary: sentence([
-          str(data, "risk_assessment") && `Risk: ${str(data, "risk_assessment")}`,
+          str(data, "description"),
+          str(data, "location") && `Location: ${str(data, "location")}.`,
         ]),
-        badges: [{ label: "Mental health", tone: "pink" }],
+        badges: [{ label: "Offense", tone: "orange" }],
       }
 
-    case "discharge_summary":
+    case "road_accident": {
+      const vehicles = data["vehicles_involved"]
+      const count = Array.isArray(vehicles) ? vehicles.length : 0
       return {
-        title: str(data, "final_diagnosis") || meta.label,
+        title: str(data, "location") || meta.label,
         summary: sentence([
-          list(data, "treatments_given").length > 0 &&
-            `Treated: ${list(data, "treatments_given").join(", ")}.`,
-          list(data, "discharge_medications").length > 0 &&
-            `Discharged on ${list(data, "discharge_medications").join(", ")}.`,
-          list(data, "follow_up_instructions").length > 0 &&
-            `Follow-up: ${list(data, "follow_up_instructions").join("; ")}.`,
+          str(data, "description"),
+          count > 0 && `${count} vehicle${count === 1 ? "" : "s"} involved.`,
+          str(data, "cause") && `Cause: ${str(data, "cause")}.`,
         ]),
-        badges: [{ label: "Discharged", tone: "emerald" }],
-      }
-
-    case "referral_record": {
-      const urgency = str(data, "urgency")
-      return {
-        title: str(data, "referred_to")
-          ? `Referral to ${str(data, "referred_to")}`
-          : meta.label,
-        summary: str(data, "reason"),
-        badges: [
-          urgency === "HIGH"
-            ? { label: "Urgent", tone: "red" }
-            : urgency === "MEDIUM"
-              ? { label: "Priority", tone: "amber" }
-              : { label: "Referral", tone: "slate" },
-        ],
+        badges: [{ label: "Accident", tone: "red" }],
       }
     }
+
+    case "traffic_citation":
+      return {
+        title: sentence([str(data, "violation_type"), str(data, "plate_number")]) ||
+          meta.label,
+        summary: sentence([
+          str(data, "driver_name") && `Driver: ${str(data, "driver_name")}.`,
+          str(data, "location") && `Issued at ${str(data, "location")}`,
+          str(data, "date_issued") && `on ${str(data, "date_issued")}.`,
+        ]),
+        badges: [{ label: "Citation", tone: "sky" }],
+      }
+
+    case "vehicle_impoundment":
+      return {
+        title: str(data, "plate_number") || meta.label,
+        summary: sentence([
+          str(data, "reason"),
+          str(data, "impound_location") &&
+            `Held at ${str(data, "impound_location")}`,
+          str(data, "impounded_date") && `since ${str(data, "impounded_date")}.`,
+        ]),
+        badges: [{ label: "Impounded", tone: "slate" }],
+      }
 
     default:
       return {

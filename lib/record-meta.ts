@@ -1,134 +1,124 @@
 import {
-  AmbulanceIcon,
-  BedDoubleIcon,
-  BrainIcon,
-  CircleCheckIcon,
-  ClipboardListIcon,
-  DropletsIcon,
-  FileSearchIcon,
-  FlaskConicalIcon,
-  HeartPulseIcon,
-  MicroscopeIcon,
-  PillIcon,
-  ScanIcon,
-  ScissorsIcon,
-  SendIcon,
-  ShieldCheckIcon,
-  SyringeIcon,
+  AlertTriangleIcon,
+  CarFrontIcon,
+  CarIcon,
+  FileWarningIcon,
+  GavelIcon,
+  LockIcon,
+  PackageSearchIcon,
+  ReceiptTextIcon,
+  ShieldAlertIcon,
+  SirenIcon,
+  UserSearchIcon,
+  WarehouseIcon,
 } from "lucide-react"
 
 import type { LucideIcon } from "lucide-react"
 
-import type { Tone } from "@/lib/types"
+import type { Domain, Tone } from "@/lib/types"
 import type { RecordType } from "@/validations/record"
 
 export interface RecordTypeMeta {
   label: string
   shortLabel: string
+  domain: Domain
   tone: Tone
   icon: LucideIcon
 }
 
 export const RECORD_TYPE_META: Record<RecordType, RecordTypeMeta> = {
-  outpatient_visit: {
-    label: "Outpatient Visit",
-    shortLabel: "OPD",
-    tone: "sky",
-    icon: ClipboardListIcon,
-  },
-  emergency_visit: {
-    label: "Emergency Visit",
-    shortLabel: "ER",
-    tone: "rose",
-    icon: AmbulanceIcon,
-  },
-  inpatient_admission: {
-    label: "Inpatient Admission",
-    shortLabel: "Admission",
-    tone: "violet",
-    icon: BedDoubleIcon,
-  },
-  lab_test_result: {
-    label: "Lab Test Result",
-    shortLabel: "Lab",
-    tone: "emerald",
-    icon: FlaskConicalIcon,
-  },
-  imaging_report: {
-    label: "Imaging Report",
-    shortLabel: "Imaging",
+  // ── Regular domain ──────────────────────────────────────────────────────
+  missing_person: {
+    label: "Missing Person",
+    shortLabel: "Missing",
+    domain: "regular",
     tone: "amber",
-    icon: ScanIcon,
+    icon: UserSearchIcon,
   },
-  pathology_report: {
-    label: "Pathology Report",
-    shortLabel: "Pathology",
-    tone: "pink",
-    icon: MicroscopeIcon,
+  wanted_person: {
+    label: "Wanted Person",
+    shortLabel: "Wanted",
+    domain: "regular",
+    tone: "rose",
+    icon: ShieldAlertIcon,
   },
-  medication_prescription: {
-    label: "Medication Prescription",
-    shortLabel: "Rx",
-    tone: "indigo",
-    icon: PillIcon,
-  },
-  medication_administration: {
-    label: "Medication Administration",
-    shortLabel: "Medication",
-    tone: "cyan",
-    icon: SyringeIcon,
-  },
-  surgical_procedure: {
-    label: "Surgical Procedure",
-    shortLabel: "Procedure",
+  stolen_property: {
+    label: "Stolen Property",
+    shortLabel: "Stolen",
+    domain: "regular",
     tone: "orange",
-    icon: ScissorsIcon,
+    icon: PackageSearchIcon,
   },
-  nursing_notes: {
-    label: "Nursing Notes",
-    shortLabel: "Nursing",
-    tone: "teal",
-    icon: HeartPulseIcon,
+  crime_incident: {
+    label: "Crime Incident",
+    shortLabel: "Incident",
+    domain: "regular",
+    tone: "red",
+    icon: SirenIcon,
   },
-  intake_output_chart: {
-    label: "Intake/Output Chart",
-    shortLabel: "I/O Chart",
-    tone: "blue",
-    icon: DropletsIcon,
+  arrest_record: {
+    label: "Arrest Record",
+    shortLabel: "Arrest",
+    domain: "regular",
+    tone: "violet",
+    icon: LockIcon,
   },
-  immunization_record: {
-    label: "Immunization Record",
-    shortLabel: "Vaccine",
-    tone: "lime",
-    icon: ShieldCheckIcon,
+  // ── Traffic domain ──────────────────────────────────────────────────────
+  missing_vehicle: {
+    label: "Missing Vehicle",
+    shortLabel: "Missing V",
+    domain: "traffic",
+    tone: "amber",
+    icon: CarIcon,
   },
-  screening_test: {
-    label: "Screening Test",
-    shortLabel: "Screening",
-    tone: "fuchsia",
-    icon: FileSearchIcon,
+  vehicle_offense: {
+    label: "Vehicle Offense",
+    shortLabel: "Offense",
+    domain: "traffic",
+    tone: "orange",
+    icon: FileWarningIcon,
   },
-  psychiatric_evaluation: {
-    label: "Psychiatric Evaluation",
-    shortLabel: "Psychiatry",
+  road_accident: {
+    label: "Road Accident",
+    shortLabel: "Accident",
+    domain: "traffic",
+    tone: "red",
+    icon: AlertTriangleIcon,
+  },
+  traffic_citation: {
+    label: "Traffic Citation",
+    shortLabel: "Citation",
+    domain: "traffic",
+    tone: "sky",
+    icon: ReceiptTextIcon,
+  },
+  vehicle_impoundment: {
+    label: "Vehicle Impoundment",
+    shortLabel: "Impound",
+    domain: "traffic",
     tone: "slate",
-    icon: BrainIcon,
-  },
-  discharge_summary: {
-    label: "Discharge Summary",
-    shortLabel: "Discharge",
-    tone: "blue",
-    icon: CircleCheckIcon,
-  },
-  referral_record: {
-    label: "Referral Record",
-    shortLabel: "Referral",
-    tone: "orange",
-    icon: SendIcon,
+    icon: WarehouseIcon,
   },
 }
 
+// Re-exported for call sites that render a generic fallback icon.
+export const CourtIcon = GavelIcon
+export const VehicleIcon = CarFrontIcon
+
 export const RECORD_TYPE_ORDER = Object.keys(RECORD_TYPE_META) as RecordType[]
+
+export const REGULAR_RECORD_TYPES = RECORD_TYPE_ORDER.filter(
+  (type) => RECORD_TYPE_META[type].domain === "regular"
+)
+
+export const TRAFFIC_RECORD_TYPES = RECORD_TYPE_ORDER.filter(
+  (type) => RECORD_TYPE_META[type].domain === "traffic"
+)
+
+/** Derive the domain from a record type at write time (stored on records.domain). */
+export function domainForRecordType(type: RecordType): Domain {
+  return RECORD_TYPE_META[type].domain
+}
 
 export const TONE_DOT_CLASS: Record<Tone, string> = {
   emerald: "bg-emerald-500",

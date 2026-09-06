@@ -1,74 +1,84 @@
 import {
   pgTable,
   text,
+  uuid,
   boolean,
   timestamp,
-  date,
-  uuid,
-  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
-import { userRoleEnum, districtEnum, sexEnum } from "./enums"
-import { hospitals } from "./hospitals"
+import { userRoleEnum, domainEnum, districtEnum } from "./enums"
+import { branches } from "./branches"
+import { organizations } from "./organizations"
 
 // ---------------------------------------------------------------------------
-// users  — extends better-auth's required columns with profile fields.
-//          The profiles table from the SQL schema is merged in here.
+// users — no self-registration. Accounts are provisioned by a system_admin,
+// so there's no email/password/verification flow here, just the profile.
+//
+// Scope by role:
+//   officer            -> domain + branchId required, district left null
+//   district_monitor   -> domain + district required, branchId null
+//   country_monitor    -> domain required, branchId/district null
+//   system_admin       -> domain/branchId/district/organizationId all null
+//                          (pure platform role, no case-data access)
+//   compliance_auditor -> domain/branchId/district/organizationId all null
+//                          (cross-domain, audit-log-only access)
+//   court_liaison          -> organizationId required (a court);
+//   insurance_portal_user  -> organizationId required (an insurer);
+//   vehicle_registrar      -> organizationId required (the vehicle registry);
+//     all three: domain/branchId/district left null — their access is scoped
+//     by organization (and, for court_liaison, by individual case referrals
+//     — see courtCaseAccess in court.ts) rather than by branch/district.
+//
+// These nullability rules aren't enforced by a CHECK constraint here since
+// Drizzle's pg-core check() support is limited across versions — enforce in
+// application code (or add a CHECK constraint by hand in a migration) if you
+// want it at the DB level too.
 // ---------------------------------------------------------------------------
+// ── better-auth required ────────────────────────────────────────────
 
 export const users = pgTable(
   "users",
   {
-    // ── better-auth required ────────────────────────────────────────────
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     email: text("email").notNull().unique(),
     emailVerified: boolean("email_verified").default(false).notNull(),
     image: text("image"),
+    phoneNumber: text("phone_number").unique(),
+    phoneNumberVerified: boolean("phone_number_verified"),
+    badgeNumber: text("badge_number").unique(), // police roles only
+
+    role: userRoleEnum("role").notNull(),
+    // Null for system_admin, compliance_auditor, and the three
+    // organization-scoped roles — see comment above.
+    domain: domainEnum("domain"),
+
+    branchId: uuid("branch_id").references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    district: districtEnum("district"),
+
+    // Set for court_liaison / insurance_portal_user / vehicle_registrar;
+    // null for every police role and for system_admin/compliance_auditor.
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+
+    isActive: boolean("is_active").default(true).notNull(),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    phoneNumber: text("phone_number").unique(),
-    phoneNumberVerified: boolean("phone_number_verified"),
-
-    // ── merged from profiles ────────────────────────────────────────────
-    // Nullable to allow account creation before profile completion
-    nationalId: text("national_id").unique(),
-    dateOfBirth: date("date_of_birth"),
-    sex: sexEnum("sex"),
-    district: districtEnum("district"), // patient's home district
-
-    role: userRoleEnum("role").default("patient").notNull(),
-
-    // Doctors only
-    hospitalId: uuid("hospital_id").references(() => hospitals.id, {
-      onDelete: "set null",
-    }),
-    medicalLicenseNo: text("medical_license_no"),
-
-    // Emergency-readable without a code (any doctor/admin). Keep small.
-    // e.g. { blood_type, allergies, chronic_conditions, emergency_contact_name, ... }
-    emergencyInfo: jsonb("emergency_info")
-      .$type<{
-        blood_type?: string
-        allergies?: string[]
-        chronic_conditions?: string[]
-        current_medications?: string[]
-        emergency_contact_name?: string
-        emergency_contact_phone?: string
-        organ_donor?: boolean
-      }>()
-      .default({})
-      .notNull(),
   },
   (table) => [
-    index("users_national_id_idx").on(table.nationalId),
     index("users_role_idx").on(table.role),
-    index("users_hospital_id_idx").on(table.hospitalId),
+    index("users_domain_idx").on(table.domain),
+    index("users_branch_id_idx").on(table.branchId),
     index("users_district_idx").on(table.district),
+    index("users_organization_id_idx").on(table.organizationId),
   ]
 )
 

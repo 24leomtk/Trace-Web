@@ -3,7 +3,15 @@ import { NextResponse, type NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
 
 // Route groups can't be matched directly, so list the (app) segment paths.
-const PROTECTED_PREFIXES = ["/", "/profile", "/records"]
+const PROTECTED_PREFIXES = [
+  "/",
+  "/profile",
+  "/records",
+  "/lookup",
+  "/vehicles",
+  "/audit",
+  "/admin",
+]
 const AUTH_PAGES = ["/sign-in", "/verify"]
 
 function isProtected(pathname: string): boolean {
@@ -39,5 +47,15 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/profile/:path*", "/records/:path*", "/sign-in", "/verify"],
+  matcher: [
+    "/",
+    "/profile/:path*",
+    "/records/:path*",
+    "/lookup/:path*",
+    "/vehicles/:path*",
+    "/audit/:path*",
+    "/admin/:path*",
+    "/sign-in",
+    "/verify",
+  ],
 }

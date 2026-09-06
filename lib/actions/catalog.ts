@@ -1,55 +1,46 @@
 "use server"
 
-import { asc } from "drizzle-orm"
+import { asc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
-import { diagnosisCodes, immunizationCodes, medicationCodes } from "@/db/schema"
+import { branches } from "@/db/schema"
+import { RECORD_TYPE_META, RECORD_TYPE_ORDER } from "@/lib/record-meta"
+import type { Domain } from "@/lib/types"
+import type { RecordType } from "@/validations/record"
 
-export interface DiagnosisOption {
-  icd10Code: string
+export interface RecordTypeOption {
+  value: RecordType
+  label: string
+  shortLabel: string
+  domain: Domain
+}
+
+/** The 10 TRACE case types, grouped by domain — drives the filing UI. */
+export async function listRecordTypeOptions(
+  domain?: Domain
+): Promise<RecordTypeOption[]> {
+  const types = domain
+    ? RECORD_TYPE_ORDER.filter((type) => RECORD_TYPE_META[type].domain === domain)
+    : RECORD_TYPE_ORDER
+  return types.map((type) => ({
+    value: type,
+    label: RECORD_TYPE_META[type].label,
+    shortLabel: RECORD_TYPE_META[type].shortLabel,
+    domain: RECORD_TYPE_META[type].domain,
+  }))
+}
+
+export interface BranchOption {
+  id: string
   name: string
-  description: string
+  district: string
 }
 
-export interface MedicationOption {
-  code: string
-  name: string
-  category: string | null
-}
-
-export interface VaccineOption {
-  vaccineCode: string
-  name: string
-}
-
-export async function listDiagnosisOptions(): Promise<DiagnosisOption[]> {
+export async function listBranchOptions(domain: Domain): Promise<BranchOption[]> {
   return db
-    .select({
-      icd10Code: diagnosisCodes.icd10Code,
-      name: diagnosisCodes.name,
-      description: diagnosisCodes.description,
-    })
-    .from(diagnosisCodes)
-    .orderBy(asc(diagnosisCodes.name))
-}
-
-export async function listMedicationOptions(): Promise<MedicationOption[]> {
-  return db
-    .select({
-      code: medicationCodes.code,
-      name: medicationCodes.name,
-      category: medicationCodes.category,
-    })
-    .from(medicationCodes)
-    .orderBy(asc(medicationCodes.name))
-}
-
-export async function listVaccineOptions(): Promise<VaccineOption[]> {
-  return db
-    .select({
-      vaccineCode: immunizationCodes.vaccineCode,
-      name: immunizationCodes.name,
-    })
-    .from(immunizationCodes)
-    .orderBy(asc(immunizationCodes.name))
+    .select({ id: branches.id, name: branches.name, district: branches.district })
+    .from(branches)
+    .where(eq(branches.domain, domain))
+    .orderBy(asc(branches.name))
+    .limit(200)
 }
