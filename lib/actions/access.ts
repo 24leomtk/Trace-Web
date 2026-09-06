@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, gt, isNull } from "drizzle-orm"
+import { and, desc, eq, gt, gte, inArray, isNull } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -12,16 +12,20 @@ import {
   records,
   users,
   vehicles,
+  wantedPersonCases,
 } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
+import { describeRecord } from "@/lib/record-view"
 import { requireUser } from "@/lib/session"
-import { writeAuditTx } from "@/lib/server/audit"
+import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 import type { AccessLogEntry } from "@/lib/types"
+import type { RecordType } from "@/validations/record"
 import {
   courtOutcomeSchema,
   courtReferralSchema,
 } from "@/validations/admin"
 import { canViewRecord, getViewerScope } from "@/lib/actions/records"
+import { notifyUser } from "@/lib/actions/notifications"
 
 // ---------------------------------------------------------------------------
 // Court referrals — monitors refer a specific case to a specific liaison.
@@ -29,6 +33,50 @@ import { canViewRecord, getViewerScope } from "@/lib/actions/records"
 // ---------------------------------------------------------------------------
 
 const REFERRAL_DEFAULT_DAYS = 90
+
+// ---------------------------------------------------------------------------
+// Lookup throttling — safety checks are unauthenticated-enumeration risks
+// (probing IDs to discover who/what is flagged), so bulk probing is capped
+// and every attempt is already audit-logged by the callers below.
+// ---------------------------------------------------------------------------
+
+const LOOKUP_ACTION_TYPES = [
+  "cross_branch_access",
+  "cross_district_access",
+  "insurer_flag_lookup",
+] as const
+
+async function checkLookupThrottle(actorId: string): Promise<void> {
+  const windows = [
+    { ms: 60_000, max: 20, label: ">20/min" },
+    { ms: 3_600_000, max: 300, label: ">300/hr" },
+  ]
+  for (const window of windows) {
+    const rows = await db
+      .select({ id: actions.id })
+      .from(actions)
+      .where(
+        and(
+          eq(actions.actorId, actorId),
+          inArray(actions.actionType, [...LOOKUP_ACTION_TYPES]),
+          gte(actions.createdAt, new Date(Date.now() - window.ms))
+        )
+      )
+      .limit(window.max + 1)
+    if (rows.length > window.max) {
+      await writeAudit({
+        actorId,
+        actionType: "cross_branch_access",
+        reason: `THROTTLED: lookup rate limit exceeded (${window.label}).`,
+      })
+      throw new Error("Too many lookups — slow down and try again later.")
+    }
+  }
+}
+
+function recordTitle(recordType: string, data: Record<string, unknown>): string {
+  return describeRecord(recordType as RecordType, data).title
+}
 
 export async function referCaseToCourt(input: {
   recordId: string
@@ -87,6 +135,12 @@ export async function referCaseToCourt(input: {
       recordId: record.id,
       reason: parsed.data.reason || "Referred for prosecution.",
     })
+    await notifyUser(tx, {
+      userId: liaison.id,
+      type: "referral_received",
+      recordId: record.id,
+      message: `New referral from ${scope.name}: ${recordTitle(record.recordType, (record.data ?? {}) as Record<string, unknown>)}.`,
+    })
     return { id: grant.id }
   })
 }
@@ -124,6 +178,12 @@ export async function renewCourtAccess(referralId: string): Promise<void> {
       actionType: "court_access_renewed",
       recordId: grant.recordId,
     })
+    await notifyUser(tx, {
+      userId: grant.courtLiaisonId,
+      type: "referral_updated",
+      recordId: grant.recordId,
+      message: `Your access was renewed for 90 days by ${scope.name}.`,
+    })
   })
 }
 
@@ -157,6 +217,12 @@ export async function revokeCourtAccess(referralId: string): Promise<void> {
       recordId: grant.recordId,
       reason: "Court access revoked early.",
     })
+    await notifyUser(tx, {
+      userId: grant.courtLiaisonId,
+      type: "referral_updated",
+      recordId: grant.recordId,
+      message: `Your access was revoked by ${scope.name}.`,
+    })
   })
 }
 
@@ -181,9 +247,9 @@ export async function recordCourtOutcome(input: {
     if (!grant || grant.courtLiaisonId !== scope.id || grant.revokedAt) {
       throw new Error("Referral not found.")
     }
-    if (grant.expiresAt && grant.expiresAt <= new Date()) {
-      throw new Error("This referral has expired.")
-    }
+    // Outcomes often land after access lapses — recording stays open on
+    // expired-but-unrevoked grants so the loop can still close.
+    const late = grant.expiresAt != null && grant.expiresAt <= new Date()
     await tx
       .update(courtCaseAccess)
       .set({
@@ -197,7 +263,15 @@ export async function recordCourtOutcome(input: {
       actorId: scope.id,
       actionType: "court_case_outcome_recorded",
       recordId: grant.recordId,
-      reason: `Outcome: ${parsed.data.outcome}.`,
+      reason: late
+        ? `Outcome: ${parsed.data.outcome} (recorded after grant expiry).`
+        : `Outcome: ${parsed.data.outcome}.`,
+    })
+    await notifyUser(tx, {
+      userId: grant.referredBy,
+      type: "outcome_recorded",
+      recordId: grant.recordId,
+      message: `Outcome recorded by the court: ${parsed.data.outcome}.`,
     })
   })
 }
@@ -223,20 +297,50 @@ export async function checkWantedByNationalId(
   }
   const id = nationalId.trim()
   if (!id) return { wanted: false }
+  await checkLookupThrottle(scope.id)
   return withUserCtx(scope.id, async (tx) => {
+    // Indexed path: person row (national_id is indexed) -> active wanted
+    // projections (person_id is indexed) -> live parent record.
     const [person] = await tx
       .select({ id: personsOfInterest.id })
       .from(personsOfInterest)
       .where(eq(personsOfInterest.nationalId, id))
       .limit(1)
-    if (!person) {
-      await writeAuditTx(tx, {
-        actorId: scope.id,
-        actionType: "cross_branch_access",
-        reason: `Wanted check (national ID): no match.`,
-      })
-      return { wanted: false }
+    if (person) {
+      const indexed = await tx
+        .select({
+          recordId: wantedPersonCases.recordId,
+          dangerLevel: wantedPersonCases.dangerLevel,
+          district: wantedPersonCases.district,
+        })
+        .from(wantedPersonCases)
+        .innerJoin(records, eq(wantedPersonCases.recordId, records.id))
+        .where(
+          and(
+            eq(wantedPersonCases.personId, person.id),
+            eq(wantedPersonCases.status, "active"),
+            eq(records.status, "active"),
+            eq(records.recordType, "wanted_person")
+          )
+        )
+        .limit(1)
+      if (indexed.length > 0) {
+        const hit = indexed[0]
+        await writeAuditTx(tx, {
+          actorId: scope.id,
+          actionType: "cross_branch_access",
+          recordId: hit.recordId,
+          reason: "Wanted check (national ID): MATCH.",
+        })
+        return {
+          wanted: true,
+          dangerLevel: hit.dangerLevel ?? undefined,
+          district: hit.district,
+        }
+      }
     }
+    // Fallback: records filed with a national ID but no person link yet.
+    // Bounded scan — person linking at filing time keeps this rare.
     const wanted = await tx
       .select({ id: records.id, district: records.district, data: records.data })
       .from(records)
@@ -246,7 +350,9 @@ export async function checkWantedByNationalId(
       const d = (row.data ?? {}) as Record<string, unknown>
       return (
         (typeof d.national_id === "string" && d.national_id.trim() === id) ||
-        (typeof d.person_id === "string" && d.person_id === person.id)
+        (person != null &&
+          typeof d.person_id === "string" &&
+          d.person_id === person.id)
       )
     })
     await writeAuditTx(tx, {
@@ -281,6 +387,7 @@ export async function checkPlateFlag(plateNumber: string): Promise<FlagCheckResu
   }
   const plate = plateNumber.trim().toUpperCase()
   if (!plate) return { flagged: false }
+  await checkLookupThrottle(scope.id)
   return withUserCtx(scope.id, async (tx) => {
     const [vehicle] = await tx
       .select({ id: vehicles.id, isFlagged: vehicles.isFlagged })
@@ -307,6 +414,7 @@ export async function insurerPlateLookup(
   }
   const plate = plateNumber.trim().toUpperCase()
   if (!plate) return { flagged: false }
+  await checkLookupThrottle(scope.id)
   return withUserCtx(scope.id, async (tx) => {
     const [vehicle] = await tx
       .select({ id: vehicles.id, isFlagged: vehicles.isFlagged })

@@ -153,6 +153,7 @@ export const auditActionTypeEnum = pgEnum("audit_action_type", [
   "court_access_expired", // a court_case_access grant lapsed automatically
   "policy_entered", // an insurance_portal_user created a policy
   "policy_updated", // an insurance_portal_user updated a policy
+  "review_added", // a monitor (or filing officer) added a review note
   "insurer_flag_lookup", // an insurance_portal_user checked a vehicle's flagged status
   "vehicle_registered", // a vehicle_registrar created/verified a vehicle record
   "user_provisioned", // a system_admin created or edited a user account

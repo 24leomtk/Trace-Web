@@ -11,6 +11,9 @@ import {
 import { getCurrentUser } from "@/lib/session"
 import { recordSchemas, type RecordType } from "@/validations/record"
 import type { AccessLevel } from "@/lib/types"
+import { db } from "@/db"
+import { idempotencyKeys } from "@/db/schema"
+import { and, eq } from "drizzle-orm"
 
 export const dynamic = "force-dynamic"
 
@@ -53,13 +56,37 @@ export const GET = route(async (request: Request) => {
   })
 })
 
-/** Files a case in the caller's own domain. */
+/**
+ * Files a case in the caller's own domain.
+ *
+ * Mobile (offline-first): send `Idempotency-Key: <uuid>` — retries with the
+ * same key return the original response instead of filing twice.
+ */
 export const POST = route(async (request: Request) => {
+  const viewer = await getCurrentUser()
+  if (!viewer) throw new ApiError(401, "You must be signed in.")
   const body = parseWith(createBodySchema, await parseJsonBody(request))
 
   parseWith(recordSchemas[body.type], body.data)
 
-  return createRecord({
+  const idempotencyKey = request.headers.get("idempotency-key")?.trim()
+  if (idempotencyKey) {
+    const [stored] = await db
+      .select()
+      .from(idempotencyKeys)
+      .where(
+        and(
+          eq(idempotencyKeys.key, idempotencyKey),
+          eq(idempotencyKeys.userId, viewer.id)
+        )
+      )
+      .limit(1)
+    if (stored) {
+      return { ...stored.response, idempotentReplay: true }
+    }
+  }
+
+  const result = await createRecord({
     type: body.type,
     data: body.data as Record<string, unknown>,
     accessLevel: body.accessLevel as AccessLevel,
@@ -69,4 +96,20 @@ export const POST = route(async (request: Request) => {
       name: attachment.name ?? "image",
     })),
   })
+
+  if (idempotencyKey) {
+    try {
+      await db.insert(idempotencyKeys).values({
+        key: idempotencyKey,
+        userId: viewer.id,
+        statusCode: 200,
+        response: result,
+      })
+    } catch {
+      // Key raced (parallel retry): the case was still filed exactly once by
+      // this request; the duplicate response simply isn't cached.
+    }
+  }
+
+  return result
 })

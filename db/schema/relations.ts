@@ -64,6 +64,16 @@ export const appRelations = defineRelations(schema, (r) => ({
       to: r.actions.actorId,
       alias: "actions_as_actor",
     }),
+    // Reviews this user wrote
+    reviews: r.many.caseReviews({
+      from: r.users.id,
+      to: r.caseReviews.reviewerId,
+    }),
+    // In-app notifications for this user
+    notifications: r.many.notifications({
+      from: r.users.id,
+      to: r.notifications.userId,
+    }),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -144,6 +154,10 @@ export const appRelations = defineRelations(schema, (r) => ({
     actions: r.many.actions({
       from: r.records.id,
       to: r.actions.recordId,
+    }),
+    reviews: r.many.caseReviews({
+      from: r.records.id,
+      to: r.caseReviews.recordId,
     }),
   },
 
@@ -317,6 +331,35 @@ export const appRelations = defineRelations(schema, (r) => ({
     vehicle: r.one.vehicles({
       from: r.trafficCitations.vehicleId,
       to: r.vehicles.id,
+      optional: true,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // case_reviews
+  // ══════════════════════════════════════════════════════════════════════════
+  caseReviews: {
+    record: r.one.records({
+      from: r.caseReviews.recordId,
+      to: r.records.id,
+    }),
+    reviewer: r.one.users({
+      from: r.caseReviews.reviewerId,
+      to: r.users.id,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // notifications
+  // ══════════════════════════════════════════════════════════════════════════
+  notifications: {
+    user: r.one.users({
+      from: r.notifications.userId,
+      to: r.users.id,
+    }),
+    record: r.one.records({
+      from: r.notifications.recordId,
+      to: r.records.id,
       optional: true,
     }),
   },

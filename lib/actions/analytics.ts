@@ -165,17 +165,24 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
         .orderBy(sql`count(*) desc`)
         .limit(8)
       const districtTotal = byDistrict.reduce((sum, row) => sum + row.total, 0)
+      // Privacy rule: groups smaller than 5 are never shown — they stay in
+      // the total but not in any attributable breakdown row.
+      const publishable = byDistrict.filter((row) => row.total >= 5)
+      const suppressed = districtTotal - publishable.reduce((sum, row) => sum + row.total, 0)
       entries.push({
         id: "districts",
         date: today,
         scopeLabel: scopeLabel(scope),
         title: "Caseload by district",
-        description: "Top districts by open + closed volume.",
-        metrics: byDistrict.slice(0, 3).map((row) => ({
+        description:
+          suppressed > 0
+            ? `Top districts by volume. ${suppressed} case(s) in groups smaller than 5 are withheld.`
+            : "Top districts by open + closed volume.",
+        metrics: publishable.slice(0, 3).map((row) => ({
           label: formatDistrict(row.district),
           value: String(row.total),
         })),
-        breakdown: byDistrict.map((row) => ({
+        breakdown: publishable.map((row) => ({
           label: formatDistrict(row.district),
           count: row.total,
           share: districtTotal > 0 ? row.total / districtTotal : 0,

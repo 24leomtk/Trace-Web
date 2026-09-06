@@ -7,10 +7,12 @@ const PROTECTED_PREFIXES = [
   "/",
   "/profile",
   "/records",
+  "/persons",
   "/lookup",
   "/vehicles",
   "/audit",
   "/admin",
+  "/notifications",
 ]
 const AUTH_PAGES = ["/sign-in", "/verify"]
 
@@ -51,10 +53,12 @@ export const config = {
     "/",
     "/profile/:path*",
     "/records/:path*",
+    "/persons/:path*",
     "/lookup/:path*",
     "/vehicles/:path*",
     "/audit/:path*",
     "/admin/:path*",
+    "/notifications/:path*",
     "/sign-in",
     "/verify",
   ],

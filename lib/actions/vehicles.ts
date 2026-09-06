@@ -3,9 +3,10 @@
 import { and, desc, eq, ilike } from "drizzle-orm"
 
 import { db } from "@/db"
-import { records, users, vehicleCases, vehicles } from "@/db/schema"
+import { recordAttachments, records, users, vehicleCases, vehicles } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
-import { writeAuditTx } from "@/lib/server/audit"
+import { writeAudit, writeAuditTx } from "@/lib/server/audit"
+import { escapeLike } from "@/lib/visibility"
 import { vehicleSchema, type VehicleInput } from "@/validations/admin"
 import { getViewerScope } from "@/lib/actions/records"
 
@@ -42,7 +43,7 @@ export async function searchVehicles(query: string, limit = 10) {
         isVerified: vehicles.isVerified,
       })
       .from(vehicles)
-      .where(ilike(vehicles.plateNumber, `%${q}%`))
+      .where(ilike(vehicles.plateNumber, `%${escapeLike(q)}%`))
       .orderBy(desc(vehicles.updatedAt))
       .limit(limit)
     return rows
@@ -51,7 +52,15 @@ export async function searchVehicles(query: string, limit = 10) {
 
 export async function getVehicle(id: string) {
   const scope = await getViewerScope()
-  if (!canWorkVehicles(scope.role)) throw new Error("Your role can't open vehicles.")
+  if (!canWorkVehicles(scope.role)) {
+    await writeAudit({
+      actorId: scope.id,
+      actionType: "cross_branch_access",
+      vehicleId: id,
+      reason: "DENIED: attempted vehicle read with no vehicle scope.",
+    })
+    throw new Error("Your role can't open vehicles.")
+  }
   return withUserCtx(scope.id, async (tx) => {
     const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, id)).limit(1)
     if (!vehicle) throw new Error("Vehicle not found.")
@@ -199,9 +208,43 @@ export async function registerVehicle(input: VehicleInput): Promise<{ id: string
   })
 }
 
-/** Registrar work queue: unverified rows first. */
-export async function unverifiedVehicles(limit = 25) {
+/** Attach a photo/file directly to a vehicle (plate photo, independent of any case). */
+export async function attachVehicleFile({
+  vehicleId,
+  url,
+  storagePath,
+  fileType,
+}: {
+  vehicleId: string
+  url: string
+  storagePath: string
+  fileType: string
+}): Promise<{ id: string }> {
   const scope = await getViewerScope()
+  if (!canWorkVehicles(scope.role)) throw new Error("Your role can't attach files.")
+  return withUserCtx(scope.id, async (tx) => {
+    const [vehicle] = await tx
+      .select({ id: vehicles.id })
+      .from(vehicles)
+      .where(eq(vehicles.id, vehicleId))
+      .limit(1)
+    if (!vehicle) throw new Error("Vehicle not found.")
+    const [row] = await tx
+      .insert(recordAttachments)
+      .values({ vehicleId, url, storagePath, fileType, uploadedBy: scope.id })
+      .returning({ id: recordAttachments.id })
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      vehicleId,
+      reason: "File attached to vehicle.",
+    })
+    return { id: row.id }
+  })
+}
+
+/** Registrar work queue: unverified rows first. */
+export async function unverifiedVehicles(limit = 25) {  const scope = await getViewerScope()
   if (scope.role !== "VEHICLE_REGISTRAR") throw new Error("Registrars only.")
   return withUserCtx(scope.id, async (tx) => {
     return tx

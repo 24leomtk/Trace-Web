@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, or } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -22,7 +22,12 @@ import { domainForRecordType } from "@/lib/record-meta"
 import { describeRecord } from "@/lib/record-view"
 import { toUiRole } from "@/lib/roles"
 import { requireUser } from "@/lib/session"
-import { writeAuditTx } from "@/lib/server/audit"
+import { writeAudit, writeAuditTx } from "@/lib/server/audit"
+import {
+  canViewRecord,
+  isOwnScopeRead,
+  type VisibilityScope,
+} from "@/lib/visibility"
 import type {
   AccessLevel,
   CaseStatus,
@@ -31,6 +36,7 @@ import type {
   TraceRecord,
 } from "@/lib/types"
 import { recordSchemas, type RecordType } from "@/validations/record"
+import { notifyUser } from "@/lib/actions/notifications"
 
 export interface Page<T> {
   items: T[]
@@ -45,13 +51,10 @@ export interface UploadedAttachment {
   fileSizeBytes: number
 }
 
-export interface ViewerScope {
+export interface ViewerScope extends VisibilityScope {
   id: string
   name: string
   role: Role
-  domain: Domain | null
-  branchId: string | null
-  branchDistrict: string | null
   district: string | null
   organizationId: string | null
 }
@@ -90,79 +93,53 @@ export async function getViewerScope(): Promise<ViewerScope> {
 
 type RecordRow = typeof records.$inferSelect
 
-function viewerDistrict(scope: ViewerScope): string | null {
-  return scope.district ?? scope.branchDistrict
-}
-
-/** Can this police viewer open this record directly? (Court grants handled separately.) */
-export function canViewRecord(scope: ViewerScope, record: RecordRow): boolean {
-  if (scope.role === "OFFICER") {
-    if (record.domain !== scope.domain) return false
-    if (record.branchId === scope.branchId) return true
-    // Escalated records: district-level in own district, country-level domain-wide.
-    if (record.accessLevel === "district") {
-      return record.district === (scope.branchDistrict ?? scope.district)
-    }
-    if (record.accessLevel === "country") return true
-    return false
-  }
-  if (scope.role === "DISTRICT_MONITOR") {
-    return record.domain === scope.domain && record.district === scope.district
-  }
-  if (scope.role === "COUNTRY_MONITOR") {
-    // Aggregates + escalated-to-country only (no raw branch-level reads).
-    return record.domain === scope.domain && record.accessLevel === "country"
-  }
-  // System admin, auditor, and external roles have no direct case access.
-  return false
-}
-
-/** Can this viewer file a record of this type? Creation is locked to own domain. */
-function canCreateType(scope: ViewerScope, type: RecordType): boolean {
-  if (scope.role !== "OFFICER" && !isMonitor(scope)) return false
-  return domainForRecordType(type) === scope.domain
-}
-
 function isMonitor(scope: ViewerScope): boolean {
   return scope.role === "DISTRICT_MONITOR" || scope.role === "COUNTRY_MONITOR"
 }
 
-/** Resolve the branch a new record files under, enforcing scope. */
-async function resolveFilingBranch(
-  scope: ViewerScope,
-  requestedBranchId?: string | null
-): Promise<{ branchId: string; district: string }> {
-  if (scope.role === "OFFICER") {
-    if (!scope.branchId || !scope.branchDistrict) {
-      throw new Error("Your account is not attached to a branch.")
-    }
-    return { branchId: scope.branchId, district: scope.branchDistrict }
-  }
-  if (scope.role === "DISTRICT_MONITOR") {
-    if (!requestedBranchId) {
-      throw new Error("Choose a branch in your district to file under.")
-    }
-    const [branch] = await db
-      .select()
-      .from(branches)
-      .where(eq(branches.id, requestedBranchId))
-      .limit(1)
-    if (!branch || branch.district !== scope.district || branch.domain !== scope.domain) {
-      throw new Error("That branch is outside your district.")
-    }
-    return { branchId: branch.id, district: branch.district }
-  }
-  // Country monitor — national bulletins filed under any branch in their domain.
-  if (!requestedBranchId) throw new Error("Choose a branch to file under.")
-  const [branch] = await db
-    .select()
-    .from(branches)
-    .where(eq(branches.id, requestedBranchId))
+/** Live (unexpired, unrevoked) court grant for this liaison + record? */
+async function hasLiveGrant(
+  recordId: string,
+  liaisonId: string
+): Promise<boolean> {
+  const [grant] = await db
+    .select({ id: courtCaseAccess.id })
+    .from(courtCaseAccess)
+    .where(
+      and(
+        eq(courtCaseAccess.recordId, recordId),
+        eq(courtCaseAccess.courtLiaisonId, liaisonId)
+      )
+    )
     .limit(1)
-  if (!branch || branch.domain !== scope.domain) {
-    throw new Error("That branch is outside your domain.")
-  }
-  return { branchId: branch.id, district: branch.district }
+  if (!grant) return false
+  const [full] = await db
+    .select({
+      revokedAt: courtCaseAccess.revokedAt,
+      expiresAt: courtCaseAccess.expiresAt,
+    })
+    .from(courtCaseAccess)
+    .where(eq(courtCaseAccess.id, grant.id))
+    .limit(1)
+  if (!full || full.revokedAt) return false
+  if (full.expiresAt && full.expiresAt <= new Date()) return false
+  return true
+}
+
+/** Live liaison grants on a record (for status-change notifications). */
+async function liveLiaisonIds(recordId: string): Promise<string[]> {
+  const grants = await db
+    .select({
+      liaisonId: courtCaseAccess.courtLiaisonId,
+      revokedAt: courtCaseAccess.revokedAt,
+      expiresAt: courtCaseAccess.expiresAt,
+    })
+    .from(courtCaseAccess)
+    .where(eq(courtCaseAccess.recordId, recordId))
+  const now = new Date()
+  return grants
+    .filter((grant) => !grant.revokedAt && (!grant.expiresAt || grant.expiresAt > now))
+    .map((grant) => grant.liaisonId)
 }
 
 function str(data: Record<string, unknown>, key: string): string {
@@ -171,10 +148,7 @@ function str(data: Record<string, unknown>, key: string): string {
 }
 
 /** Find-or-create an ad-hoc vehicle row for a plate (is_verified: false). */
-async function resolveVehicleByPlate(
-  tx: DbTransaction,
-  plate: string
-) {
+async function resolveVehicleByPlate(tx: DbTransaction, plate: string) {
   const normalized = plate.trim().toUpperCase()
   if (!normalized) return null
   const [existing] = await tx
@@ -382,7 +356,7 @@ async function toTraceRecord(
 }
 
 // ---------------------------------------------------------------------------
-// Listing + detail (police roles; court-liaison reads live in access.ts)
+// Listing + detail (police roles; liaisons read via live grants)
 // ---------------------------------------------------------------------------
 
 interface ListRecordsInput {
@@ -408,62 +382,199 @@ export async function listRecords({
   }
 
   return withUserCtx(scope.id, async (tx) => {
-    const conditions = [eq(records.domain, scope.domain!)]
-    if (type) conditions.push(eq(records.recordType, type))
-    if (status) conditions.push(eq(records.status, status))
-    // Narrow server-side per role; canViewRecord is the final gate below.
-    if (scope.role === "DISTRICT_MONITOR") {
-      conditions.push(eq(records.district, scope.district as never))
-    } else if (scope.role === "COUNTRY_MONITOR") {
-      conditions.push(eq(records.accessLevel, "country"))
-    } else if (scope.branchId) {
-      // Officers: own branch + escalated records in scope are filtered post-read
-      // via canViewRecord; keep the query domain-wide and paginate after filter.
+    // Visibility is pushed into the query — no in-memory filtering, so
+    // pagination is stable and unreadable rows never leave the database.
+    const filters = []
+    if (type) filters.push(eq(records.recordType, type))
+    if (status) filters.push(eq(records.status, status))
+
+    let visibility
+    if (scope.role === "OFFICER") {
+      const ownDistrict = scope.branchDistrict ?? scope.district
+      visibility = and(
+        eq(records.domain, scope.domain!),
+        or(
+          eq(records.branchId, scope.branchId!),
+          and(
+            eq(records.accessLevel, "district"),
+            eq(records.district, ownDistrict as never)
+          ),
+          eq(records.accessLevel, "country")
+        )
+      )
+    } else if (scope.role === "DISTRICT_MONITOR") {
+      visibility = and(
+        eq(records.domain, scope.domain!),
+        eq(records.district, scope.district as never)
+      )
+    } else {
+      visibility = and(
+        eq(records.domain, scope.domain!),
+        eq(records.accessLevel, "country")
+      )
     }
 
     const rows = await tx
       .select()
       .from(records)
-      .where(and(...conditions))
+      .where(filters.length > 0 ? and(visibility, ...filters) : visibility)
       .orderBy(desc(records.createdAt), desc(records.id))
-      .limit(200)
+      .limit(limit + 1)
+      .offset(cursor)
 
-    const visible = rows.filter((row) => canViewRecord(scope, row))
-    const page = visible.slice(cursor, cursor + limit)
+    const page = rows.length > limit ? rows.slice(0, limit) : rows
     const items: TraceRecord[] = []
     for (const row of page) items.push(await toTraceRecord(tx, row))
-    return { items, nextCursor: cursor + limit < visible.length ? cursor + limit : null }
+    return {
+      items,
+      nextCursor: rows.length > limit ? cursor + limit : null,
+    }
   })
 }
 
 export async function getRecord(id: string): Promise<TraceRecord> {
   const scope = await getViewerScope()
-  return withUserCtx(scope.id, async (tx) => {
-    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
-    if (!record) throw new Error("Record not found.")
-    if (!canViewRecord(scope, record)) {
+  // Owner-connection read for the gate decision itself; the RLS-scoped
+  // transaction below does the actual data return.
+  const [record] = await db.select().from(records).where(eq(records.id, id)).limit(1)
+  if (!record) throw new Error("Record not found.")
+
+  if (scope.role === "COURT_LIAISON") {
+    if (!(await hasLiveGrant(id, scope.id))) {
+      await writeAudit({
+        actorId: scope.id,
+        actionType: "court_case_viewed",
+        recordId: id,
+        reason: "DENIED: no live referral grants access to this case.",
+      })
       throw new Error("You don't have access to this record.")
     }
-    const crossedBranch = scope.role === "OFFICER" && record.branchId !== scope.branchId
-    const crossedDistrict =
-      crossedBranch && record.district !== (scope.branchDistrict ?? scope.district)
-    await writeAuditTx(tx, {
-      actorId: scope.id,
-      actionType: crossedDistrict
-        ? "cross_district_access"
-        : crossedBranch
-          ? "cross_branch_access"
-          : "record_viewed",
-      recordId: record.id,
-      reason: crossedBranch ? "Opened a record outside own branch." : undefined,
+    return withUserCtx(scope.id, async (tx) => {
+      const [row] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+      if (!row) throw new Error("Record not found.")
+      await writeAuditTx(tx, {
+        actorId: scope.id,
+        actionType: "court_case_viewed",
+        recordId: id,
+      })
+      return toTraceRecord(tx, row)
     })
-    return toTraceRecord(tx, record)
+  }
+
+  if (!canViewRecord(scope, record)) {
+    await writeAudit({
+      actorId: scope.id,
+      actionType: "cross_branch_access",
+      recordId: id,
+      reason: `DENIED: attempted ${record.district}/${record.accessLevel} ${record.recordType} outside own scope.`,
+    })
+    throw new Error("You don't have access to this record.")
+  }
+
+  return withUserCtx(scope.id, async (tx) => {
+    const [row] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!row) throw new Error("Record not found.")
+    // Reads inside the viewer's own narrow scope (officer, own branch) are
+    // routine work and stay unlogged; everything wider is audited.
+    if (!isOwnScopeRead(scope, row)) {
+      const crossedBranch = scope.role === "OFFICER" && row.branchId !== scope.branchId
+      const crossedDistrict =
+        crossedBranch && row.district !== (scope.branchDistrict ?? scope.district)
+      await writeAuditTx(tx, {
+        actorId: scope.id,
+        actionType: crossedDistrict
+          ? "cross_district_access"
+          : crossedBranch
+            ? "cross_branch_access"
+            : "record_viewed",
+        recordId: row.id,
+        reason: crossedBranch ? "Opened a record outside own branch." : undefined,
+      })
+    }
+    return toTraceRecord(tx, row)
+  })
+}
+
+/** Raw typed payload for the edit form (same gate as getRecord). */
+export async function getRecordData(id: string): Promise<Record<string, unknown>> {
+  const scope = await getViewerScope()
+  const [record] = await db.select().from(records).where(eq(records.id, id)).limit(1)
+  if (!record) throw new Error("Record not found.")
+  const allowed =
+    scope.role === "COURT_LIAISON"
+      ? await hasLiveGrant(id, scope.id)
+      : canViewRecord(scope, record)
+  if (!allowed) {
+    await writeAudit({
+      actorId: scope.id,
+      actionType: "cross_branch_access",
+      recordId: id,
+      reason: "DENIED: attempted payload read outside own scope.",
+    })
+    throw new Error("You don't have access to this record.")
+  }
+  return withUserCtx(scope.id, async (tx) => {
+    if (!isOwnScopeRead(scope, record)) {
+      await writeAuditTx(tx, {
+        actorId: scope.id,
+        actionType: "record_viewed",
+        recordId: id,
+        reason: "Opened the payload for editing.",
+      })
+    }
+    const [row] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!row) throw new Error("Record not found.")
+    return (row.data ?? {}) as Record<string, unknown>
   })
 }
 
 // ---------------------------------------------------------------------------
 // Creation (officer / monitor, own domain only)
 // ---------------------------------------------------------------------------
+
+/** Can this viewer file a record of this type? Creation is locked to own domain. */
+function canCreateType(scope: ViewerScope, type: RecordType): boolean {
+  if (scope.role !== "OFFICER" && !isMonitor(scope)) return false
+  return domainForRecordType(type) === scope.domain
+}
+
+/** Resolve the branch a new record files under, enforcing scope. */
+async function resolveFilingBranch(
+  scope: ViewerScope,
+  requestedBranchId?: string | null
+): Promise<{ branchId: string; district: string }> {
+  if (scope.role === "OFFICER") {
+    if (!scope.branchId || !scope.branchDistrict) {
+      throw new Error("Your account is not attached to a branch.")
+    }
+    return { branchId: scope.branchId, district: scope.branchDistrict }
+  }
+  if (scope.role === "DISTRICT_MONITOR") {
+    if (!requestedBranchId) {
+      throw new Error("Choose a branch in your district to file under.")
+    }
+    const [branch] = await db
+      .select()
+      .from(branches)
+      .where(eq(branches.id, requestedBranchId))
+      .limit(1)
+    if (!branch || branch.district !== scope.district || branch.domain !== scope.domain) {
+      throw new Error("That branch is outside your district.")
+    }
+    return { branchId: branch.id, district: branch.district }
+  }
+  // Country monitor — national bulletins filed under any branch in their domain.
+  if (!requestedBranchId) throw new Error("Choose a branch to file under.")
+  const [branch] = await db
+    .select()
+    .from(branches)
+    .where(eq(branches.id, requestedBranchId))
+    .limit(1)
+  if (!branch || branch.domain !== scope.domain) {
+    throw new Error("That branch is outside your domain.")
+  }
+  return { branchId: branch.id, district: branch.district }
+}
 
 interface CreateRecordInput {
   type: RecordType
@@ -482,6 +593,11 @@ export async function createRecord({
 }: CreateRecordInput): Promise<{ id: string }> {
   const scope = await getViewerScope()
   if (!canCreateType(scope, type)) {
+    await writeAudit({
+      actorId: scope.id,
+      actionType: "record_viewed",
+      reason: `DENIED: attempted to file ${type} outside own domain.`,
+    })
     throw new Error("You can't file this type of record.")
   }
 
@@ -492,12 +608,8 @@ export async function createRecord({
   }
   const payload = parsed.data as Record<string, unknown>
 
-  // Officers file at branch level; monitors may escalate at creation.
-  const level: AccessLevel =
-    scope.role === "OFFICER" && accessLevel !== "branch"
-      ? accessLevel // officers may mark district/country on their own record
-      : accessLevel
-  if (scope.role === "OFFICER" && !["branch", "district", "country"].includes(level)) {
+  const level: AccessLevel = accessLevel
+  if (!["branch", "district", "country"].includes(level)) {
     throw new Error("Invalid access level.")
   }
 
@@ -558,7 +670,7 @@ export async function createRecord({
 }
 
 // ---------------------------------------------------------------------------
-// Updates, status, access level
+// Updates, status, access level, reassignment
 // ---------------------------------------------------------------------------
 
 export async function updateRecord({
@@ -572,7 +684,15 @@ export async function updateRecord({
   await withUserCtx(scope.id, async (tx) => {
     const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
     if (!record) throw new Error("Record not found.")
-    if (!canViewRecord(scope, record)) throw new Error("You don't have access to this record.")
+    if (!canViewRecord(scope, record)) {
+      await writeAudit({
+        actorId: scope.id,
+        actionType: "record_viewed",
+        recordId: id,
+        reason: "DENIED: attempted edit outside own scope.",
+      })
+      throw new Error("You don't have access to this record.")
+    }
 
     const isFiler = record.reportedBy === scope.id
     const monitorInScope =
@@ -612,9 +732,11 @@ export async function updateRecord({
 export async function changeStatus({
   id,
   status,
+  reason,
 }: {
   id: string
   status: CaseStatus
+  reason?: string
 }): Promise<void> {
   const scope = await getViewerScope()
   if (!isMonitor(scope)) throw new Error("Only monitors can change case status.")
@@ -626,7 +748,15 @@ export async function changeStatus({
       (scope.role === "COUNTRY_MONITOR"
         ? record.accessLevel === "country"
         : record.district === scope.district)
-    if (!inScope) throw new Error("That case is outside your scope.")
+    if (!inScope) {
+      await writeAudit({
+        actorId: scope.id,
+        actionType: "record_viewed",
+        recordId: id,
+        reason: "DENIED: attempted status change outside own scope.",
+      })
+      throw new Error("That case is outside your scope.")
+    }
     await tx
       .update(records)
       .set({ status, updatedAt: new Date() })
@@ -638,8 +768,29 @@ export async function changeStatus({
       actorId: scope.id,
       actionType: "status_changed",
       recordId: id,
-      reason: `Status → ${status}.`,
+      reason: reason ?? `Status → ${status}.`,
     })
+    // Notify the filing officer and any liaison with a live referral.
+    const view = describeRecord(
+      updated.recordType as RecordType,
+      (updated.data ?? {}) as Record<string, unknown>
+    )
+    if (updated.reportedBy !== scope.id) {
+      await notifyUser(tx, {
+        userId: updated.reportedBy,
+        type: "status_changed",
+        recordId: id,
+        message: `Status of "${view.title}" changed to ${status} by ${scope.name}.`,
+      })
+    }
+    for (const liaisonId of await liveLiaisonIds(id)) {
+      await notifyUser(tx, {
+        userId: liaisonId,
+        type: "status_changed",
+        recordId: id,
+        message: `Status of referred case "${view.title}" changed to ${status}.`,
+      })
+    }
   })
 }
 
@@ -688,7 +839,83 @@ export async function setAccessLevel({
   })
 }
 
-/** Cases referred to the current court liaison (their only case visibility). */
+/** District monitor moves a case to another branch in the same district. */
+export async function reassignRecord({
+  id,
+  branchId,
+}: {
+  id: string
+  branchId: string
+}): Promise<void> {
+  const scope = await getViewerScope()
+  if (scope.role !== "DISTRICT_MONITOR") {
+    throw new Error("Only district monitors can reassign cases.")
+  }
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+    if (record.domain !== scope.domain || record.district !== scope.district) {
+      throw new Error("That case is outside your district.")
+    }
+    const [branch] = await tx
+      .select()
+      .from(branches)
+      .where(eq(branches.id, branchId))
+      .limit(1)
+    if (!branch || branch.district !== scope.district || branch.domain !== scope.domain) {
+      throw new Error("Cases can only move within your district and domain.")
+    }
+    if (branch.id === record.branchId) return
+    await tx
+      .update(records)
+      .set({ branchId: branch.id, updatedAt: new Date() })
+      .where(eq(records.id, id))
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: id,
+      reason: `Reassigned to ${branch.name}.`,
+    })
+  })
+}
+
+/** Mark the fine on a traffic citation paid (reporter or monitor in scope). */
+export async function markCitationPaid({
+  id,
+  paid,
+}: {
+  id: string
+  paid: boolean
+}): Promise<void> {
+  const scope = await getViewerScope()
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record || record.recordType !== "traffic_citation") {
+      throw new Error("Citation not found.")
+    }
+    const allowed =
+      record.reportedBy === scope.id ||
+      (isMonitor(scope) &&
+        record.domain === scope.domain &&
+        (scope.role === "COUNTRY_MONITOR"
+          ? record.accessLevel === "country"
+          : record.district === scope.district))
+    if (!allowed) throw new Error("That case is outside your scope.")
+    await tx
+      .update(trafficCitations)
+      .set({ isPaid: paid })
+      .where(eq(trafficCitations.recordId, id))
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: id,
+      reason: paid ? "Citation fine marked paid." : "Citation fine marked unpaid.",
+    })
+  })
+}
+
+/** Cases referred to the current court liaison. Listing is not audited —
+ * only opening a case (via getRecord) writes court_case_viewed. */
 export async function getMyReferrals(): Promise<
   { referralId: string; expiresAt: string | null; record: TraceRecord }[]
 > {
@@ -712,11 +939,6 @@ export async function getMyReferrals(): Promise<
         .where(eq(records.id, grant.recordId))
         .limit(1)
       if (!record) continue
-      await writeAuditTx(tx, {
-        actorId: scope.id,
-        actionType: "court_case_viewed",
-        recordId: record.id,
-      })
       out.push({
         referralId: grant.id,
         expiresAt: grant.expiresAt?.toISOString() ?? null,

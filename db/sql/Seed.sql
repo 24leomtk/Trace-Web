@@ -3,7 +3,10 @@
 -- ----------------------------------------------------------------------------
 -- Run AFTER the Drizzle migration + db/sql/Functions&Policies.sql:
 --
---   psql "$DATABASE_URL" -f "db/sql/Seed.sql"
+--   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/Seed.sql"
+--
+-- The TRACE_SEED_OK flag is a production guard: without it the script
+-- refuses to run. NEVER seed a production database.
 --
 -- What it creates:
 --   * 3 branches (Lilongwe Central + Lilongwe Traffic + Blantyre Central)
@@ -18,7 +21,16 @@
 
 begin;
 
+\if :{?TRACE_SEED_OK}
+\else
+\echo 'Refusing to seed: re-run with -v TRACE_SEED_OK=1. Never seed production.'
+\quit 1
+\endif
+
 truncate public.actions,
+  public.notifications,
+  public.idempotency_keys,
+  public.case_reviews,
   public.court_case_access,
   public.missing_person_cases,
   public.wanted_person_cases,

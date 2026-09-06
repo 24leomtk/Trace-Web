@@ -139,10 +139,10 @@ export default function LookupPage() {
                 </Link>
               ))}
               {results.persons.map((person) => (
-                <div key={person.id} className="rounded-2xl border px-3 py-2 text-sm">
+                <Link key={person.id} href={`/persons/${person.id}`} className="rounded-2xl border px-3 py-2 text-sm hover:bg-accent">
                   <span className="font-medium">{person.fullName}</span>
                   {person.nationalId && <span className="text-muted-foreground"> · {person.nationalId}</span>}
-                </div>
+                </Link>
               ))}
               {results.vehicles.length === 0 && results.persons.length === 0 && (
                 <p className="text-sm text-muted-foreground">No matches.</p>

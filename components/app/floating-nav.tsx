@@ -2,7 +2,9 @@
 
 import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
+  BellIcon,
   Building2Icon,
   CarFrontIcon,
   FilePlus2Icon,
@@ -18,6 +20,7 @@ import {
 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
+import { unreadNotificationCount } from "@/lib/actions/notifications"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { NavButton } from "@/components/app/nav-button"
 import { ThemeToggle } from "@/components/app/theme-toggle"
@@ -31,6 +34,11 @@ export function FloatingNav() {
   const pathname = usePathname()
   const { user } = useUser()
   const [modal, setModal] = useState<Modal>(null)
+  const { data: unread } = useQuery({
+    queryKey: ["unread-count"],
+    queryFn: unreadNotificationCount,
+    refetchInterval: 60_000,
+  })
 
   async function signOut() {
     await authClient.signOut()
@@ -54,7 +62,7 @@ export function FloatingNav() {
     <>
       <nav
         aria-label="Primary"
-        className="fixed z-40 flex items-center gap-0.5 rounded-[min(var(--radius-4xl),24px)] border bg-popover/90 p-1.5 shadow-lg ring-1 ring-foreground/5 backdrop-blur-xl dark:ring-foreground/10 bottom-5 left-1/2 -translate-x-1/2 flex-row lg:top-1/2 lg:right-6 lg:bottom-auto lg:left-auto lg:-translate-x-0 lg:-translate-y-1/2 lg:flex-col"
+        className="fixed z-40 flex items-center gap-0.5 rounded-[min(var(--radius-4xl),24px)] border bg-popover/90 p-1.5 shadow-lg ring-1 ring-foreground/5 backdrop-blur-xl dark:ring-foreground/10 bottom-5 left-1/2 -translate-x-1/2 flex-row lg:top-1/2 lg:right-6 lg:bottom-auto lg:left-auto lg:-translate-x-0 lg:-translate-y-1/2 lg:flex-col print:hidden"
       >
         {isPolice && (
           <>
@@ -177,6 +185,21 @@ export function FloatingNav() {
           </>
         )}
 
+        <NavButton
+          key="notifications"
+          label="Notifications"
+          href="/notifications"
+          active={pathname.startsWith("/notifications")}
+        >
+          <span className="relative">
+            <BellIcon className="size-5" />
+            {!!unread && unread > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+          </span>
+        </NavButton>
         <NavButton
           key="sign-out"
           label="Sign out"

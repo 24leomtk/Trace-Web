@@ -41,6 +41,7 @@ export const missingPersonCases = pgTable(
   },
   (table) => [
     index("missing_person_cases_record_id_idx").on(table.recordId),
+    index("missing_person_cases_person_id_idx").on(table.personId),
     index("missing_person_cases_district_idx").on(table.district),
     index("missing_person_cases_status_idx").on(table.status),
   ]
@@ -71,6 +72,7 @@ export const wantedPersonCases = pgTable(
   },
   (table) => [
     index("wanted_person_cases_record_id_idx").on(table.recordId),
+    index("wanted_person_cases_person_id_idx").on(table.personId),
     index("wanted_person_cases_district_idx").on(table.district),
     index("wanted_person_cases_status_idx").on(table.status),
     index("wanted_person_cases_danger_idx").on(table.dangerLevel),

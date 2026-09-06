@@ -3,13 +3,17 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeftIcon } from "lucide-react"
+import { ArrowLeftIcon, PrinterIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
   changeStatus,
   getRecord,
+  getRecordData,
+  markCitationPaid,
+  reassignRecord,
   setAccessLevel,
+  updateRecord,
 } from "@/lib/actions/records"
 import {
   listCourtLiaisons,
@@ -19,11 +23,18 @@ import {
   renewCourtAccess,
   revokeCourtAccess,
 } from "@/lib/actions/access"
+import { branchOptions } from "@/lib/actions/admin"
+import { addReview, listReviews } from "@/lib/actions/reviews"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { formatDateTime } from "@/lib/format"
 import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
+import {
+  DynamicFields,
+  type FormValues,
+} from "@/components/app/record-form/dynamic-fields"
+import { RECORD_FORM_FIELDS } from "@/components/app/record-form/fields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -33,6 +44,17 @@ import { useUser } from "@/providers/user-context"
 const STATUSES: CaseStatus[] = ["active", "resolved", "closed", "archived"]
 const LEVELS: AccessLevel[] = ["branch", "district", "country"]
 
+function setDeep(target: Record<string, unknown>, path: string, value: unknown) {
+  const segments = path.split(".")
+  let node = target
+  for (let index = 0; index < segments.length - 1; index++) {
+    const key = segments[index]
+    if (typeof node[key] !== "object" || node[key] === null) node[key] = {}
+    node = node[key] as Record<string, unknown>
+  }
+  node[segments[segments.length - 1]] = value
+}
+
 export default function RecordDetailPage({ params }: { params: { id: string } }) {
   const { user } = useUser()
   const queryClient = useQueryClient()
@@ -41,6 +63,10 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
   const [reason, setReason] = useState("")
   const [outcome, setOutcome] = useState("charged")
   const [outcomeNotes, setOutcomeNotes] = useState("")
+  const [reviewNote, setReviewNote] = useState("")
+  const [editing, setEditing] = useState(false)
+  const [editValues, setEditValues] = useState<FormValues>({})
+  const [reassignTo, setReassignTo] = useState("")
 
   const recordQuery = useQuery({
     queryKey: ["record", params.id],
@@ -58,14 +84,72 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
     enabled:
       user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR",
   })
+  const reviewsQuery = useQuery({
+    queryKey: ["reviews", params.id],
+    queryFn: () => listReviews(params.id),
+    enabled: !!recordQuery.data,
+  })
+  const branchesQuery = useQuery({
+    queryKey: ["branch-options", user.domain],
+    queryFn: () =>
+      branchOptions(user.domain === "traffic" ? "traffic" : "regular"),
+    enabled: user.role === "DISTRICT_MONITOR",
+  })
 
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
   const isLiaison = user.role === "COURT_LIAISON"
+  const canReview =
+    isMonitor || (recordQuery.data?.reportedBy === user.id)
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["record", params.id] })
     await queryClient.invalidateQueries({ queryKey: ["referrals", params.id] })
+    await queryClient.invalidateQueries({ queryKey: ["reviews", params.id] })
+  }
+
+  async function startEditing() {
+    try {
+      const payload = await getRecordData(params.id)
+      const record = recordQuery.data
+      if (!record) return
+      const values: FormValues = {}
+      for (const field of RECORD_FORM_FIELDS[record.recordType]) {
+        const raw = payload[field.path]
+        values[field.path] =
+          raw ?? (field.kind === "stringlist" || field.kind === "rowlist" ? [] : "")
+      }
+      setEditValues(values)
+      setEditing(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load payload.")
+    }
+  }
+
+  async function submitEdit(event: React.FormEvent) {
+    event.preventDefault()
+    const payload: Record<string, unknown> = {}
+    for (const [path, raw] of Object.entries(editValues)) {
+      if (typeof raw === "string") {
+        if (raw.trim() === "") continue
+        const numeric = ["age", "estimated_value", "fine_amount"].includes(path)
+          ? Number(raw)
+          : raw
+        setDeep(payload, path, numeric)
+      } else if (Array.isArray(raw)) {
+        if (raw.length > 0) setDeep(payload, path, raw)
+      } else if (raw != null) {
+        setDeep(payload, path, raw)
+      }
+    }
+    try {
+      await updateRecord({ id: params.id, data: payload })
+      toast.success("Case updated.")
+      setEditing(false)
+      await refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Update failed.")
+    }
   }
 
   if (recordQuery.isLoading) {
@@ -92,10 +176,20 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
 
   const record = recordQuery.data
   const meta = RECORD_TYPE_META[record.recordType]
+  const canEdit =
+    record.status === "active" &&
+    (record.reportedBy === user.id || isMonitor)
 
   return (
     <div className="flex flex-col gap-6">
-      <BackLink />
+      <div className="flex items-center justify-between print:hidden">
+        <BackLink />
+        <Button variant="ghost" size="sm" onClick={() => window.print()}>
+          <PrinterIcon data-icon="inline-start" />
+          Print
+        </Button>
+      </div>
+
       <header className="flex flex-col gap-1">
         <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
           {meta.label} · {record.district.replace(/_/g, " ")} · {record.branchName}
@@ -124,16 +218,144 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
       {record.attachments.length > 0 && (
         <Button
           variant="outline"
-          className="w-fit rounded-full"
+          className="w-fit rounded-full print:hidden"
           onClick={() => setShowAttachments(true)}
         >
           View {record.attachments.length} attachment{record.attachments.length === 1 ? "" : "s"}
         </Button>
       )}
 
+      {editing ? (
+        <form onSubmit={submitEdit} className="flex flex-col gap-4 rounded-3xl border bg-card p-4 print:hidden">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Edit case (active records only)
+          </h2>
+          <DynamicFields
+            fields={RECORD_FORM_FIELDS[record.recordType]}
+            values={editValues}
+            setValue={(path, value) =>
+              setEditValues((prev) => ({ ...prev, [path]: value }))
+            }
+            errors={{}}
+          />
+          <div className="flex gap-2">
+            <Button type="submit" size="sm">Save changes</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : (
+        canEdit && (
+          <div className="print:hidden">
+            <Button variant="outline" size="sm" onClick={startEditing}>
+              Edit case details
+            </Button>
+          </div>
+        )
+      )}
+
+      {record.recordType === "traffic_citation" &&
+        (record.reportedBy === user.id || isMonitor) && (
+          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Fine collection
+            </h2>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit"
+              onClick={async () => {
+                try {
+                  await markCitationPaid({ id: record.id, paid: true })
+                  toast.success("Fine marked paid.")
+                  await refresh()
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Failed.")
+                }
+              }}
+            >
+              Mark fine paid
+            </Button>
+          </section>
+        )}
+
+      {record.recordType === "vehicle_impoundment" && isMonitor && record.status === "active" && (
+        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Release
+          </h2>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            onClick={async () => {
+              try {
+                await changeStatus({
+                  id: record.id,
+                  status: "resolved",
+                  reason: "Released from impound.",
+                })
+                toast.success("Vehicle released.")
+                await refresh()
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Failed.")
+              }
+            }}
+          >
+            Mark released
+          </Button>
+        </section>
+      )}
+
+      <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Reviews & follow-up notes
+        </h2>
+        {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {reviewsQuery.data.map((review) => (
+              <li key={review.id} className="rounded-2xl border px-3 py-2 text-sm">
+                <p>{review.note}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {review.reviewerName} · {formatDateTime(review.createdAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">No reviews yet.</p>
+        )}
+        {canReview && (
+          <form
+            className="flex flex-col gap-2 print:hidden"
+            onSubmit={async (event) => {
+              event.preventDefault()
+              try {
+                await addReview({ recordId: record.id, note: reviewNote })
+                toast.success("Review added.")
+                setReviewNote("")
+                await refresh()
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Failed.")
+              }
+            }}
+          >
+            <Textarea
+              value={reviewNote}
+              onChange={(event) => setReviewNote(event.target.value)}
+              placeholder="Add a review note or follow-up…"
+            />
+            <Button type="submit" size="sm" className="w-fit" disabled={!reviewNote.trim()}>
+              Add review
+            </Button>
+          </form>
+        )}
+      </section>
+
       {isMonitor && (
         <>
-          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Status
             </h2>
@@ -159,7 +381,7 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
             </div>
           </section>
 
-          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Visibility
             </h2>
@@ -185,7 +407,47 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
             </div>
           </section>
 
-          <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
+          {user.role === "DISTRICT_MONITOR" && (
+            <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Reassign branch
+              </h2>
+              <form
+                className="flex gap-2"
+                onSubmit={async (event) => {
+                  event.preventDefault()
+                  if (!reassignTo) return
+                  try {
+                    await reassignRecord({ id: record.id, branchId: reassignTo })
+                    toast.success("Case reassigned.")
+                    setReassignTo("")
+                    await refresh()
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "Failed.")
+                  }
+                }}
+              >
+                <select
+                  value={reassignTo}
+                  onChange={(event) => setReassignTo(event.target.value)}
+                  className="h-9 flex-1 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
+                  aria-label="Target branch"
+                >
+                  <option value="">Select branch…</option>
+                  {(branchesQuery.data ?? [])
+                    .filter((branch) => branch.id !== record.branchId)
+                    .map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </option>
+                    ))}
+                </select>
+                <Button type="submit" size="sm">Move</Button>
+              </form>
+            </section>
+          )}
+
+          <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Court referrals
             </h2>
@@ -279,7 +541,7 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
       )}
 
       {user.role === "OFFICER" && record.reportedBy === user.id && (
-        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Visibility
           </h2>
@@ -352,7 +614,7 @@ function LiaisonOutcomeForm({
   if (!mine) return null
 
   return (
-    <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+    <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
         Case outcome
       </h2>

@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { listPolicies } from "@/lib/actions/insurance"
 import { insurerPlateLookup } from "@/lib/actions/access"
+import { isPolicyLive } from "@/lib/visibility"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -85,20 +86,23 @@ export function InsurerHome() {
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {data.map((policy) => (
-              <li
-                key={policy.id}
-                className="rounded-3xl border bg-card px-4 py-3"
-              >
-                <p className="text-[15px] font-medium">
-                  {policy.plateNumber} · {policy.policyNumber}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {policy.coverageType || "Standard cover"} · {policy.startDate} →{" "}
-                  {policy.endDate} · {policy.isActive ? "active" : "inactive"}
-                </p>
-              </li>
-            ))}
+            {data.map((policy) => {
+              const live = isPolicyLive(policy)
+              return (
+                <li
+                  key={policy.id}
+                  className="rounded-3xl border bg-card px-4 py-3"
+                >
+                  <p className="text-[15px] font-medium">
+                    {policy.plateNumber} · {policy.policyNumber}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {policy.coverageType || "Standard cover"} · {policy.startDate} →{" "}
+                    {policy.endDate} · {live ? "live" : "expired/lapsed"}
+                  </p>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>

@@ -6,6 +6,7 @@ import {
   boolean,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core"
 import { vehicles } from "./vehicles"
 import { organizations } from "./organizations"
@@ -52,5 +53,10 @@ export const insurancePolicies = pgTable(
     index("insurance_policies_insurer_id_idx").on(table.insurerId),
     index("insurance_policies_policy_number_idx").on(table.policyNumber),
     index("insurance_policies_is_active_idx").on(table.isActive),
+    // One policy number means one thing per vehicle — blocks duplicates.
+    uniqueIndex("insurance_policies_vehicle_policy_uidx").on(
+      table.vehicleId,
+      table.policyNumber
+    ),
   ]
 )
