@@ -1,0 +1,37 @@
+import { redirect } from "next/navigation"
+
+import { ChartAlertBanner } from "@/components/app/chart-alert-banner"
+import { FloatingNav } from "@/components/app/floating-nav"
+import { getConnectedPatients } from "@/lib/actions/access"
+import { getCurrentUser } from "@/lib/session"
+import { HomeViewProvider } from "@/providers/home-view-context"
+import { QueryProvider } from "@/providers/query-provider"
+import { UserProvider } from "@/providers/user-context"
+
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const user = await getCurrentUser()
+  if (!user) redirect("/sign-in")
+
+  const connectedPatients =
+    user.role === "DOCTOR" ? await getConnectedPatients() : []
+
+  return (
+    <QueryProvider>
+      <UserProvider user={user}>
+        <HomeViewProvider initialPatients={connectedPatients}>
+          <div className="min-h-svh pb-28 lg:pb-12">
+            <main className="mx-auto w-full max-w-2xl px-4 pt-4 sm:px-6 lg:pt-5">
+              <ChartAlertBanner />
+              {children}
+            </main>
+          </div>
+          <FloatingNav />
+        </HomeViewProvider>
+      </UserProvider>
+    </QueryProvider>
+  )
+}

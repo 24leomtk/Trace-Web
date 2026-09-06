@@ -1,0 +1,155 @@
+"use client"
+
+import { Suspense, useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import {
+  ArrowLeftIcon,
+  LoaderCircleIcon,
+} from "lucide-react"
+
+import { authClient } from "@/lib/auth-client"
+import { formatPhone } from "@/lib/format"
+import { Button } from "@/components/ui/button"
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp"
+import { Spinner } from "@/components/ui/spinner"
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<VerifySkeleton />}>
+      <VerifyForm />
+    </Suspense>
+  )
+}
+
+function VerifyForm() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const phone = searchParams.get("phone") ?? ""
+
+  const [code, setCode] = useState("")
+  const [status, setStatus] = useState<"idle" | "verifying" | "error">("idle")
+  const [resendIn, setResendIn] = useState(30)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const timer = setTimeout(() => setResendIn((seconds) => seconds - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendIn])
+
+  async function verify(submitted: string) {
+    setStatus("verifying")
+    const { error } = await authClient.phoneNumber.verify({
+      phoneNumber: phone,
+      code: submitted,
+    })
+    if (error || !phone) {
+      setStatus("error")
+      setCode("")
+      containerRef.current?.focus()
+      return
+    }
+    router.replace("/")
+    router.refresh()
+  }
+
+  async function resend() {
+    if (!phone) return
+    setResendIn(30)
+    await authClient.phoneNumber.sendOtp({ phoneNumber: phone })
+  }
+
+  function handleChange(value: string) {
+    setCode(value)
+    if (status === "error") setStatus("idle")
+    if (value.length === 6) void verify(value)
+  }
+
+  return (
+    <div className="flex w-full flex-col items-center gap-5">
+      <div className="text-center">
+        <h1 className="text-lg font-medium">Check your messages</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          We sent a 6-digit code to{" "}
+          <span className="font-medium text-foreground">
+            {phone ? formatPhone(phone) : "your phone"}
+          </span>
+          .
+        </p>
+      </div>
+
+      <div ref={containerRef} tabIndex={-1} className="outline-none">
+        <InputOTP
+          maxLength={6}
+          value={code}
+          onChange={handleChange}
+          disabled={status === "verifying"}
+          aria-label="One-time code"
+        >
+          <InputOTPGroup>
+            {[0, 1, 2, 3, 4, 5].map((index) => (
+              <InputOTPSlot key={index} index={index} className="size-10" />
+            ))}
+          </InputOTPGroup>
+        </InputOTP>
+      </div>
+
+      <p
+        aria-live="polite"
+        className="flex h-5 items-center justify-center gap-2 text-sm"
+      >
+        {status === "verifying" ? (
+          <span className="inline-flex items-center gap-2 text-muted-foreground">
+            <Spinner className="size-4" />
+            Verifying…
+          </span>
+        ) : status === "error" ? (
+          <span className="text-destructive">
+            That code didn&apos;t match, or this number isn&apos;t registered.
+            Contact your administrator.
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Code expires after 5 minutes
+          </span>
+        )}
+      </p>
+
+      <div className="flex flex-col items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={resendIn > 0 || status === "verifying"}
+          onClick={() => void resend()}
+          className="rounded-full text-muted-foreground"
+        >
+          {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+        </Button>
+        <Button
+          asChild
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-muted-foreground underline-offset-4"
+        >
+          <Link href="/sign-in">
+            <ArrowLeftIcon data-icon="inline-start" />
+            Use a different number
+          </Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function VerifySkeleton() {
+  return (
+    <div className="flex flex-col items-center gap-5">
+      <LoaderCircleIcon className="size-4 animate-spin text-muted-foreground" />
+    </div>
+  )
+}
