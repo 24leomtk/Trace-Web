@@ -34,12 +34,12 @@ export const Logo = ({
         width={dimension}
         height={dimension}
         className="transition-all duration-200 hover:scale-105 dark:invert"
-        alt="Chipatala Registry"
+        alt="TRACE"
       />
 
       {showName && (
         <span className={cn("font-bold tracking-tight", textSize)}>
-          Chipatala Registry
+          TRACE
         </span>
       )}
     </div>

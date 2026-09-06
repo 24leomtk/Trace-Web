@@ -17,9 +17,8 @@ import { courtCaseOutcomeEnum } from "./enums"
 // court_liaison; that's the only way a court_liaison can see it.
 //
 // Unlike records.access_level (branch/district/country, aimed at police
-// users), this is a one-off grant, closer in spirit to the access_grants
-// table in the medical-records reference schema — including being
-// time-boxed (expiresAt) rather than open-ended by default.
+// users), this is a one-off grant with a time-boxed expiry (expiresAt)
+// rather than open-ended access by default.
 //
 // Also doubles as where the case outcome gets recorded once known, closing
 // the loop on the referral rather than it being one-directional.

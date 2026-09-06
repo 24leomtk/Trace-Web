@@ -10,7 +10,7 @@ export type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
  *      PostgreSQL RLS policies actually apply (the default connection role is
  *      the schema owner, which bypasses RLS entirely), and
  *   2. sets `app.current_user_id` for the same transaction, feeding the
- *      `app_user_id()` / `app_can_read_patient()` policy helpers.
+  *      `app_user_id()` / `app_can_read_record()` policy helpers.
  *
  * Requires the connection role to be a member of `app_user` — see the
  * self-grant block at the top of db/sql/Functions&Policies.sql (and

@@ -39,7 +39,7 @@ export interface UploadCredentials {
 }
 
 export function buildUploadCredentials(
-  folder = "chipatala/records"
+  folder = "trace/records"
 ): UploadCredentials {
   if (!isCloudinaryConfigured()) {
     throw new Error(

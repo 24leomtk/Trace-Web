@@ -7,10 +7,10 @@ import { ActivityIcon, ShieldCheckIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const STATUS_MESSAGES = [
-  "Connecting to national health registry…",
+  "Connecting to TRACE…",
   "Securing authenticated session…",
-  "Synchronizing medical records…",
-  "Preparing clinical workspace…",
+  "Loading case workspace…",
+  "Preparing duty roster…",
 ]
 
 interface GlobalLoaderProps {
@@ -89,7 +89,7 @@ export function GlobalLoader({
           {/* Subtle pulse overlay inside icon */}
           <motion.img
             src="/logo.png"
-            alt="Chipatala Registry"
+            alt="TRACE"
             width={34}
             height={34}
             className="dark:invert object-contain drop-shadow-xs"
@@ -114,13 +114,13 @@ export function GlobalLoader({
       {/* Brand headers */}
       <div className="flex flex-col items-center gap-1.5 max-w-xs">
         <div className="flex items-center gap-1.5 font-bold tracking-tight text-foreground text-lg sm:text-xl">
-          <span>Chipatala Registry</span>
+          <span>TRACE</span>
         </div>
 
         {showBadge && (
           <div className="flex items-center gap-1 text-[11px] font-medium tracking-wide uppercase text-muted-foreground">
             <ShieldCheckIcon className="size-3 text-emerald-600 dark:text-emerald-400" />
-            <span>Malawi National Health Records</span>
+            <span>Tracking · Records · Case Evidence</span>
           </div>
         )}
       </div>

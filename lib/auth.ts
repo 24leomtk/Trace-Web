@@ -44,8 +44,8 @@ export const auth = betterAuth({
       // Malawian numbers only
       phoneNumberValidator: (phoneNumber) => /^\+265\d{9}$/.test(phoneNumber),
       // No signUpOnVerification: public self-registration is disabled.
-      // Only accounts provisioned by an administrator (single create or
-      // patient Excel import) can sign in — unknown numbers fail verification.
+      // Only accounts provisioned by a system administrator can sign in —
+      // unknown numbers fail verification.
       sendOTP: async ({ phoneNumber, code }) => {
         // No SMS gateway is wired up yet — the OTP is logged server-side so
         // development sign-in works. Plug an SMS provider in here.

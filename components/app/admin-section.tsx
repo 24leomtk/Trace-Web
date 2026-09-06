@@ -407,7 +407,7 @@ export function AdminToggle({
   )
 }
 
-/** "3 medical records" / "1 medical record" for delete-preview bullets. */
+/** "3 case records" / "1 case record" for delete-preview bullets. */
 export function pluralCount(count: number, singular: string, plural?: string): string {
   return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
 }

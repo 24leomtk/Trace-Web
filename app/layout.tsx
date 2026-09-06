@@ -7,9 +7,9 @@ import { THEME_COOKIE_KEY, isThemeValue } from "@/lib/theme-cookie"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 export const metadata = {
-  title: "Chipatala Registry",
+  title: "TRACE",
   description:
-    "Malawi's national medical records platform — one record per person, accessible everywhere.",
+    "Tracking, Records & Case Evidence — shared digital records for regular and traffic policing.",
 }
 
 export default async function RootLayout({

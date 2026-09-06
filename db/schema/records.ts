@@ -23,9 +23,8 @@ import {
 //
 // `data` stores the full typed payload for that record_type (see
 // validations/record.ts for each shape). The tables in coded.ts are
-// fast-lookup projections extracted from `data` via a DB trigger on INSERT —
-// same pattern as the medical-records system this schema was modeled on,
-// so listing/search screens never have to query into jsonb directly.
+// fast-lookup projections written alongside each record in app code, so
+// listing/search screens never have to query into jsonb directly.
 // ---------------------------------------------------------------------------
 
 export const records = pgTable(
