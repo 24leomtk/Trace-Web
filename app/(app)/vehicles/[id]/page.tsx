@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
 import { ArrowLeftIcon } from "lucide-react"
@@ -12,12 +12,13 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useUser } from "@/providers/user-context"
 
-export default function VehicleDetailPage({ params }: { params: { id: string } }) {
+export default function VehicleDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const { user } = useUser()
   const queryClient = useQueryClient()
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["vehicle", params.id],
-    queryFn: () => getVehicle(params.id),
+    queryKey: ["vehicle", id],
+    queryFn: () => getVehicle(id),
   })
   const [form, setForm] = useState({
     make: "",
@@ -65,7 +66,7 @@ export default function VehicleDetailPage({ params }: { params: { id: string } }
         ownerPhone: form.ownerPhone || vehicle.ownerPhone || "",
       })
       toast.success("Vehicle verified.")
-      await queryClient.invalidateQueries({ queryKey: ["vehicle", params.id] })
+      await queryClient.invalidateQueries({ queryKey: ["vehicle", id] })
       await queryClient.invalidateQueries({ queryKey: ["unverified-vehicles"] })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Verification failed.")

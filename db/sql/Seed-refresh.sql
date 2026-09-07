@@ -34,13 +34,17 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 1. Keep the seeded court referral live (+90 days)
+-- 1. Revive LAPSED pending referrals (+90 days) so demos keep working.
+--    Live grants (incl. the expires-in-2-days renewal demo) are untouched;
+--    revoked grants stay dead; decided outcomes are left alone.
 -- ---------------------------------------------------------------------------
 update public.court_case_access
 set expires_at = now() + interval '90 days',
     revoked_at = null
-where referred_by = 'seed_district_monitor'
-  and court_liaison_id = 'seed_liaison';
+where revoked_at is null
+  and outcome = 'pending'
+  and expires_at is not null
+  and expires_at <= now();
 
 -- ---------------------------------------------------------------------------
 -- 2. Recompute vehicle flags from active cases

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon } from "lucide-react"
@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useUser } from "@/providers/user-context"
 
-export default function PersonDetailPage({ params }: { params: { id: string } }) {
+export default function PersonDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const { user } = useUser()
   const queryClient = useQueryClient()
   const [mergeQuery, setMergeQuery] = useState("")
@@ -22,8 +23,8 @@ export default function PersonDetailPage({ params }: { params: { id: string } })
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["person", params.id],
-    queryFn: () => getPerson(params.id),
+    queryKey: ["person", id],
+    queryFn: () => getPerson(id),
   })
 
   if (isLoading) return <Skeleton className="h-32 w-full" />
@@ -42,16 +43,16 @@ export default function PersonDetailPage({ params }: { params: { id: string } })
     event.preventDefault()
     if (!mergeQuery.trim()) return
     setCandidates(
-      (await searchPersons(mergeQuery)).filter((row) => row.id !== params.id)
+      (await searchPersons(mergeQuery)).filter((row) => row.id !== id)
     )
   }
 
   async function merge(dropId: string) {
     try {
-      await mergePersons({ keepId: params.id, dropId })
+      await mergePersons({ keepId: id, dropId })
       toast.success("Profiles merged.")
       setCandidates([])
-      await queryClient.invalidateQueries({ queryKey: ["person", params.id] })
+      await queryClient.invalidateQueries({ queryKey: ["person", id] })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Merge failed.")
     }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon, PrinterIcon } from "lucide-react"
@@ -55,7 +55,8 @@ function setDeep(target: Record<string, unknown>, path: string, value: unknown) 
   node[segments[segments.length - 1]] = value
 }
 
-export default function RecordDetailPage({ params }: { params: { id: string } }) {
+export default function RecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const { user } = useUser()
   const queryClient = useQueryClient()
   const [showAttachments, setShowAttachments] = useState(false)
@@ -69,12 +70,12 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
   const [reassignTo, setReassignTo] = useState("")
 
   const recordQuery = useQuery({
-    queryKey: ["record", params.id],
-    queryFn: () => getRecord(params.id),
+    queryKey: ["record", id],
+    queryFn: () => getRecord(id),
   })
   const referralsQuery = useQuery({
-    queryKey: ["referrals", params.id],
-    queryFn: () => liveCourtReferralsFor(params.id),
+    queryKey: ["referrals", id],
+    queryFn: () => liveCourtReferralsFor(id),
     enabled:
       user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR",
   })
@@ -85,8 +86,8 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
       user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR",
   })
   const reviewsQuery = useQuery({
-    queryKey: ["reviews", params.id],
-    queryFn: () => listReviews(params.id),
+    queryKey: ["reviews", id],
+    queryFn: () => listReviews(id),
     enabled: !!recordQuery.data,
   })
   const branchesQuery = useQuery({
@@ -103,14 +104,14 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
     isMonitor || (recordQuery.data?.reportedBy === user.id)
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ["record", params.id] })
-    await queryClient.invalidateQueries({ queryKey: ["referrals", params.id] })
-    await queryClient.invalidateQueries({ queryKey: ["reviews", params.id] })
+    await queryClient.invalidateQueries({ queryKey: ["record", id] })
+    await queryClient.invalidateQueries({ queryKey: ["referrals", id] })
+    await queryClient.invalidateQueries({ queryKey: ["reviews", id] })
   }
 
   async function startEditing() {
     try {
-      const payload = await getRecordData(params.id)
+      const payload = await getRecordData(id)
       const record = recordQuery.data
       if (!record) return
       const values: FormValues = {}
@@ -143,7 +144,7 @@ export default function RecordDetailPage({ params }: { params: { id: string } })
       }
     }
     try {
-      await updateRecord({ id: params.id, data: payload })
+      await updateRecord({ id, data: payload })
       toast.success("Case updated.")
       setEditing(false)
       await refresh()

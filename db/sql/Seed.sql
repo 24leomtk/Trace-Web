@@ -1,3 +1,87 @@
+-- ============================================================================
+-- TRACE — DEVELOPMENT SEED DATA (fresh database)
+-- ----------------------------------------------------------------------------
+-- Run AFTER the Drizzle migration + db/sql/Functions&Policies.sql:
+--
+--   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/Seed.sql"
+--
+-- On a dirty database (previous-app schema still present), start clean:
+--
+--   psql "$DATABASE_URL" -v TRACE_RESET_OK=1 -f "db/sql/Reset-dev.sql"
+--   <run the Drizzle migration>
+--   psql "$DATABASE_URL" -f "db/sql/Functions&Policies.sql"
+--   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/Seed.sql"
+--
+-- The TRACE_SEED_OK flag is a production guard: without it the script
+-- refuses to run. NEVER seed a production database.
+--
+-- What it creates (fixed demo core + generated bulk + scenario fixtures):
+--   * 3 fixed branches + 9 generated (regular + traffic per district)
+--   * 3 fixed orgs + 2 fixture orgs (2nd court, 2nd insurer for isolation)
+--   * 10 fixed users (all 8 roles) + ~22 generated officers/monitors
+--   * persons/vehicles/records: fixed demos + ~40/~60/~120 generated,
+--     with coded projections and flag maintenance
+--   * policies, referrals (mixed outcomes), reviews, notifications, audit
+--   * fixtures: revoked + expires-in-2-days referrals, duplicate pair
+--     (merge test), multi-case vehicle, attachments, inactive account,
+--     2-case Rumphi district (suppression demo)
+-- Generated ids come from gen_random_uuid(); phones, plates, national IDs,
+-- and emails come from monotonic counters — no collisions, every run.
+-- ============================================================================
+
+begin;
+
+\if :{?TRACE_SEED_OK}
+\else
+\echo 'Refusing to seed: re-run with -v TRACE_SEED_OK=1. Never seed production.'
+\quit 1
+\endif
+
+-- ---------------------------------------------------------------------------
+-- Legacy cleanup: drop every table / enum left by the previous (medical
+-- records) app so a dirty database can't contaminate the TRACE seed.
+-- Only objects ABSENT from the new schema are dropped here; shared enums
+-- and drizzle-managed tables stay for the migration, which alters them.
+-- ---------------------------------------------------------------------------
+drop trigger if exists medical_records_populate_facts on public.medical_records;
+drop table if exists
+  public.medical_records,
+  public.diagnoses,
+  public.prescriptions,
+  public.immunizations,
+  public.immunization_schedule,
+  public.diagnosis_codes,
+  public.medication_codes,
+  public.immunization_codes,
+  public.standard_treatment_guidelines,
+  public.hospitals,
+  public.access_grants;
+drop type if exists
+  route,
+  urgency,
+  triage_level,
+  diagnosis_threat_level,
+  access_action_type;
+
+truncate public.actions,
+  public.notifications,
+  public.idempotency_keys,
+  public.case_reviews,
+  public.court_case_access,
+  public.missing_person_cases,
+  public.wanted_person_cases,
+  public.vehicle_cases,
+  public.accidents,
+  public.accident_vehicles,
+  public.traffic_citations,
+  public.record_attachments,
+  public.insurance_policies,
+  public.records,
+  public.vehicles,
+  public.persons_of_interest,
+  public.users,
+  public.branches,
+  public.organizations cascade;
 
 -- ---------------------------------------------------------------------------
 -- Branches
@@ -580,5 +664,158 @@ begin
 end $$;
 
 drop function if exists pg_temp.pick(anyarray);
+
+-- ============================================================================
+-- SCENARIO FIXTURES (fixed ids — deterministic test scripts per role)
+-- ----------------------------------------------------------------------------
+-- These rows exist so every platform flow can be tested by hand:
+--   * isolation: a 2nd court + 2nd insurer prove org-scoping
+--   * lifecycle: a revoked referral, an expires-in-2-days referral, an
+--     inactive account, an expired-but-outcomed referral (in bulk block)
+--   * merge: a staged duplicate person pair (same national ID, two rows)
+--   * visibility: a 2-case vehicle, district flow, attachments on all parents
+--   * analytics: Rumphi district holds exactly 2 cases (< 5 → suppressed)
+-- ============================================================================
+
+insert into public.organizations (id, name, org_type, district, contact_phone, contact_email) values
+  ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'Lilongwe Magistrate Court', 'court', 'lilongwe', '+265991000104', 'registry@lilongwe-court.mw'),
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'Old Mutual', 'insurer', null, '+265991000105', 'motor@oldmutual.mw');
+
+insert into public.branches (id, name, domain, district, location, contact_phone) values
+  ('44444444-4444-4444-4444-444444444444', 'Rumphi Central', 'regular', 'rumphi', 'Rumphi town', '+265991000044');
+
+insert into public.users (
+  id, name, email, email_verified, phone_number, phone_number_verified,
+  badge_number, role, domain, branch_id, district, organization_id, is_active
+) values
+  ('seed_district_traffic', 'Chrissie Manda',
+   'chrissie.manda@trace.mw', false, '+265990000011', true,
+   'MPT-2018-0061', 'district_monitor', 'traffic', null, 'lilongwe', null, true),
+  ('seed_country_regular', 'Francis Dube',
+   'francis.dube@trace.mw', false, '+265990000012', true,
+   'MPS-2010-0004', 'country_monitor', 'regular', null, null, null, true),
+  ('seed_liaison_two', 'Zione Maloya',
+   'zione.maloya@trace.mw', false, '+265990000013', true,
+   null, 'court_liaison', null, null, null, 'dddddddd-dddd-dddd-dddd-dddddddddddd', true),
+  ('seed_insurer_two', 'Happy Mhone',
+   'happy.mhone@trace.mw', false, '+265990000014', true,
+   null, 'insurance_portal_user', null, null, null, 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', true),
+  ('seed_inactive_officer', 'Chifundo Loka',
+   'chifundo.loka@trace.mw', false, '+265990000015', true,
+   'MPS-2024-0310', 'officer', 'regular', '11111111-1111-1111-1111-111111111111', null, null, false),
+  ('seed_officer_rumphi', 'Tawonga Ngwira',
+   'tawonga.ngwira@trace.mw', false, '+265990000016', true,
+   'MPS-2023-0144', 'officer', 'regular', '44444444-4444-4444-4444-444444444444', null, null, true);
+
+-- Staged duplicate pair for merge testing (same national ID, two rows)
+insert into public.persons_of_interest (id, full_name, national_id, sex, home_district) values
+  ('d0000000-0000-0000-0000-000000000101', 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe'),
+  ('d0000000-0000-0000-0000-000000000102', 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe');
+
+-- Multi-case vehicle: two ACTIVE offenses on one plate
+insert into public.vehicles (id, plate_number, make, model, color, is_flagged, is_verified) values
+  ('e0000000-0000-0000-0000-000000000101', 'LL 7777', 'Toyota', 'Hilux', 'White', true, true);
+
+insert into public.records
+  (id, record_type, domain, reported_by, branch_id, district,
+   vehicle_id, person_id, access_level, status, data, created_at) values
+  ('f0000000-0000-0000-0000-000000000101', 'vehicle_offense', 'traffic',
+   'seed_officer_traffic', '22222222-2222-2222-2222-222222222222', 'lilongwe',
+   'e0000000-0000-0000-0000-000000000101', null, 'branch', 'active',
+   jsonb_build_object('plate_number', 'LL 7777', 'offense_type', 'Overloading',
+     'description', 'First stop: overloaded pickup.', 'location', 'M1, Lilongwe',
+     'date_occurred', (now() - interval '4 days')::date::text),
+   now() - interval '4 days'),
+  ('f0000000-0000-0000-0000-000000000102', 'vehicle_offense', 'traffic',
+   'seed_officer_traffic', '22222222-2222-2222-2222-222222222222', 'lilongwe',
+   'e0000000-0000-0000-0000-000000000101', null, 'district', 'active',
+   jsonb_build_object('plate_number', 'LL 7777', 'offense_type', 'Speeding',
+     'description', 'Second stop: speeding, same plate.', 'location', 'M1, Lilongwe',
+     'date_occurred', (now() - interval '1 day')::date::text),
+   now() - interval '1 day');
+
+insert into public.vehicle_cases (record_id, vehicle_id, case_type, plate_number, district, status) values
+  ('f0000000-0000-0000-0000-000000000101', 'e0000000-0000-0000-0000-000000000101', 'vehicle_offense', 'LL 7777', 'lilongwe', 'active'),
+  ('f0000000-0000-0000-0000-000000000102', 'e0000000-0000-0000-0000-000000000101', 'vehicle_offense', 'LL 7777', 'lilongwe', 'active');
+
+-- Rumphi suppression demo: exactly 2 cases (< 5 → withheld from breakdowns)
+insert into public.records
+  (id, record_type, domain, reported_by, branch_id, district,
+   vehicle_id, person_id, access_level, status, data, created_at) values
+  ('f0000000-0000-0000-0000-000000000103', 'crime_incident', 'regular',
+   'seed_officer_rumphi', '44444444-4444-4444-4444-444444444444', 'rumphi',
+   null, null, 'branch', 'active',
+   jsonb_build_object('incident_type', 'Burglary', 'description', 'Shop break-in overnight.',
+     'location', 'Rumphi market', 'date_occurred', (now() - interval '3 days')::date::text,
+     'victims', jsonb_build_array('Shop owner'), 'witnesses', jsonb_build_array()),
+   now() - interval '3 days'),
+  ('f0000000-0000-0000-0000-000000000104', 'stolen_property', 'regular',
+   'seed_officer_rumphi', '44444444-4444-4444-4444-444444444444', 'rumphi',
+   null, null, 'branch', 'active',
+   jsonb_build_object('item_description', 'Honda motorbike', 'category', 'Vehicle',
+     'location_stolen', 'Rumphi bus depot', 'date_stolen', (now() - interval '2 days')::date::text,
+     'owner_name', 'Test Owner', 'owner_contact', '+265995551111'),
+   now() - interval '2 days');
+
+-- Isolation fixtures: 2nd-court referral (expires in 2 days → renew demo)
+insert into public.records
+  (id, record_type, domain, reported_by, branch_id, district,
+   vehicle_id, person_id, access_level, status, data, created_at) values
+  ('f0000000-0000-0000-0000-000000000105', 'crime_incident', 'regular',
+   'seed_officer_blantyre', '33333333-3333-3333-3333-333333333333', 'blantyre',
+   null, null, 'district', 'active',
+   jsonb_build_object('incident_type', 'Fraud', 'description', 'Mobile-money fraud ring under investigation.',
+     'location', 'Blantyre CBD', 'date_occurred', (now() - interval '5 days')::date::text,
+     'victims', jsonb_build_array('Three vendors'), 'witnesses', jsonb_build_array()),
+   now() - interval '5 days');
+
+insert into public.court_case_access
+  (record_id, court_liaison_id, referred_by, reason, expires_at, outcome) values
+  ('f0000000-0000-0000-0000-000000000105', 'seed_liaison_two', 'seed_district_monitor',
+   'Referred for prosecution — fraud docket FD-2026-031.',
+   now() + interval '2 days', 'pending'),
+  -- revoked referral: proves revoked grants stay dead
+  ('f0000000-0000-0000-0000-000000000001', 'seed_liaison', 'seed_district_monitor',
+   'Referred in error — revoked same day.',
+   now() + interval '90 days', 'pending');
+
+update public.court_case_access set revoked_at = now() - interval '1 day'
+where record_id = 'f0000000-0000-0000-0000-000000000001'
+  and court_liaison_id = 'seed_liaison'
+  and reason = 'Referred in error — revoked same day.';
+
+-- 2nd insurer policy on the FLAGGED vehicle (insurer lookup demo)
+insert into public.insurance_policies
+  (vehicle_id, insurer_id, policy_number, coverage_type,
+   start_date, end_date, is_active, entered_by) values
+  ('e0000000-0000-0000-0000-000000000002', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+   'OM-M-2026-00091', 'third_party',
+   (now() - interval '30 days')::date, (now() + interval '335 days')::date,
+   true, 'seed_insurer_two');
+
+-- Attachments on every parent kind (deterministic picsum seeds)
+insert into public.record_attachments
+  (record_id, person_id, vehicle_id, url, storage_path, file_type, uploaded_by) values
+  ('f0000000-0000-0000-0000-000000000002', null, null,
+   'https://picsum.photos/seed/trace-scene/800/600', 'seed/scene.jpg', 'image/jpeg', 'seed_officer_traffic'),
+  ('f0000000-0000-0000-0000-000000000101', null, null,
+   'https://picsum.photos/seed/trace-stop/800/600', 'seed/stop.jpg', 'image/jpeg', 'seed_officer_traffic'),
+  (null, 'd0000000-0000-0000-0000-000000000001', null,
+   'https://picsum.photos/seed/trace-mugshot/400/400', 'seed/mugshot.jpg', 'image/jpeg', 'seed_officer_regular'),
+  (null, null, 'e0000000-0000-0000-0000-000000000001',
+   'https://picsum.photos/seed/trace-plate/800/600', 'seed/plate.jpg', 'image/jpeg', 'seed_registrar');
+
+-- Reviews + notifications topping up the new fixtures
+insert into public.case_reviews (record_id, reviewer_id, note) values
+  ('f0000000-0000-0000-0000-000000000101', 'seed_district_monitor', 'Same plate as yesterday — treat as repeat offender.'),
+  ('f0000000-0000-0000-0000-000000000105', 'seed_district_monitor', 'Fraud docket complete; with the court now.');
+
+insert into public.notifications (user_id, type, record_id, message) values
+  ('seed_liaison_two', 'referral_received', 'f0000000-0000-0000-0000-000000000105', 'New referral from Grace Kachale — expires in 2 days.'),
+  ('seed_officer_traffic', 'review_added', 'f0000000-0000-0000-0000-000000000101', 'Grace Kachale added a review note on your case.');
+
+insert into public.actions (actor_id, action_type, record_id, reason) values
+  ('seed_district_monitor', 'court_case_referred', 'f0000000-0000-0000-0000-000000000105', 'Fixture: 2nd-court referral.'),
+  ('seed_district_monitor', 'court_access_renewed', 'f0000000-0000-0000-0000-000000000001', 'Fixture: referral revoked early.');
 
 commit;

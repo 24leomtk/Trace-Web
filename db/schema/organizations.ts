@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core"
 import { organizationTypeEnum, districtEnum } from "./enums"
 
 // ---------------------------------------------------------------------------
@@ -31,5 +31,7 @@ export const organizations = pgTable(
   (table) => [
     index("organizations_org_type_idx").on(table.orgType),
     index("organizations_district_idx").on(table.district),
+    // Natural key: seeds upsert on this.
+    uniqueIndex("organizations_name_uidx").on(table.name),
   ]
 )
