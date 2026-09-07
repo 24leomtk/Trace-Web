@@ -5,6 +5,13 @@
 --
 --   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/Seed.sql"
 --
+-- On a dirty database (previous-app schema still present), start clean:
+--
+--   psql "$DATABASE_URL" -v TRACE_RESET_OK=1 -f "db/sql/Reset-dev.sql"
+--   <run the Drizzle migration>
+--   psql "$DATABASE_URL" -f "db/sql/Functions&Policies.sql"
+--   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/Seed.sql"
+--
 -- The TRACE_SEED_OK flag is a production guard: without it the script
 -- refuses to run. NEVER seed a production database.
 --
@@ -26,6 +33,36 @@ begin;
 \echo 'Refusing to seed: re-run with -v TRACE_SEED_OK=1. Never seed production.'
 \quit 1
 \endif
+
+-- ---------------------------------------------------------------------------
+-- Legacy cleanup: drop every table / enum left by the previous (medical
+-- records) app so a dirty database can't contaminate the TRACE seed.
+-- Only objects ABSENT from the new schema are dropped here:
+--   * shared enums (user_role, district, sex, record_type) and every
+--     drizzle-managed table stay untouched for the Drizzle migration,
+--     which alters them in place.
+-- Orphaned rows in the reshaped record_attachments table are wiped by the
+-- TRUNCATE below like everything else.
+-- ---------------------------------------------------------------------------
+drop trigger if exists medical_records_populate_facts on public.medical_records;
+drop table if exists
+  public.medical_records,
+  public.diagnoses,
+  public.prescriptions,
+  public.immunizations,
+  public.immunization_schedule,
+  public.diagnosis_codes,
+  public.medication_codes,
+  public.immunization_codes,
+  public.standard_treatment_guidelines,
+  public.hospitals,
+  public.access_grants;
+drop type if exists
+  route,
+  urgency,
+  triage_level,
+  diagnosis_threat_level,
+  access_action_type;
 
 truncate public.actions,
   public.notifications,
