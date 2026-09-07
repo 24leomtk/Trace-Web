@@ -34,11 +34,12 @@ Keep it in sync with `lib/types.ts` and `validations/record.ts`, the
 server-side sources of truth.
 
 **Request types** — `RecordsQuery`, `CreateRecordBody` (+ `AttachmentInput`),
-`SafetyLookupBody`
+`SafetyLookupBody`, `NotificationsQuery`, `MarkNotificationsReadBody`
 
 **Response types** — `User`, `RecordsPage` (= `Page<TraceRecord>`),
-`CreateRecordResponse`, `UploadCredentials`, `WantedCheckResult`,
-`FlagCheckResult`, `AnalyticsEntry`, `HealthResponse`, `OkResponse`
+`TraceRecord`, `CreateRecordResponse`, `UploadCredentials`, `WantedCheckResult`,
+`FlagCheckResult`, `NotificationList`, `NotificationItem`, `AnalyticsEntry`,
+`HealthResponse`, `OkResponse`
 
 **Errors** — `ApiErrorBody`
 
@@ -81,6 +82,7 @@ either form.
 | Method | Path       | Who                     | Description                        |
 | ------ | ---------- | ----------------------- | ---------------------------------- |
 | `GET`  | `/records` | officer / monitor       | Paginated case feed (own scope)    |
+| `GET`  | `/records/{id}` | officer / monitor / referred liaison | Single case (visibility-gated) |
 | `POST` | `/records` | officer / monitor       | File a case in the caller's domain |
 
 Query — `RecordsQuery`
@@ -117,6 +119,24 @@ monitors pass `branchId` in scope. The typed `data` payload is validated
 against `recordSchemas[type]` — all 10 payloads are typed in
 `mobile-api-types.ts` (`MissingPersonData`, `WantedPersonData`, …).
 
+**Offline-first filing (idempotency).** Field connectivity drops mid-request,
+so `POST /records` accepts an `Idempotency-Key: <uuid>` header. The first
+request stores its response; retries with the same key get the original
+response back (`{ …, "idempotentReplay": true }`) instead of filing twice.
+Generate one UUID per filing attempt on the device and reuse it across
+retries of that attempt only.
+
+### Notifications
+
+| Method | Path              | Who  | Description                                    |
+| ------ | ----------------- | ---- | ---------------------------------------------- |
+| `GET`  | `/notifications`  | any  | `{ unread, items }` — referrals, outcomes, status changes, reviews |
+| `POST` | `/notifications`  | any  | Mark read: `{ "id" }` for one, `{ "all": true }` for all |
+
+Poll `GET /notifications` on app foreground (or before showing a badge) —
+referral recipients and filing officers learn about outcomes and status
+changes here instead of out-of-band.
+
 ### Safety lookups
 
 | Method | Path        | Who                        | Description                              |
@@ -133,6 +153,10 @@ Body — `SafetyLookupBody`
 - `wanted` (police only) → `WantedCheckResult` (`{ wanted, dangerLevel?, district? }`).
 - `plate` → `FlagCheckResult` (`{ flagged }`). Insurer callers get the same
   boolean-only answer via their scoped path. Never returns case detail.
+
+Lookups are throttled per user (>20/min or >300/hr → `403` with a slow-down
+message) and every attempt is audit-logged — surface the message, don't
+auto-retry in a loop.
 
 ### Analytics
 

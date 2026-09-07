@@ -2,7 +2,6 @@
 
 import { and, desc, eq } from "drizzle-orm"
 
-import { db } from "@/db"
 import { notifications } from "@/db/schema"
 import { withUserCtx, type DbTransaction } from "@/lib/db-context"
 import { requireUser } from "@/lib/session"

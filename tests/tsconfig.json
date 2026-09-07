@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "..",
+    "types": ["node"],
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": ["../lib/visibility.ts", "./visibility.test.ts"]
+}

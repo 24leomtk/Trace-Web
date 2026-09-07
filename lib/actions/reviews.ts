@@ -5,7 +5,8 @@ import { and, desc, eq } from "drizzle-orm"
 import { caseReviews, courtCaseAccess, records, users } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
 import { writeAuditTx } from "@/lib/server/audit"
-import { canViewRecord, getViewerScope } from "@/lib/actions/records"
+import { getViewerScope } from "@/lib/actions/records"
+import { canViewRecord } from "@/lib/visibility"
 import { notifyUser } from "@/lib/actions/notifications"
 
 export interface ReviewItem {

@@ -24,7 +24,8 @@ import {
   courtOutcomeSchema,
   courtReferralSchema,
 } from "@/validations/admin"
-import { canViewRecord, getViewerScope } from "@/lib/actions/records"
+import { getViewerScope } from "@/lib/actions/records"
+import { canViewRecord } from "@/lib/visibility"
 import { notifyUser } from "@/lib/actions/notifications"
 
 // ---------------------------------------------------------------------------
@@ -335,7 +336,7 @@ export async function checkWantedByNationalId(
         return {
           wanted: true,
           dangerLevel: hit.dangerLevel ?? undefined,
-          district: hit.district,
+          district: hit.district ?? undefined,
         }
       }
     }

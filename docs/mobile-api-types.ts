@@ -284,6 +284,31 @@ export interface AnalyticsEntry {
   severity: "info" | "warning" | "critical"
 }
 
+// ── Notifications ────────────────────────────────────────────────────────
+
+/** `GET /notifications` response. */
+export interface NotificationList {
+  unread: number
+  items: NotificationItem[]
+}
+
+export interface NotificationItem {
+  id: string
+  type: string
+  recordId: string | null
+  message: string
+  isRead: boolean
+  createdAt: string
+}
+
+/** `GET /notifications` query. */
+export interface NotificationsQuery {
+  limit?: number
+}
+
+/** `POST /notifications` body. */
+export type MarkNotificationsReadBody = { id: string } | { all: true }
+
 // ── Misc ───────────────────────────────────────────────────────────────────
 
 export interface UploadCredentials {

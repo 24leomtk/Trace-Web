@@ -82,7 +82,7 @@ export const POST = route(async (request: Request) => {
       )
       .limit(1)
     if (stored) {
-      return { ...stored.response, idempotentReplay: true }
+      return { ...(stored.response as Record<string, unknown>), idempotentReplay: true }
     }
   }
 

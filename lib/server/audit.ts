@@ -18,6 +18,7 @@ export type AuditActionType =
   | "court_access_expired"
   | "policy_entered"
   | "policy_updated"
+  | "review_added"
   | "insurer_flag_lookup"
   | "vehicle_registered"
   | "user_provisioned"

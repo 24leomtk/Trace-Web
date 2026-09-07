@@ -193,16 +193,24 @@ alter table public.accidents enable row level security;
 alter table public.accident_vehicles enable row level security;
 alter table public.traffic_citations enable row level security;
 alter table public.actions enable row level security;
+alter table public.case_reviews enable row level security;
+alter table public.notifications enable row level security;
+alter table public.idempotency_keys enable row level security;
 
--- users: own row + staff directory (names on records/referrals); writes are
--- system-admin-only (plus self profile reads). App enforces scope columns.
+-- users: own row always; system admin + auditor see all; police see the
+-- staff directory (names on records/referrals); external roles (court /
+-- insurer / registry) see only themselves — no directory harvesting.
 drop policy if exists users_self on public.users;
 create policy users_self on public.users for select to app_user
   using (
     id = public.app_user_id()
     or public.app_is_system_admin()
-    or role in ('officer', 'district_monitor', 'country_monitor',
-                'court_liaison', 'insurance_portal_user', 'vehicle_registrar')
+    or public.app_is_auditor()
+    or (
+      public.app_is_police()
+      and role in ('officer', 'district_monitor', 'country_monitor',
+                   'court_liaison', 'insurance_portal_user', 'vehicle_registrar')
+    )
   );
 drop policy if exists users_admin_write on public.users;
 create policy users_admin_write on public.users for all to app_user
@@ -226,23 +234,35 @@ create policy organizations_admin_write on public.organizations for all to app_u
   using (public.app_is_system_admin())
   with check (public.app_is_system_admin());
 
--- records: the visibility tiers above. Writes are police-only (app checks
--- filer-vs-monitor + active-status rules before issuing UPDATE).
+-- records: the visibility tiers above. INSERT is reporter-only; UPDATE is
+-- filer-or-monitor (officers can only touch what they filed — enforced here,
+-- not just in app code).
 drop policy if exists records_read on public.records;
 create policy records_read on public.records for select to app_user
   using (public.app_can_read_record(records));
 drop policy if exists records_police_insert on public.records;
 create policy records_police_insert on public.records for insert to app_user
   with check (reported_by = public.app_user_id() and public.app_is_police());
-drop policy if exists records_police_update on public.records;
-create policy records_police_update on public.records for update to app_user
+drop policy if exists records_filer_update on public.records;
+create policy records_filer_update on public.records for update to app_user
   using (
     public.app_can_read_record(records)
-    and (reported_by = public.app_user_id() or public.app_is_monitor())
+    and reported_by = public.app_user_id()
   )
   with check (
     public.app_can_read_record(records)
-    and (reported_by = public.app_user_id() or public.app_is_monitor())
+    and reported_by = public.app_user_id()
+  );
+drop policy if exists records_monitor_update on public.records;
+create policy records_monitor_update on public.records for update to app_user
+  using (
+    public.app_can_read_record(records)
+    and public.app_is_monitor()
+    and reported_by <> public.app_user_id()
+  )
+  with check (
+    public.app_can_read_record(records)
+    and public.app_is_monitor()
   );
 
 -- attachments inherit the parent record's visibility; uploaders see own rows.
@@ -364,6 +384,54 @@ drop policy if exists citations_write on public.traffic_citations;
 create policy citations_write on public.traffic_citations for all to app_user
   using (public.app_is_police()) with check (public.app_is_police());
 
+-- case_reviews: readable wherever the parent case is readable; written by
+-- the reviewer (monitors + filing officers — app checks which).
+drop policy if exists reviews_read on public.case_reviews;
+create policy reviews_read on public.case_reviews for select to app_user
+  using (
+    exists (
+      select 1 from public.records r
+      where r.id = record_id and public.app_can_read_record(r)
+    )
+  );
+drop policy if exists reviews_write on public.case_reviews;
+create policy reviews_write on public.case_reviews for insert to app_user
+  with check (
+    reviewer_id = public.app_user_id()
+    and public.app_is_police()
+    and exists (
+      select 1 from public.records r
+      where r.id = record_id and public.app_can_read_record(r)
+    )
+  );
+
+-- notifications: each user reads their own; inserts come from police /
+-- liaison / system actors notifying someone in scope (app picks recipients).
+drop policy if exists notifications_read on public.notifications;
+create policy notifications_read on public.notifications for select to app_user
+  using (
+    user_id = public.app_user_id()
+    or public.app_is_system_admin()
+    or public.app_is_auditor()
+  );
+drop policy if exists notifications_write on public.notifications;
+create policy notifications_write on public.notifications for insert to app_user
+  with check (
+    public.app_is_police()
+    or public.app_my_role() = 'court_liaison'
+    or public.app_is_system_admin()
+  );
+drop policy if exists notifications_mark_read on public.notifications;
+create policy notifications_mark_read on public.notifications for update to app_user
+  using (user_id = public.app_user_id())
+  with check (user_id = public.app_user_id());
+
+-- idempotency_keys: mobile retry cache, one row per (key, user).
+drop policy if exists idempotency_own on public.idempotency_keys;
+create policy idempotency_own on public.idempotency_keys for all to app_user
+  using (user_id = public.app_user_id())
+  with check (user_id = public.app_user_id());
+
 -- actions (append-only audit log): own entries + monitors/admin/auditor.
 -- District scoping for district monitors is applied in app code.
 drop policy if exists actions_read on public.actions;
@@ -388,9 +456,52 @@ revoke delete on public.missing_person_cases,
   public.accident_vehicles,
   public.traffic_citations from app_user;
 
+-- ── Audit hash chain (tamper evidence for the compliance role) ────────────
+-- DB-side BEFORE trigger, so app code needs no changes: every row links to
+-- the previous entry_hash. Verification = recompute the chain offline.
+-- (Concurrent inserts may interleave prev_hash links; the chain still proves
+-- no row was later modified or deleted, which is the property that matters.)
+alter table public.actions add column if not exists prev_hash text;
+alter table public.actions add column if not exists entry_hash text;
+
+create or replace function public.actions_hash_chain()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_prev text;
+begin
+  select entry_hash into v_prev
+    from public.actions
+   order by created_at desc
+   limit 1;
+  new.prev_hash := v_prev;
+  new.entry_hash := encode(digest(
+    coalesce(v_prev, '') || '|' ||
+    new.actor_id || '|' ||
+    new.action_type::text || '|' ||
+    coalesce(new.record_id::text, '') || '|' ||
+    coalesce(new.vehicle_id::text, '') || '|' ||
+    coalesce(new.reason, '') || '|' ||
+    new.created_at::text,
+    'sha256'
+  ), 'hex');
+  return new;
+end;
+$$;
+
+drop trigger if exists actions_hash_chain on public.actions;
+create trigger actions_hash_chain
+before insert on public.actions
+for each row execute function public.actions_hash_chain();
+
 -- ── Scheduled jobs (pg_cron; guarded so the file still runs without it) ──
 -- 1. Expire lapsed court grants into an audit row (reads stay blocked by the
 --    expires_at check itself; this just records the lapse visibly).
+-- 2. Flip lapsed insurance policies to is_active = false + audit it, so the
+--    portal's "live" state never depends on every reader checking dates.
 do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
@@ -411,8 +522,25 @@ begin
               and a.created_at > g.expires_at
           )$$
     );
+    perform cron.schedule(
+      'trace-expire-policies',
+      '0 1 * * *',
+      $$with lapsed as (
+          update public.insurance_policies
+             set is_active = false, updated_at = now()
+           where is_active
+             and end_date < current_date
+          returning vehicle_id, policy_number
+        )
+        insert into public.actions (actor_id, action_type, vehicle_id, reason)
+        select p.entered_by, 'policy_updated', l.vehicle_id,
+               'Policy ' || l.policy_number || ' lapsed automatically.'
+        from lapsed l
+        join public.insurance_policies p
+          on p.vehicle_id = l.vehicle_id and p.policy_number = l.policy_number$$
+    );
   else
-    raise warning 'pg_cron not installed — court-grant expiry sweep not scheduled.';
+    raise warning 'pg_cron not installed — expiry sweeps not scheduled.';
   end if;
 exception when undefined_function or insufficient_privilege then
   raise warning 'Could not schedule pg_cron jobs (missing extension or rights).';
