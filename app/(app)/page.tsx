@@ -11,8 +11,9 @@ import { RegistrarHome } from "@/components/app/registrar-home"
 export default async function HomePage() {
   const user = await getCurrentUser()
   if (!user) redirect("/sign-in")
+  const role = user.role
 
-  switch (user.role) {
+  switch (role) {
     case "OFFICER":
     case "DISTRICT_MONITOR":
     case "COUNTRY_MONITOR":

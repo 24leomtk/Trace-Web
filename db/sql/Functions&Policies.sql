@@ -34,7 +34,7 @@ begin
        or not pg_has_role(current_user, 'app_user', 'usage') then
       begin
         execute format(
-          'grant app_user to %I with set true inherit true',
+          'grant app_user to %I with inherit true, set true',
           current_user
         );
       exception when insufficient_privilege then
