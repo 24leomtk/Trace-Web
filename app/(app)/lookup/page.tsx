@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { ScanLineIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -9,11 +10,14 @@ import {
   checkWantedByNationalId,
   insurerPlateLookup,
 } from "@/lib/actions/access"
-import { searchPersons } from "@/lib/actions/persons"
-import { searchVehicles } from "@/lib/actions/vehicles"
+import { unifiedSearch } from "@/lib/actions/search"
+import { normalizePlate } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ScanSheet } from "@/components/app/scan-sheet"
 import { useUser } from "@/providers/user-context"
+
+type ScanTarget = "plate" | "nationalId" | null
 
 export default function LookupPage() {
   const { user } = useUser()
@@ -28,8 +32,20 @@ export default function LookupPage() {
   const [plate, setPlate] = useState("")
   const [flagged, setFlagged] = useState<boolean | null>(null)
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<{ vehicles: Awaited<ReturnType<typeof searchVehicles>>; persons: Awaited<ReturnType<typeof searchPersons>> } | null>(null)
+  const [results, setResults] = useState<Awaited<ReturnType<typeof unifiedSearch>> | null>(null)
   const [busy, setBusy] = useState(false)
+  const [scanTarget, setScanTarget] = useState<ScanTarget>(null)
+
+  function handleScanned(raw: string) {
+    if (scanTarget === "plate") {
+      setPlate(normalizePlate(raw))
+      toast.success("Plate filled from scan — verify before checking.")
+    } else if (scanTarget === "nationalId") {
+      setNationalId(raw.trim())
+      toast.success("ID filled from scan — verify before checking.")
+    }
+    setScanTarget(null)
+  }
 
   async function runWantedCheck(event: React.FormEvent) {
     event.preventDefault()
@@ -46,12 +62,14 @@ export default function LookupPage() {
 
   async function runFlagCheck(event: React.FormEvent) {
     event.preventDefault()
-    if (!plate.trim()) return
+    const normalized = normalizePlate(plate)
+    if (!normalized) return
+    setPlate(normalized)
     setBusy(true)
     try {
       const result = isInsurer
-        ? await insurerPlateLookup(plate)
-        : await checkPlateFlag(plate)
+        ? await insurerPlateLookup(normalized)
+        : await checkPlateFlag(normalized)
       setFlagged(result.flagged)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Check failed.")
@@ -65,11 +83,7 @@ export default function LookupPage() {
     if (!query.trim()) return
     setBusy(true)
     try {
-      const [vehicles, persons] = await Promise.all([
-        searchVehicles(query),
-        searchPersons(query),
-      ])
-      setResults({ vehicles, persons })
+      setResults(await unifiedSearch(query))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Search failed.")
     } finally {
@@ -82,7 +96,9 @@ export default function LookupPage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold">Lookups</h1>
         <p className="text-sm text-muted-foreground">
-          Read-only safety checks. Minimal detail, always logged.
+          Roadside mode: enter → check → act. Read-only safety checks with
+          minimal detail, always logged. Slow down if asked to retry — checks
+          are rate-limited.
         </p>
       </header>
 
@@ -93,14 +109,31 @@ export default function LookupPage() {
           </h2>
           <form onSubmit={runWantedCheck} className="flex gap-2">
             <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} placeholder="National ID" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Scan ID barcode"
+              title="Scan ID barcode"
+              onClick={() => setScanTarget("nationalId")}
+            >
+              <ScanLineIcon />
+            </Button>
             <Button type="submit" disabled={busy}>Check</Button>
           </form>
           {wanted && (
-            <p className={`rounded-2xl border px-4 py-3 text-sm font-medium ${wanted.wanted ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>
-              {wanted.wanted
-                ? `WANTED${wanted.dangerLevel ? ` · danger ${wanted.dangerLevel}` : ""}${wanted.district ? ` · ${wanted.district.replace(/_/g, " ")}` : ""}`
-                : "No active wanted record."}
-            </p>
+            <div className={`rounded-2xl border px-4 py-3 ${wanted.wanted ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>
+              <p className="text-sm font-medium">
+                {wanted.wanted
+                  ? `WANTED${wanted.dangerLevel ? ` · danger ${wanted.dangerLevel}` : ""}${wanted.district ? ` · ${wanted.district.replace(/_/g, " ")}` : ""}`
+                  : "CLEAR — no active wanted record for this ID."}
+              </p>
+              <p className="mt-1 text-xs opacity-80">
+                {wanted.wanted
+                  ? "Exercise caution. Verify through your monitor before acting — this check never shows the case file."
+                  : "Proceed per standard procedure."}
+              </p>
+            </div>
           )}
         </section>
       )}
@@ -111,12 +144,29 @@ export default function LookupPage() {
         </h2>
         <form onSubmit={runFlagCheck} className="flex gap-2">
           <Input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Plate number" />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Scan plate code"
+            title="Scan plate code"
+            onClick={() => setScanTarget("plate")}
+          >
+            <ScanLineIcon />
+          </Button>
           <Button type="submit" disabled={busy}>Check</Button>
         </form>
         {flagged !== null && (
-          <p className={`rounded-2xl border px-4 py-3 text-sm font-medium ${flagged ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>
-            {flagged ? "Flagged — open case on this plate." : "Clear — no open case."}
-          </p>
+          <div className={`rounded-2xl border px-4 py-3 ${flagged ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>
+            <p className="text-sm font-medium">
+              {flagged ? `FLAGGED — open case on ${plate}.` : `CLEAR — no open case on ${plate}.`}
+            </p>
+            <p className="mt-1 text-xs opacity-80">
+              {flagged
+                ? "Treat with caution. Open the vehicle profile or escalate to your monitor — do not disclose case detail roadside."
+                : "Proceed per standard stop."}
+            </p>
+          </div>
         )}
       </section>
 
@@ -131,6 +181,9 @@ export default function LookupPage() {
           </form>
           {results && (
             <div className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">
+                {results.vehicles.length} vehicle(s) · {results.persons.length} person(s) — exact matches first, then partial.
+              </p>
               {results.vehicles.map((vehicle) => (
                 <Link key={vehicle.id} href={`/vehicles/${vehicle.id}`} className="rounded-2xl border px-3 py-2 text-sm hover:bg-accent">
                   <span className="font-medium">{vehicle.plateNumber}</span>
@@ -151,6 +204,14 @@ export default function LookupPage() {
           )}
         </section>
       )}
+      <ScanSheet
+        open={scanTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setScanTarget(null)
+        }}
+        onScanned={handleScanned}
+        title={scanTarget === "nationalId" ? "Scan ID barcode" : "Scan plate code"}
+      />
     </div>
   )
 }

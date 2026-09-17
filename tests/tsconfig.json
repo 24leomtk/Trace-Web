@@ -10,5 +10,5 @@
     "sourceMap": false,
     "declaration": false
   },
-  "include": ["../lib/visibility.ts", "./visibility.test.ts"]
+  "include": ["../lib/visibility.ts", "../lib/format.ts", "./visibility.test.ts"]
 }

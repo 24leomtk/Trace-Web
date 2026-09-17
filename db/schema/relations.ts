@@ -266,6 +266,16 @@ export const appRelations = defineRelations(schema, (r) => ({
       to: r.users.id,
       alias: "referral_referrer",
     }),
+    documents: r.many.referralDocuments({
+      from: r.courtCaseAccess.id,
+      to: r.referralDocuments.referralId,
+    }),
+  },
+  referralDocuments: {
+    referral: r.one.courtCaseAccess({
+      from: r.referralDocuments.referralId,
+      to: r.courtCaseAccess.id,
+    }),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -331,6 +341,26 @@ export const appRelations = defineRelations(schema, (r) => ({
     vehicle: r.one.vehicles({
       from: r.trafficCitations.vehicleId,
       to: r.vehicles.id,
+      optional: true,
+    }),
+    court: r.one.organizations({
+      from: r.trafficCitations.courtId,
+      to: r.organizations.id,
+      optional: true,
+    }),
+    payments: r.many.citationPayments({
+      from: r.trafficCitations.recordId,
+      to: r.citationPayments.recordId,
+    }),
+  },
+  citationPayments: {
+    record: r.one.records({
+      from: r.citationPayments.recordId,
+      to: r.records.id,
+    }),
+    receiver: r.one.users({
+      from: r.citationPayments.receivedBy,
+      to: r.users.id,
       optional: true,
     }),
   },

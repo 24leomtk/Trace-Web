@@ -12,6 +12,8 @@ import {
 import { records } from "./records"
 import { personsOfInterest } from "./persons"
 import { vehicles } from "./vehicles"
+import { organizations } from "./organizations"
+import { users } from "./auth"
 import { districtEnum, caseStatusEnum, dangerLevelEnum } from "./enums"
 
 // ---------------------------------------------------------------------------
@@ -163,6 +165,11 @@ export const accidentVehicles = pgTable(
 
 // ---------------------------------------------------------------------------
 // traffic_citations — record_type = 'traffic_citation'
+//
+// F3 fine ledger: `isPaid` is derived (total payments >= fine), not toggled.
+// `courtDate` / `courtId` are monitor-scheduled and preserved across
+// projection rewrites (see writeCodedProjections) — they live here, not in
+// the filing payload, so scheduling never rewrites case history.
 // ---------------------------------------------------------------------------
 
 export const trafficCitations = pgTable(
@@ -177,6 +184,13 @@ export const trafficCitations = pgTable(
     violationType: text("violation_type").notNull(),
     fineAmount: numeric("fine_amount"),
     isPaid: boolean("is_paid").default(false).notNull(),
+
+    // Scheduled court appearance (monitor-set; nullable until scheduled).
+    courtDate: date("court_date"),
+    courtId: uuid("court_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+
     district: districtEnum("district"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -187,5 +201,36 @@ export const trafficCitations = pgTable(
     index("traffic_citations_record_id_idx").on(table.recordId),
     index("traffic_citations_vehicle_id_idx").on(table.vehicleId),
     index("traffic_citations_district_idx").on(table.district),
+    index("traffic_citations_court_date_idx").on(table.courtDate),
+  ]
+)
+
+// ---------------------------------------------------------------------------
+// citation_payments — one row per fine payment against a traffic citation.
+// The running total drives traffic_citations.is_paid; receipts are the
+// cashier's paper trail (F3). Never UPDATE or DELETE — corrections are new
+// rows (negative adjustments are rejected; overpayments are rejected).
+// ---------------------------------------------------------------------------
+
+export const citationPayments = pgTable(
+  "citation_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => records.id, { onDelete: "cascade" }),
+    amount: numeric("amount").notNull(),
+    receiptNo: text("receipt_no").notNull().unique(),
+    note: text("note"),
+    receivedBy: text("received_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("citation_payments_record_id_idx").on(table.recordId),
+    index("citation_payments_receipt_no_idx").on(table.receiptNo),
   ]
 )

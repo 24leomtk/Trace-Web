@@ -49,6 +49,11 @@ export const courtCaseAccess = pgTable(
     renewalCount: integer("renewal_count").default(0).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
 
+    // F4 SLA: first time the liaison opened the referred record (set once,
+    // on the first `court_case_viewed`). Together with `createdAt`
+    // (referred) and `outcomeRecordedAt`, this drives referral timeliness.
+    firstViewedAt: timestamp("first_viewed_at", { withTimezone: true }),
+
     // Outcome tracking — set by the court_liaison once the case concludes.
     outcome: courtCaseOutcomeEnum("outcome").default("pending").notNull(),
     outcomeNotes: text("outcome_notes"),
@@ -69,5 +74,36 @@ export const courtCaseAccess = pgTable(
     index("court_case_access_court_liaison_id_idx").on(table.courtLiaisonId),
     index("court_case_access_expires_at_idx").on(table.expiresAt),
     index("court_case_access_outcome_idx").on(table.outcome),
+  ]
+)
+
+// ---------------------------------------------------------------------------
+// referral_documents — the e-Brief bundle (F4). Structured exhibits attached
+// to a referral *after* it is made (tranches): charge sheets, statements,
+// photos. Readable by in-scope monitors and the grant's liaison; writable by
+// in-scope monitors only. Images only (same Cloudinary pipeline as case
+// attachments).
+// ---------------------------------------------------------------------------
+
+export const referralDocuments = pgTable(
+  "referral_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => courtCaseAccess.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    url: text("url").notNull(),
+    storagePath: text("storage_path").notNull(),
+    fileType: text("file_type").notNull(),
+    uploadedBy: text("uploaded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("referral_documents_referral_id_idx").on(table.referralId),
   ]
 )

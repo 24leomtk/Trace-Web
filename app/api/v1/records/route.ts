@@ -24,6 +24,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
   type: z.enum(recordTypes).optional(),
   status: z.enum(["active", "resolved", "closed", "archived"]).optional(),
+  scope: z.enum(["all", "mine", "district", "country"]).default("all"),
 })
 
 const attachmentSchema = z.object({
@@ -53,6 +54,7 @@ export const GET = route(async (request: Request) => {
     limit: query.limit,
     type: query.type,
     status: query.status,
+    scope: query.scope,
   })
 })
 

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import Link from "next/link"
 
 import { searchVehicles, unverifiedVehicles } from "@/lib/actions/vehicles"
+import { daysSince } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -84,15 +85,25 @@ export function RegistrarHome() {
 function VehicleRow({
   vehicle,
 }: {
-  vehicle: { id: string; plateNumber: string; make: string | null; model: string | null }
+  vehicle: { id: string; plateNumber: string; make: string | null; model: string | null; createdAt?: string | Date }
 }) {
+  const waiting = vehicle.createdAt
+    ? daysSince(new Date(vehicle.createdAt).toISOString())
+    : null
   return (
     <li>
       <Link
         href={`/vehicles/${vehicle.id}`}
         className="block rounded-3xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
       >
-        <p className="text-[15px] font-medium">{vehicle.plateNumber}</p>
+        <p className="flex flex-wrap items-center gap-2 text-[15px] font-medium">
+          <span>{vehicle.plateNumber}</span>
+          {waiting != null && (
+            <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+              {waiting <= 0 ? "filed today" : `waiting ${waiting}d`}
+            </span>
+          )}
+        </p>
         <p className="text-sm text-muted-foreground">
           {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "No details yet"}
         </p>

@@ -219,6 +219,7 @@ export interface RecordsQuery {
   limit?: number
   type?: RecordType
   status?: CaseStatus
+  scope?: "all" | "mine" | "district" | "country"
 }
 
 export interface AttachmentInput {

@@ -93,6 +93,7 @@ Query — `RecordsQuery`
 | `limit`  | int 1–50                   | `10`    |                                          |
 | `type`   | one of 10 `RecordType`     | —       | `missing_person`, `wanted_person`, …     |
 | `status` | `active/resolved/closed/archived` | — |                                   |
+| `scope`  | `all/mine/district/country` | `all`  | Feed tab narrowing only, never widens visibility |
 
 Response: `RecordsPage` (`{ items: TraceRecord[], nextCursor: number | null }`).
 

@@ -34,7 +34,7 @@ import {
 
 /** The case feed: records visible to the current police user, newest first. */
 export function RecordTimeline() {
-  const { caseFilters } = useHomeView()
+  const { caseFilters, feedScope } = useHomeView()
   const [attachmentRecord, setAttachmentRecord] =
     useState<TraceRecord | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -42,7 +42,7 @@ export function RecordTimeline() {
   const filterType: RecordType | undefined = caseFilters.type ?? undefined
   const filterStatus: CaseStatus | undefined = caseFilters.status ?? undefined
   const hasFilters = Boolean(filterType || filterStatus)
-  const filterKey = `${filterType ?? ""}|${filterStatus ?? ""}`
+  const filterKey = `${feedScope}|${filterType ?? ""}|${filterStatus ?? ""}`
 
   const { items, isLoading, isFetchingMore, hasMore, sentinelRef } =
     useInfiniteList<TraceRecord>({
@@ -53,6 +53,7 @@ export function RecordTimeline() {
             cursor: cursor ?? 0,
             type: filterType,
             status: filterStatus,
+            scope: feedScope === "all" ? undefined : feedScope,
           })
           setLoadError(null)
           return page

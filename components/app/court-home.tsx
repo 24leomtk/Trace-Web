@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query"
 import Link from "next/link"
 
 import { getMyReferrals } from "@/lib/actions/records"
-import { formatDateTime } from "@/lib/format"
-import { RECORD_TYPE_META } from "@/lib/record-meta"
+import { daysUntil, expiryTone, formatCountdown, formatDateTime } from "@/lib/format"
+import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
+import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function CourtHome() {
@@ -41,16 +42,38 @@ export function CourtHome() {
         <ul className="flex flex-col gap-3">
           {data.map((entry) => {
             const meta = RECORD_TYPE_META[entry.record.recordType]
+            const left = daysUntil(entry.expiresAt)
+            const tone = expiryTone(left)
             return (
               <li key={entry.referralId}>
                 <Link
                   href={`/records/${entry.record.id}`}
                   className="block rounded-3xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
                 >
-                  <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                    {meta.label}
-                    {entry.expiresAt &&
-                      ` · access until ${formatDateTime(entry.expiresAt)}`}
+                  <p className="flex flex-wrap items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                    <span>{meta.label}</span>
+                    {entry.expiresAt && (
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-md border px-1.5 py-0.5 normal-case",
+                          TONE_BADGE_CLASS[tone]
+                        )}
+                      >
+                        {formatCountdown(left)} · until {formatDateTime(entry.expiresAt)}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-md border px-1.5 py-0.5 normal-case",
+                        entry.outcome !== "pending"
+                          ? TONE_BADGE_CLASS.emerald
+                          : TONE_BADGE_CLASS.slate
+                      )}
+                    >
+                      {entry.outcome !== "pending"
+                        ? `Outcome: ${entry.outcome}`
+                        : "Awaiting outcome"}
+                    </span>
                   </p>
                   <p className="mt-0.5 text-[15px] font-medium">
                     {entry.record.title}

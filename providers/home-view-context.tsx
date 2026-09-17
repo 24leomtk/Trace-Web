@@ -7,6 +7,8 @@ import type { RecordType } from "@/validations/record"
 
 export type HomeTab = "feed" | "reports"
 
+export type FeedScope = "all" | "mine" | "district" | "country"
+
 export interface CaseFeedFilters {
   type: RecordType | null
   status: CaseStatus | null
@@ -17,6 +19,8 @@ export const EMPTY_CASE_FILTERS: CaseFeedFilters = { type: null, status: null }
 interface HomeViewContextValue {
   tab: HomeTab
   setTab: (tab: HomeTab) => void
+  feedScope: FeedScope
+  setFeedScope: (scope: FeedScope) => void
   caseFilters: CaseFeedFilters
   setCaseFilters: (filters: CaseFeedFilters) => void
 }
@@ -25,11 +29,12 @@ const HomeViewContext = createContext<HomeViewContextValue | undefined>(undefine
 
 export function HomeViewProvider({ children }: { children: React.ReactNode }) {
   const [tab, setTab] = useState<HomeTab>("feed")
+  const [feedScope, setFeedScope] = useState<FeedScope>("all")
   const [caseFilters, setCaseFilters] = useState<CaseFeedFilters>(EMPTY_CASE_FILTERS)
 
   const value = useMemo(
-    () => ({ tab, setTab, caseFilters, setCaseFilters }),
-    [tab, caseFilters]
+    () => ({ tab, setTab, feedScope, setFeedScope, caseFilters, setCaseFilters }),
+    [tab, feedScope, caseFilters]
   )
 
   return (

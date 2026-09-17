@@ -7,6 +7,9 @@ import { toast } from "sonner"
 import { listPolicies } from "@/lib/actions/insurance"
 import { insurerPlateLookup } from "@/lib/actions/access"
 import { isPolicyLive } from "@/lib/visibility"
+import { daysUntil, expiryTone, formatCountdown } from "@/lib/format"
+import { TONE_BADGE_CLASS } from "@/lib/record-meta"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -88,17 +91,31 @@ export function InsurerHome() {
           <ul className="flex flex-col gap-2">
             {data.map((policy) => {
               const live = isPolicyLive(policy)
+              const left = daysUntil(
+                typeof policy.endDate === "string"
+                  ? policy.endDate
+                  : new Date(policy.endDate).toISOString()
+              )
+              const tone = live ? expiryTone(left) : "slate"
               return (
                 <li
                   key={policy.id}
                   className="rounded-3xl border bg-card px-4 py-3"
                 >
-                  <p className="text-[15px] font-medium">
-                    {policy.plateNumber} · {policy.policyNumber}
+                  <p className="flex flex-wrap items-center gap-2 text-[15px] font-medium">
+                    <span>{policy.plateNumber} · {policy.policyNumber}</span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs",
+                        TONE_BADGE_CLASS[tone]
+                      )}
+                    >
+                      {live ? formatCountdown(left) : "expired/lapsed"}
+                    </span>
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {policy.coverageType || "Standard cover"} · {policy.startDate} →{" "}
-                    {policy.endDate} · {live ? "live" : "expired/lapsed"}
+                    {policy.endDate}
                   </p>
                 </li>
               )

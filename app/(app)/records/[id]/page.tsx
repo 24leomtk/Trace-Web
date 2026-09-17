@@ -10,7 +10,6 @@ import {
   changeStatus,
   getRecord,
   getRecordData,
-  markCitationPaid,
   reassignRecord,
   setAccessLevel,
   updateRecord,
@@ -26,10 +25,12 @@ import {
 import { branchOptions } from "@/lib/actions/admin"
 import { addReview, listReviews } from "@/lib/actions/reviews"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
-import { formatDateTime } from "@/lib/format"
+import { formatDateTime, referralSla } from "@/lib/format"
 import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
+import { CitationLedger } from "@/components/app/citation-ledger"
+import { ReferralBundle } from "@/components/app/referral-bundle"
 import {
   DynamicFields,
   type FormValues,
@@ -256,30 +257,13 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         )
       )}
 
-      {record.recordType === "traffic_citation" &&
-        (record.reportedBy === user.id || isMonitor) && (
-          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Fine collection
-            </h2>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-fit"
-              onClick={async () => {
-                try {
-                  await markCitationPaid({ id: record.id, paid: true })
-                  toast.success("Fine marked paid.")
-                  await refresh()
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Failed.")
-                }
-              }}
-            >
-              Mark fine paid
-            </Button>
-          </section>
-        )}
+      {record.recordType === "traffic_citation" && (
+        <CitationLedger
+          recordId={record.id}
+          canManage={record.reportedBy === user.id || isMonitor}
+          isMonitor={isMonitor}
+        />
+      )}
 
       {record.recordType === "vehicle_impoundment" && isMonitor && record.status === "active" && (
         <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
@@ -453,14 +437,38 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               Court referrals
             </h2>
             {referralsQuery.data && referralsQuery.data.length > 0 ? (
-              <ul className="flex flex-col gap-2">
-                {referralsQuery.data.map((referral) => (
-                  <li key={referral.id} className="rounded-2xl border px-3 py-2 text-sm">
+              <ul className="flex flex-col gap-3">
+                {referralsQuery.data.map((referral) => {
+                  const sla = referralSla(referral.referredAt, referral.firstViewedAt, null)
+                  return (
+                  <li key={referral.id} className="flex flex-col gap-2 rounded-2xl border px-3 py-2 text-sm">
                     <p className="font-medium">{referral.liaisonName}</p>
                     <p className="text-xs text-muted-foreground">
                       {referral.reason || "No reason given"} · until{" "}
                       {referral.expiresAt ? formatDateTime(referral.expiresAt) : "—"} ·
                       outcome: {referral.outcome}
+                    </p>
+                    <p className="flex flex-wrap gap-1.5 text-xs">
+                      <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
+                        Referred {sla.daysSinceReferral}d ago
+                      </span>
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium",
+                          sla.viewOverdue
+                            ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                        )}
+                      >
+                        {sla.daysToView == null
+                          ? sla.viewOverdue
+                            ? "Unviewed · overdue"
+                            : "Unviewed"
+                          : `Viewed in ${sla.daysToView}d`}
+                      </span>
+                      <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
+                        {referral.documentsCount} brief doc{referral.documentsCount === 1 ? "" : "s"}
+                      </span>
                     </p>
                     <div className="mt-1.5 flex gap-2">
                       <Button
@@ -486,8 +494,14 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                         Revoke
                       </Button>
                     </div>
+                    <ReferralBundle
+                      referralId={referral.id}
+                      canUpload
+                      caseAttachmentCount={record.attachments.length}
+                    />
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground">No live referrals.</p>
@@ -575,6 +589,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       {isLiaison && (
         <LiaisonOutcomeForm
           recordId={record.id}
+          attachmentCount={record.attachments.length}
           outcome={outcome}
           setOutcome={setOutcome}
           outcomeNotes={outcomeNotes}
@@ -594,12 +609,14 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
 
 function LiaisonOutcomeForm({
   recordId,
+  attachmentCount,
   outcome,
   setOutcome,
   outcomeNotes,
   setOutcomeNotes,
 }: {
   recordId: string
+  attachmentCount: number
   outcome: string
   setOutcome: (value: string) => void
   outcomeNotes: string
@@ -615,10 +632,16 @@ function LiaisonOutcomeForm({
   if (!mine) return null
 
   return (
-    <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Case outcome
-      </h2>
+    <div className="flex flex-col gap-4 print:hidden">
+      <ReferralBundle
+        referralId={mine.referralId}
+        canUpload={false}
+        caseAttachmentCount={attachmentCount}
+      />
+      <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Case outcome
+        </h2>
       <form
         className="flex flex-col gap-2"
         onSubmit={async (event) => {
@@ -659,7 +682,8 @@ function LiaisonOutcomeForm({
           Record outcome
         </Button>
       </form>
-    </section>
+      </section>
+    </div>
   )
 }
 

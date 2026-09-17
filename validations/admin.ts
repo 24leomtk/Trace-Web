@@ -25,7 +25,7 @@ const districtSchema = z
   .regex(/^[a-z_]+$/, "District must be a snake_case enum value.")
   .optional()
 
-const uuidOrEmpty = z.string().uuid().optional().or(z.literal(""))
+const uuidOrEmpty = z.uuid().optional().or(z.literal(""))
 
 // Scope rules (enforced in action code, see lib/actions/admin.ts):
 //   OFFICER               -> domain + branchId required
@@ -53,10 +53,13 @@ export const updateManagedUserSchema = createManagedUserSchema
 export type UpdateManagedUserInput = z.output<typeof updateManagedUserSchema>
 
 export const branchSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.uuid().optional(),
   name: z.string().trim().min(2).max(200),
   domain: z.enum(domainOptions),
-  district: z.string().min(1).regex(/^[a-z_]+$/),
+  district: z
+    .string()
+    .min(1)
+    .regex(/^[a-z_]+$/),
   location: z.string().trim().max(300).optional().or(z.literal("")),
   contactPhone: z
     .string()
@@ -74,7 +77,7 @@ export const organizationTypeOptions = [
 ] as const
 
 export const organizationSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.uuid().optional(),
   name: z.string().trim().min(2).max(200),
   orgType: z.enum(organizationTypeOptions),
   district: z
@@ -123,13 +126,18 @@ export const personSchema = z.object({
     .or(z.literal("")),
   sex: z.enum(["male", "female", "other"]).optional(),
   homeDistrict: districtSchema,
-  distinguishingFeatures: z.string().trim().max(1000).optional().or(z.literal("")),
+  distinguishingFeatures: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .or(z.literal("")),
 })
 
 export type PersonInput = z.output<typeof personSchema>
 
 export const insurancePolicySchema = z.object({
-  vehicleId: z.string().uuid(),
+  vehicleId: z.uuid(),
   policyNumber: z.string().trim().min(1).max(64),
   coverageType: z.string().trim().max(64).optional().or(z.literal("")),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -141,7 +149,7 @@ export const insurancePolicySchema = z.object({
 export type InsurancePolicyInput = z.output<typeof insurancePolicySchema>
 
 export const courtReferralSchema = z.object({
-  recordId: z.string().uuid(),
+  recordId: z.uuid(),
   courtLiaisonId: z.string().min(1),
   reason: z.string().trim().max(1000).optional().or(z.literal("")),
   expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -160,9 +168,58 @@ export const courtOutcomeOptions = [
 ] as const
 
 export const courtOutcomeSchema = z.object({
-  referralId: z.string().uuid(),
+  referralId: z.uuid(),
   outcome: z.enum(courtOutcomeOptions),
   outcomeNotes: z.string().trim().max(2000).optional().or(z.literal("")),
 })
 
 export type CourtOutcomeInput = z.output<typeof courtOutcomeSchema>
+
+// F3 fine ledger: payments are positive, receipted, and capped above any
+// realistic Malawian traffic fine so typos (extra zeros) fail loudly.
+export const citationPaymentSchema = z.object({
+  recordId: z.uuid(),
+  amount: z.number().positive().max(100_000_000),
+  receiptNo: z.string().trim().max(64).optional().or(z.literal("")),
+  note: z.string().trim().max(500).optional().or(z.literal("")),
+})
+
+export type CitationPaymentInput = z.output<typeof citationPaymentSchema>
+
+// F3 court scheduling: monitors set the appearance date (today or future)
+// and optionally the court organization.
+export const citationCourtScheduleSchema = z.object({
+  recordId: z.uuid(),
+  courtDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => value >= new Date().toISOString().slice(0, 10), {
+      message: "Court date cannot be in the past.",
+    }),
+  courtId: z.uuid().optional().or(z.literal("")),
+})
+
+export type CitationCourtScheduleInput = z.output<
+  typeof citationCourtScheduleSchema
+>
+
+// F4 e-Brief: fixed brief-item labels keep the statement checklist
+// comparable across referrals.
+export const referralDocumentLabels = [
+  "charge_sheet",
+  "witness_statement",
+  "exhibit_photo",
+  "id_document",
+  "medical_report",
+  "other",
+] as const
+
+export const referralDocumentSchema = z.object({
+  referralId: z.uuid(),
+  label: z.enum(referralDocumentLabels),
+  url: z.string().min(1).max(2000),
+  storagePath: z.string().min(1).max(500),
+  fileType: z.string().min(1).max(120),
+})
+
+export type ReferralDocumentInput = z.output<typeof referralDocumentSchema>

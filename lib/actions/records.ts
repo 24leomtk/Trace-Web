@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray, or } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -197,6 +197,20 @@ async function writeCodedProjections(
   data: Record<string, unknown>
 ): Promise<void> {
   // Clear stale projections for this record, then rewrite.
+  // Snapshot the citation row first (F3): monitor-set court scheduling and
+  // the derived paid flag must survive rewrites — the delete below wipes it.
+  const [priorCitation] =
+    record.recordType === "traffic_citation"
+      ? await tx
+          .select({
+            courtDate: trafficCitations.courtDate,
+            courtId: trafficCitations.courtId,
+            isPaid: trafficCitations.isPaid,
+          })
+          .from(trafficCitations)
+          .where(eq(trafficCitations.recordId, record.id))
+          .limit(1)
+      : []
   await tx.delete(missingPersonCases).where(eq(missingPersonCases.recordId, record.id))
   await tx.delete(wantedPersonCases).where(eq(wantedPersonCases.recordId, record.id))
   await tx.delete(vehicleCases).where(eq(vehicleCases.recordId, record.id))
@@ -286,11 +300,15 @@ async function writeCodedProjections(
       break
     }
     case "traffic_citation": {
+      // Preserved from the pre-delete snapshot above (F3).
       await tx.insert(trafficCitations).values({
         recordId: record.id,
         vehicleId: record.vehicleId ?? undefined,
         violationType: str(data, "violation_type"),
         fineAmount: typeof data.fine_amount === "number" ? String(data.fine_amount) : undefined,
+        isPaid: priorCitation?.isPaid ?? false,
+        courtDate: priorCitation?.courtDate ?? undefined,
+        courtId: priorCitation?.courtId ?? undefined,
         district: record.district,
       })
       break
@@ -364,6 +382,17 @@ interface ListRecordsInput {
   limit?: number
   type?: RecordType
   status?: CaseStatus
+  /**
+   * Feed scope tab (U1) — narrows the caller's already-visible feed without
+   * ever widening it. Defaults to "all" (previous behaviour).
+   *   officer:          mine = own branch, district = district-level in own
+   *                     district, country = country-level domain-wide.
+   *   district_monitor: mine = filed by me, district = all in district, country
+   *                     = country-level in district.
+   *   country_monitor:  mine = filed by me, district = all (= country feed,
+   *                     no district), country = all country-level.
+   */
+  scope?: "all" | "mine" | "district" | "country"
 }
 
 export async function listRecords({
@@ -371,6 +400,7 @@ export async function listRecords({
   limit = 10,
   type,
   status,
+  scope: requestedScope = "all",
 }: ListRecordsInput = {}): Promise<Page<TraceRecord>> {
   const scope = await getViewerScope()
   if (
@@ -412,6 +442,32 @@ export async function listRecords({
         eq(records.domain, scope.domain!),
         eq(records.accessLevel, "country")
       )
+    }
+
+    // U1 scope tabs — narrowing only, intersected with the visibility above so
+    // a tab can never widen what the role is allowed to see.
+    if (requestedScope === "mine") {
+      if (scope.role === "OFFICER") {
+        filters.push(eq(records.branchId, scope.branchId!))
+      } else {
+        filters.push(eq(records.reportedBy, scope.id))
+      }
+    } else if (requestedScope === "district") {
+      if (scope.role === "OFFICER") {
+        filters.push(eq(records.accessLevel, "district"))
+        filters.push(
+          eq(records.district, (scope.branchDistrict ?? scope.district) as never)
+        )
+      }
+      // District/country monitors: district tab = whole district feed, which
+      // is already `visibility` — no extra filter needed.
+    } else if (requestedScope === "country") {
+      if (scope.role === "OFFICER") {
+        filters.push(eq(records.accessLevel, "country"))
+      } else if (scope.role === "DISTRICT_MONITOR") {
+        filters.push(eq(records.accessLevel, "country"))
+      }
+      // Country monitors: country tab = whole feed — no extra filter needed.
     }
 
     const rows = await tx
@@ -457,6 +513,17 @@ export async function getRecord(id: string): Promise<TraceRecord> {
         actionType: "court_case_viewed",
         recordId: id,
       })
+      // F4 SLA: stamp the liaison's first view once (web + mobile share this path).
+      await tx
+        .update(courtCaseAccess)
+        .set({ firstViewedAt: new Date() })
+        .where(
+          and(
+            eq(courtCaseAccess.recordId, id),
+            eq(courtCaseAccess.courtLiaisonId, scope.id),
+            isNull(courtCaseAccess.firstViewedAt)
+          )
+        )
       return toTraceRecord(tx, row)
     })
   }
@@ -879,45 +946,16 @@ export async function reassignRecord({
   })
 }
 
-/** Mark the fine on a traffic citation paid (reporter or monitor in scope). */
-export async function markCitationPaid({
-  id,
-  paid,
-}: {
-  id: string
-  paid: boolean
-}): Promise<void> {
-  const scope = await getViewerScope()
-  await withUserCtx(scope.id, async (tx) => {
-    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
-    if (!record || record.recordType !== "traffic_citation") {
-      throw new Error("Citation not found.")
-    }
-    const allowed =
-      record.reportedBy === scope.id ||
-      (isMonitor(scope) &&
-        record.domain === scope.domain &&
-        (scope.role === "COUNTRY_MONITOR"
-          ? record.accessLevel === "country"
-          : record.district === scope.district))
-    if (!allowed) throw new Error("That case is outside your scope.")
-    await tx
-      .update(trafficCitations)
-      .set({ isPaid: paid })
-      .where(eq(trafficCitations.recordId, id))
-    await writeAuditTx(tx, {
-      actorId: scope.id,
-      actionType: "record_updated",
-      recordId: id,
-      reason: paid ? "Citation fine marked paid." : "Citation fine marked unpaid.",
-    })
-  })
-}
-
 /** Cases referred to the current court liaison. Listing is not audited —
  * only opening a case (via getRecord) writes court_case_viewed. */
 export async function getMyReferrals(): Promise<
-  { referralId: string; expiresAt: string | null; record: TraceRecord }[]
+  {
+    referralId: string
+    expiresAt: string | null
+    outcome: string
+    outcomeRecordedAt: string | null
+    record: TraceRecord
+  }[]
 > {
   const scope = await getViewerScope()
   if (scope.role !== "COURT_LIAISON") throw new Error("Court liaisons only.")
@@ -931,7 +969,13 @@ export async function getMyReferrals(): Promise<
       (grant) =>
         !grant.revokedAt && (!grant.expiresAt || grant.expiresAt > now)
     )
-    const out: { referralId: string; expiresAt: string | null; record: TraceRecord }[] = []
+    const out: {
+      referralId: string
+      expiresAt: string | null
+      outcome: string
+      outcomeRecordedAt: string | null
+      record: TraceRecord
+    }[] = []
     for (const grant of live) {
       const [record] = await tx
         .select()
@@ -942,6 +986,8 @@ export async function getMyReferrals(): Promise<
       out.push({
         referralId: grant.id,
         expiresAt: grant.expiresAt?.toISOString() ?? null,
+        outcome: grant.outcome,
+        outcomeRecordedAt: grant.outcomeRecordedAt?.toISOString() ?? null,
         record: await toTraceRecord(tx, record),
       })
     }

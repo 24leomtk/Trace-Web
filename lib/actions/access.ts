@@ -10,6 +10,7 @@ import {
   organizations,
   personsOfInterest,
   records,
+  referralDocuments,
   users,
   vehicles,
   wantedPersonCases,
@@ -598,11 +599,19 @@ export async function liveCourtReferralsFor(recordId: string) {
         .from(users)
         .where(eq(users.id, grant.courtLiaisonId))
         .limit(1)
+      const docs = await tx
+        .select({ id: referralDocuments.id })
+        .from(referralDocuments)
+        .where(eq(referralDocuments.referralId, grant.id))
+        .limit(50)
       out.push({
         id: grant.id,
         liaisonName: liaison?.name ?? "Unknown",
         reason: grant.reason,
         expiresAt: grant.expiresAt?.toISOString() ?? null,
+        referredAt: grant.createdAt.toISOString(),
+        firstViewedAt: grant.firstViewedAt?.toISOString() ?? null,
+        documentsCount: docs.length,
         outcome: grant.outcome,
         renewalCount: grant.renewalCount,
       })

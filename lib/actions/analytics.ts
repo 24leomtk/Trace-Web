@@ -2,8 +2,9 @@
 
 import { and, count, eq, sql } from "drizzle-orm"
 
-import { accidents, records, trafficCitations } from "@/db/schema"
+import { accidents, courtCaseAccess, records, trafficCitations } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
+import { referralSla } from "@/lib/format"
 import { formatDistrict } from "@/lib/roles"
 import { writeAuditTx } from "@/lib/server/audit"
 import type { AnalyticsEntry, Domain } from "@/lib/types"
@@ -188,6 +189,60 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
           share: districtTotal > 0 ? row.total / districtTotal : 0,
         })),
         severity: "info",
+      })
+    }
+
+    // 6. Court referral timeliness (F4) — referred → viewed → outcome.
+    {
+      const grants = await tx
+        .select({
+          createdAt: courtCaseAccess.createdAt,
+          firstViewedAt: courtCaseAccess.firstViewedAt,
+          outcomeRecordedAt: courtCaseAccess.outcomeRecordedAt,
+          revokedAt: courtCaseAccess.revokedAt,
+          recordDistrict: records.district,
+        })
+        .from(courtCaseAccess)
+        .innerJoin(records, eq(courtCaseAccess.recordId, records.id))
+        .where(eq(records.domain, scope.domain))
+        .limit(200)
+      const inScope = grants.filter(
+        (grant) =>
+          !grant.revokedAt &&
+          (!scope.district || grant.recordDistrict === scope.district)
+      )
+      const slas = inScope.map((grant) =>
+        referralSla(
+          grant.createdAt.toISOString(),
+          grant.firstViewedAt?.toISOString() ?? null,
+          grant.outcomeRecordedAt?.toISOString() ?? null
+        )
+      )
+      const overdue = slas.filter((s) => s.viewOverdue || s.outcomeOverdue).length
+      const viewedAvg = slas
+        .map((s) => s.daysToView)
+        .filter((d): d is number => d != null)
+      entries.push({
+        id: "referrals",
+        date: today,
+        scopeLabel: scopeLabel(scope),
+        title: "Court referrals",
+        description:
+          inScope.length === 0
+            ? "No referrals in scope yet."
+            : `${inScope.length} referred · ${slas.filter((s) => s.daysToView != null).length} viewed · ${slas.filter((s) => s.daysToOutcome != null).length} decided.`,
+        metrics: [
+          { label: "Referred", value: String(inScope.length) },
+          {
+            label: "Avg days to view",
+            value:
+              viewedAvg.length > 0
+                ? (viewedAvg.reduce((a, b) => a + b, 0) / viewedAvg.length).toFixed(1)
+                : "—",
+          },
+          { label: "Overdue", value: String(overdue) },
+        ],
+        severity: overdue > 0 ? "warning" : "info",
       })
     }
 

@@ -66,6 +66,21 @@ export function DynamicFields({
   )
 }
 
+// Anchor id for the U3 error summary ("jump to field") links.
+function fieldAnchorId(path: string): string {
+  return `field-${path.replace(/[^a-zA-Z0-9-_]/g, "-")}`
+}
+
+export function scrollToField(path: string) {
+  const element = document.getElementById(fieldAnchorId(path))
+  if (!element) return
+  element.scrollIntoView({ behavior: "smooth", block: "center" })
+  const focusable = element.querySelector<HTMLElement>(
+    "input, textarea, button, [tabindex]"
+  )
+  focusable?.focus({ preventScroll: true })
+}
+
 function FieldRenderer({
   field,
   value,
@@ -101,7 +116,7 @@ function FieldRenderer({
 
   if (field.kind === "ref") {
     return (
-      <div className="flex flex-col gap-1.5">
+      <div id={fieldAnchorId(field.path)} className="flex scroll-mt-28 flex-col gap-1.5">
         <span className="text-xs font-medium tracking-wide text-muted-foreground">
           {field.label}
           {!field.required && (
@@ -123,7 +138,7 @@ function FieldRenderer({
 
   if (field.options) {
     return (
-      <div className={cn("flex flex-col gap-1.5", spanClass)}>
+      <div id={fieldAnchorId(field.path)} className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}>
         <FieldLabel field={field} />
         <MiniSelect
           options={field.options}
@@ -138,7 +153,7 @@ function FieldRenderer({
   }
 
   return (
-    <div className={cn("flex flex-col gap-1.5", spanClass)}>
+    <div id={fieldAnchorId(field.path)} className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}>
       <FieldLabel field={field} />
       {field.type === "textarea" ? (
         <TextareaStyled
@@ -538,7 +553,7 @@ function StringListEditor({
   }
 
   return (
-    <div className="flex flex-col gap-1.5 sm:col-span-2">
+    <div id={fieldAnchorId(field.path)} className="flex scroll-mt-28 flex-col gap-1.5 sm:col-span-2">
       <span className="text-xs font-medium tracking-wide text-muted-foreground">
         {field.label}
       </span>
@@ -594,7 +609,7 @@ function RowListEditor({
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:col-span-2">
+    <div id={fieldAnchorId(field.path)} className="flex scroll-mt-28 flex-col gap-2 sm:col-span-2">
       <span className="text-xs font-medium tracking-wide text-muted-foreground">
         {field.label}
       </span>
