@@ -1,12 +1,9 @@
 "use client"
 
-import { Suspense, useEffect, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import {
-  ArrowLeftIcon,
-  LoaderCircleIcon,
-} from "lucide-react"
+import { ArrowLeftIcon, LoaderCircleIcon } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
 import { formatPhone } from "@/lib/format"
@@ -35,12 +32,43 @@ function VerifyForm() {
   const [status, setStatus] = useState<"idle" | "verifying" | "error">("idle")
   const [resendIn, setResendIn] = useState(30)
   const containerRef = useRef<HTMLDivElement>(null)
+  // DEMO-COMPETITION-ONLY state — remove with the demo box below.
+  const [demoCode, setDemoCode] = useState<string | null>(null)
+  const [demoLoading, setDemoLoading] = useState(false)
 
   useEffect(() => {
     if (resendIn <= 0) return
     const timer = setTimeout(() => setResendIn((seconds) => seconds - 1), 1000)
     return () => clearTimeout(timer)
   }, [resendIn])
+
+  // DEMO-COMPETITION-ONLY — poll /api/demo/otp so judges without the SIM
+  // can see the code. Removed by `node scripts/revert-competition-demo.mjs`.
+  const fetchDemoCode = useCallback(async () => {
+    if (!phone) return
+    setDemoLoading(true)
+    try {
+      const res = await fetch(
+        `/api/demo/otp?phone=${encodeURIComponent(phone)}`
+      )
+      if (!res.ok) {
+        setDemoCode(null)
+        return
+      }
+      const data = (await res.json()) as { code?: string }
+      setDemoCode(typeof data.code === "string" ? data.code : null)
+    } catch {
+      setDemoCode(null)
+    } finally {
+      setDemoLoading(false)
+    }
+  }, [phone])
+
+  useEffect(() => {
+    void fetchDemoCode()
+    const interval = setInterval(() => void fetchDemoCode(), 4000)
+    return () => clearInterval(interval)
+  }, [fetchDemoCode])
 
   async function verify(submitted: string) {
     setStatus("verifying")
@@ -62,6 +90,8 @@ function VerifyForm() {
     if (!phone) return
     setResendIn(30)
     await authClient.phoneNumber.sendOtp({ phoneNumber: phone })
+    // DEMO-COMPETITION-ONLY — refresh the visible code after resending.
+    setTimeout(() => void fetchDemoCode(), 1000)
   }
 
   function handleChange(value: string) {
@@ -81,6 +111,43 @@ function VerifyForm() {
           </span>
           .
         </p>
+      </div>
+
+      {/* DEMO-COMPETITION-ONLY — delete this box before production / after the competition. */}
+      <div className="w-full rounded-2xl border border-dashed border-amber-500/60 bg-amber-500/10 px-4 py-3 text-center">
+        <p className="text-xs font-medium tracking-wide text-amber-700 uppercase dark:text-amber-400">
+          Competition demo — no SMS needed
+        </p>
+        {demoLoading && !demoCode ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Looking up your code…
+          </p>
+        ) : demoCode ? (
+          <>
+            <p className="mt-1 text-2xl font-bold tracking-[0.3em]">
+              {demoCode}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                const otp = demoCode.trim()
+                setCode(otp)
+                if (status === "error") setStatus("idle")
+                void verify(otp)
+              }}
+              disabled={status === "verifying"}
+            >
+              {status === "verifying" ? "Verifying…" : "Autofill & verify"}
+            </Button>
+          </>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">
+            No code found yet — wait a moment or tap Resend, then this box will
+            show it.
+          </p>
+        )}
       </div>
 
       <div ref={containerRef} tabIndex={-1} className="outline-none">
