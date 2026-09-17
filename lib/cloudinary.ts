@@ -2,12 +2,26 @@ import { createHash } from "node:crypto"
 
 /**
  * Minimal signed-upload helper for Cloudinary — no SDK needed.
- * Only image uploads are supported (`resource_type: "image"`).
+ * N2: images, video/audio, and PDFs/raw docs each post to their own
+ * endpoint (`image` / `video` / `raw`). The signature pins folder +
+ * timestamp only; the endpoint (hence resource type) is chosen client-side
+ * from the allowlisted file kind.
  */
 
 export const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
 const API_KEY = process.env.CLOUDINARY_API_KEY
 const API_SECRET = process.env.CLOUDINARY_API_SECRET
+
+/** Cloudinary upload endpoint per file kind. */
+export const KIND_ENDPOINTS = {
+  image: "image",
+  video: "video",
+  audio: "video",
+  pdf: "raw",
+  doc: "raw",
+} as const
+
+export type UploadKind = keyof typeof KIND_ENDPOINTS
 
 export function isCloudinaryConfigured(): boolean {
   return Boolean(CLOUD_NAME && API_KEY && API_SECRET)

@@ -33,6 +33,7 @@ const attachmentSchema = z.object({
   publicId: z.string().min(1),
   fileType: z.string().min(1),
   fileSizeBytes: z.number().int().min(0),
+  fileHash: z.string().min(1).max(128).optional(),
 })
 
 const createBodySchema = z.object({

@@ -152,7 +152,6 @@ export interface ReferralSla {
   viewOverdue: boolean
   outcomeOverdue: boolean
 }
-
 /**
  * F4 referral SLA from timestamps (all ISO or null). Overdue = unviewed past
  * the view window, or no outcome past the outcome window.
@@ -194,4 +193,103 @@ export function referralSla(
     outcomeOverdue:
       daysToOutcome == null && daysSinceReferral > REFERRAL_OUTCOME_SLA_DAYS,
   }
+}
+
+export interface AssignmentDue {
+  overdue: boolean
+  daysLeft: number | null
+  tone: "red" | "amber" | "slate"
+}
+
+/** F9 due status for an open task (closed tasks are never overdue). */
+export function assignmentDue(
+  dueAt: string | null,
+  state: string,
+  now = Date.now()
+): AssignmentDue {
+  if (state !== "open" || !dueAt) {
+    return { overdue: false, daysLeft: null, tone: "slate" }
+  }
+  const daysLeft = Math.floor((new Date(dueAt).getTime() - now) / 86_400_000)
+  if (Number.isNaN(daysLeft)) return { overdue: false, daysLeft: null, tone: "slate" }
+  if (daysLeft < 0) return { overdue: true, daysLeft, tone: "red" }
+  if (daysLeft <= 3) return { overdue: false, daysLeft, tone: "amber" }
+  return { overdue: false, daysLeft, tone: "slate" }
+}
+
+const WEEK_LABEL_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
+
+/**
+ * U6 Monday-start week buckets (oldest → newest) for trend charts. Buckets
+ * are computed in UTC while Postgres truncates in session time — week edges
+ * may differ by a day around midnight, which is fine for trend purposes.
+ */
+export function lastWeekBuckets(weeks: number, today = new Date()) {
+  const buckets: { key: string; label: string }[] = []
+  const cursor = new Date(today)
+  cursor.setUTCHours(0, 0, 0, 0)
+  const sinceMonday = (cursor.getUTCDay() + 6) % 7
+  cursor.setUTCDate(cursor.getUTCDate() - sinceMonday - (weeks - 1) * 7)
+  for (let i = 0; i < weeks; i++) {
+    buckets.push({
+      key: cursor.toISOString().slice(0, 10),
+      label: `${cursor.getUTCDate()} ${WEEK_LABEL_MONTHS[cursor.getUTCMonth()]}`,
+    })
+    cursor.setUTCDate(cursor.getUTCDate() + 7)
+  }
+  return buckets
+}
+
+export type FileKind = "image" | "pdf" | "video" | "audio" | "doc"
+
+/** N2 accepted upload kinds. Executables and anything else are rejected. */
+const ACCEPTED_FILE_KINDS: Record<FileKind, RegExp> = {
+  image: /^image\//,
+  pdf: /^application\/pdf$/,
+  video: /^video\//,
+  audio: /^audio\//,
+  doc: /^(application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain)$/,
+}
+
+/** Map a MIME type to an accepted file kind, or null when rejected. */
+export function fileKindFromMime(mime: string): FileKind | null {
+  const type = mime.trim().toLowerCase()
+  for (const [kind, pattern] of Object.entries(ACCEPTED_FILE_KINDS) as [
+    FileKind,
+    RegExp,
+  ][]) {
+    if (pattern.test(type)) return kind
+  }
+  return null
+}
+
+/** Per-kind client upload caps (bytes). */
+export const FILE_KIND_MAX_BYTES: Record<FileKind, number> = {
+  image: 10 * 1024 * 1024,
+  pdf: 25 * 1024 * 1024,
+  video: 100 * 1024 * 1024,
+  audio: 25 * 1024 * 1024,
+  doc: 10 * 1024 * 1024,
+}
+
+/** N2 default retention: 5 years from upload (policy placeholder — a
+ * scheduled purge job is still follow-up work). */
+export const RETENTION_YEARS = 5
+
+export function defaultRetentionUntil(
+  uploadedAt = new Date(),
+  years = RETENTION_YEARS
+): string {
+  const until = new Date(uploadedAt)
+  until.setUTCFullYear(until.getUTCFullYear() + years)
+  return until.toISOString()
+}
+
+/** Short display form of a SHA-256 hex (first 12 chars). */
+export function shortFileHash(hash: string | null | undefined): string | null {
+  if (!hash) return null
+  return hash.length > 12 ? `${hash.slice(0, 12)}…` : hash
 }

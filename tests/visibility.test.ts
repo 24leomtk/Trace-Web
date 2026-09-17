@@ -10,17 +10,23 @@ import {
   type VisibilityScope,
 } from "../lib/visibility"
 import {
+  assignmentDue,
   citationBalance,
   daysSince,
   daysUntil,
+  defaultRetentionUntil,
   expiryTone,
+  fileKindFromMime,
   formatCountdown,
   generateReceiptNo,
   isCitationPaid,
+  lastWeekBuckets,
   normalizePlate,
   referralSla,
   REFERRAL_OUTCOME_SLA_DAYS,
   REFERRAL_VIEW_SLA_DAYS,
+  RETENTION_YEARS,
+  shortFileHash,
 } from "../lib/format"
 
 const officer: VisibilityScope = {
@@ -332,5 +338,69 @@ describe("referralSla", () => {
     )
     assert.equal(sla.viewOverdue, false)
     assert.equal(sla.outcomeOverdue, false)
+  })
+})
+
+describe("assignmentDue", () => {
+  const now = new Date("2026-09-17T12:00:00Z").getTime()
+
+  it("flags overdue open tasks", () => {
+    const due = assignmentDue("2026-09-15T12:00:00Z", "open", now)
+    assert.equal(due.overdue, true)
+    assert.equal(due.tone, "red")
+  })
+
+  it("warns within 3 days, quiet beyond", () => {
+    assert.equal(assignmentDue("2026-09-19T12:00:00Z", "open", now).tone, "amber")
+    assert.equal(assignmentDue("2026-09-30T12:00:00Z", "open", now).tone, "slate")
+  })
+
+  it("closed or dateless tasks are never overdue", () => {
+    assert.equal(assignmentDue("2026-09-15T12:00:00Z", "done", now).overdue, false)
+    assert.equal(assignmentDue(null, "open", now).overdue, false)
+    assert.equal(assignmentDue(null, "open", now).daysLeft, null)
+  })
+})
+
+describe("lastWeekBuckets", () => {
+  it("returns Monday-start buckets oldest-first", () => {
+    // 2026-09-17 is a Thursday; current week starts Mon 2026-09-14.
+    const buckets = lastWeekBuckets(3, new Date("2026-09-17T12:00:00Z"))
+    assert.deepEqual(
+      buckets.map((bucket) => bucket.key),
+      ["2026-08-31", "2026-09-07", "2026-09-14"]
+    )
+    assert.equal(buckets[2]?.label, "14 Sep")
+  })
+})
+
+describe("fileKindFromMime", () => {
+  it("maps accepted kinds and rejects the rest", () => {
+    assert.equal(fileKindFromMime("image/jpeg"), "image")
+    assert.equal(fileKindFromMime("application/pdf"), "pdf")
+    assert.equal(fileKindFromMime("video/mp4"), "video")
+    assert.equal(fileKindFromMime("audio/mpeg"), "audio")
+    assert.equal(
+      fileKindFromMime(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ),
+      "doc"
+    )
+    assert.equal(fileKindFromMime("application/x-msdownload"), null)
+    assert.equal(fileKindFromMime(""), null)
+  })
+})
+
+describe("defaultRetentionUntil / shortFileHash", () => {
+  it("retains for the policy horizon", () => {
+    const until = defaultRetentionUntil(new Date("2026-09-17T00:00:00Z"))
+    assert.equal(until.slice(0, 10), "2031-09-17")
+    assert.equal(RETENTION_YEARS, 5)
+  })
+
+  it("shortens hashes for display", () => {
+    assert.equal(shortFileHash("abcdef1234567890"), "abcdef123456…")
+    assert.equal(shortFileHash(null), null)
+    assert.equal(shortFileHash(undefined), null)
   })
 })

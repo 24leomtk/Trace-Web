@@ -5,13 +5,15 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DownloadIcon,
+  FileAudioIcon,
   FileTextIcon,
+  FileVideoIcon,
   ImageIcon,
   MicroscopeIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { formatBytes } from "@/lib/format"
+import { formatBytes, formatDateKey, shortFileHash } from "@/lib/format"
 import type { AttachmentMeta } from "@/lib/types"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import {
@@ -28,6 +30,9 @@ const KIND_ICON: Record<AttachmentMeta["kind"], typeof FileTextIcon> = {
   pdf: FileTextIcon,
   image: ImageIcon,
   lab: MicroscopeIcon,
+  video: FileVideoIcon,
+  audio: FileAudioIcon,
+  doc: FileTextIcon,
 }
 
 const PAGE_SIZE = 6
@@ -130,6 +135,7 @@ function AttachmentList({
           <div className="flex flex-col gap-2">
             {visible.map((attachment) => {
               const Icon = KIND_ICON[attachment.kind]
+              const hash = shortFileHash(attachment.fileHash)
               return (
                 <Attachment key={attachment.id} className="w-full">
                   <AttachmentMedia>
@@ -140,6 +146,10 @@ function AttachmentList({
                     <AttachmentDescription>
                       {formatBytes(attachment.sizeBytes)} ·{" "}
                       {attachment.kind.toUpperCase()}
+                      {hash ? ` · SHA ${hash}` : ""}
+                      {attachment.retentionUntil
+                        ? ` · kept until ${formatDateKey(attachment.retentionUntil.slice(0, 10))}`
+                        : ""}
                     </AttachmentDescription>
                   </AttachmentContent>
                   <AttachmentAction

@@ -96,6 +96,8 @@ export const referralDocuments = pgTable(
     url: text("url").notNull(),
     storagePath: text("storage_path").notNull(),
     fileType: text("file_type").notNull(),
+    // N2: SHA-256 of the uploaded bytes (nullable for legacy rows).
+    fileHash: text("file_hash"),
     uploadedBy: text("uploaded_by").references(() => users.id, {
       onDelete: "set null",
     }),

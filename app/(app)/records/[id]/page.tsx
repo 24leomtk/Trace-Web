@@ -23,13 +23,21 @@ import {
   revokeCourtAccess,
 } from "@/lib/actions/access"
 import { branchOptions } from "@/lib/actions/admin"
+import {
+  assignCase,
+  cancelAssignment,
+  completeAssignment,
+  listAssignableUsers,
+  listRecordAssignments,
+} from "@/lib/actions/assignments"
 import { addReview, listReviews } from "@/lib/actions/reviews"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
-import { formatDateTime, referralSla } from "@/lib/format"
+import { assignmentDue, formatDateTime, referralSla } from "@/lib/format"
 import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
 import { CitationLedger } from "@/components/app/citation-ledger"
+import { LinkedEntities } from "@/components/app/linked-entities"
 import { ReferralBundle } from "@/components/app/referral-bundle"
 import {
   DynamicFields,
@@ -69,6 +77,10 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const [editing, setEditing] = useState(false)
   const [editValues, setEditValues] = useState<FormValues>({})
   const [reassignTo, setReassignTo] = useState("")
+  const [taskAssignee, setTaskAssignee] = useState("")
+  const [taskDue, setTaskDue] = useState("")
+  const [taskNote, setTaskNote] = useState("")
+  const [tab, setTab] = useState("case")
 
   const recordQuery = useQuery({
     queryKey: ["record", id],
@@ -97,6 +109,16 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       branchOptions(user.domain === "traffic" ? "traffic" : "regular"),
     enabled: user.role === "DISTRICT_MONITOR",
   })
+  const assignmentsQuery = useQuery({
+    queryKey: ["assignments", id],
+    queryFn: () => listRecordAssignments(id),
+    enabled: !!recordQuery.data,
+  })
+  const assignableQuery = useQuery({
+    queryKey: ["assignable-users"],
+    queryFn: listAssignableUsers,
+    enabled: isMonitor,
+  })
 
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
@@ -108,6 +130,8 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     await queryClient.invalidateQueries({ queryKey: ["record", id] })
     await queryClient.invalidateQueries({ queryKey: ["referrals", id] })
     await queryClient.invalidateQueries({ queryKey: ["reviews", id] })
+    await queryClient.invalidateQueries({ queryKey: ["assignments", id] })
+    await queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
   }
 
   async function startEditing() {
@@ -181,6 +205,26 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const canEdit =
     record.status === "active" &&
     (record.reportedBy === user.id || isMonitor)
+  const isPolice =
+    user.role === "OFFICER" ||
+    user.role === "DISTRICT_MONITOR" ||
+    user.role === "COUNTRY_MONITOR"
+  const isFiler = record.reportedBy === user.id
+
+  // U5 consolidated pane — one header, role-filtered tabs.
+  const tabs: { value: string; label: string }[] = [
+    { value: "case", label: "Case" },
+    ...(isPolice && (record.personId || record.vehicleId)
+      ? [{ value: "people", label: "People & vehicles" }]
+      : []),
+    { value: "reviews", label: "Reviews & tasks" },
+    ...(isMonitor || isLiaison
+      ? [{ value: "justice", label: isLiaison ? "Referral & outcome" : "Justice" }]
+      : []),
+    ...(isMonitor || (user.role === "OFFICER" && isFiler)
+      ? [{ value: "manage", label: "Manage" }]
+      : []),
+  ]
 
   return (
     <div className="flex flex-col gap-6">
@@ -217,6 +261,34 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         </p>
       </header>
 
+      <div
+        role="tablist"
+        aria-label="Case sections"
+        className="flex gap-1 overflow-x-auto rounded-full border bg-muted/40 p-1 print:hidden"
+      >
+        {tabs.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={tab === option.value}
+            onClick={() => setTab(option.value)}
+            className={cn(
+              "flex-1 rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+              tab === option.value
+                ? "bg-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "people" && (
+        <LinkedEntities personId={record.personId} vehicleId={record.vehicleId} />
+      )}
+
       {record.attachments.length > 0 && (
         <Button
           variant="outline"
@@ -227,7 +299,9 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         </Button>
       )}
 
-      {editing ? (
+      {tab === "case" && (
+        <>
+          {editing ? (
         <form onSubmit={submitEdit} className="flex flex-col gap-4 rounded-3xl border bg-card p-4 print:hidden">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Edit case (active records only)
@@ -288,11 +362,14 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               }
             }}
           >
-            Mark released
-          </Button>
+              Mark released
+            </Button>
         </section>
       )}
+        </>
+      )}
 
+      {tab === "reviews" && (
       <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Reviews & follow-up notes
@@ -337,9 +414,12 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           </form>
         )}
       </section>
+      )}
 
       {isMonitor && (
         <>
+          {tab === "manage" && (
+          <>
           <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Status
@@ -431,7 +511,152 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               </form>
             </section>
           )}
+          </>
+          )}
 
+          {tab === "reviews" && (
+          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Tasking
+            </h2>
+            {(assignmentsQuery.data ?? []).length > 0 ? (
+              <ul className="flex flex-col gap-2">
+                {(assignmentsQuery.data ?? []).map((task) => {
+                  const due = assignmentDue(task.dueAt, task.state)
+                  return (
+                    <li key={task.id} className="rounded-2xl border px-3 py-2 text-sm">
+                      <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                        <span>{task.assigneeName}</span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs",
+                            task.state === "open"
+                              ? due.overdue
+                                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                                : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
+                              : "border-border bg-muted/40 text-muted-foreground"
+                          )}
+                        >
+                          {task.state === "open"
+                            ? due.overdue
+                              ? `Overdue ${Math.abs(due.daysLeft ?? 0)}d`
+                              : due.daysLeft != null
+                                ? due.daysLeft === 0
+                                  ? "Due today"
+                                  : `Due in ${due.daysLeft}d`
+                                : "Open"
+                            : task.state}
+                        </span>
+                      </p>
+                      {(task.note || task.dueAt) && (
+                        <p className="text-xs text-muted-foreground">
+                          {[task.note, task.dueAt ? `due ${task.dueAt.slice(0, 10)}` : null]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      {task.state === "open" && (
+                        <div className="mt-1.5 flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              try {
+                                await completeAssignment(task.id)
+                                toast.success("Task done.")
+                                await refresh()
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : "Failed.")
+                              }
+                            }}
+                          >
+                            Done
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              try {
+                                await cancelAssignment(task.id)
+                                toast.success("Task cancelled.")
+                                await refresh()
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : "Failed.")
+                              }
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">No tasks yet.</p>
+            )}
+            <form
+              className="flex flex-col gap-2"
+              onSubmit={async (event) => {
+                event.preventDefault()
+                if (!taskAssignee) {
+                  toast.error("Choose who to task.")
+                  return
+                }
+                try {
+                  await assignCase({
+                    recordId: record.id,
+                    assigneeId: taskAssignee,
+                    dueAt: taskDue || undefined,
+                    note: taskNote || undefined,
+                  })
+                  toast.success("Task assigned.")
+                  setTaskAssignee("")
+                  setTaskDue("")
+                  setTaskNote("")
+                  await refresh()
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Failed.")
+                }
+              }}
+            >
+              <select
+                value={taskAssignee}
+                onChange={(event) => setTaskAssignee(event.target.value)}
+                className="h-9 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
+                aria-label="Assignee"
+              >
+                <option value="">Select officer…</option>
+                {(assignableQuery.data ?? []).map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name} · {person.detail}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={taskDue}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) => setTaskDue(event.target.value)}
+                  aria-label="Due date (optional)"
+                />
+                <Input
+                  value={taskNote}
+                  onChange={(event) => setTaskNote(event.target.value)}
+                  placeholder="Task note (optional)"
+                  aria-label="Task note"
+                />
+              </div>
+              <Button type="submit" size="sm" className="w-fit">
+              Assign task
+            </Button>
+          </form>
+          </section>
+          )}
+
+          {tab === "justice" && (
           <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Court referrals
@@ -552,10 +777,11 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               </Button>
             </form>
           </section>
+          )}
         </>
       )}
 
-      {user.role === "OFFICER" && record.reportedBy === user.id && (
+      {user.role === "OFFICER" && record.reportedBy === user.id && tab === "manage" && (
         <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Visibility
@@ -586,7 +812,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         </section>
       )}
 
-      {isLiaison && (
+      {isLiaison && tab === "justice" && (
         <LiaisonOutcomeForm
           recordId={record.id}
           attachmentCount={record.attachments.length}

@@ -5,6 +5,7 @@ import { and, desc, eq, ilike } from "drizzle-orm"
 import { db } from "@/db"
 import { recordAttachments, records, users, vehicleCases, vehicles } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
+import { defaultRetentionUntil, fileKindFromMime } from "@/lib/format"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 import { escapeLike } from "@/lib/visibility"
 import { vehicleSchema, type VehicleInput } from "@/validations/admin"
@@ -214,14 +215,19 @@ export async function attachVehicleFile({
   url,
   storagePath,
   fileType,
+  fileHash,
 }: {
   vehicleId: string
   url: string
   storagePath: string
   fileType: string
+  fileHash?: string
 }): Promise<{ id: string }> {
   const scope = await getViewerScope()
   if (!canWorkVehicles(scope.role)) throw new Error("Your role can't attach files.")
+  if (!fileKindFromMime(fileType)) {
+    throw new Error(`Files of type "${fileType || "unknown"}" are not accepted.`)
+  }
   return withUserCtx(scope.id, async (tx) => {
     const [vehicle] = await tx
       .select({ id: vehicles.id })
@@ -231,7 +237,15 @@ export async function attachVehicleFile({
     if (!vehicle) throw new Error("Vehicle not found.")
     const [row] = await tx
       .insert(recordAttachments)
-      .values({ vehicleId, url, storagePath, fileType, uploadedBy: scope.id })
+      .values({
+        vehicleId,
+        url,
+        storagePath,
+        fileType,
+        fileHash: fileHash?.trim() || undefined,
+        retentionUntil: new Date(defaultRetentionUntil()),
+        uploadedBy: scope.id,
+      })
       .returning({ id: recordAttachments.id })
     await writeAuditTx(tx, {
       actorId: scope.id,

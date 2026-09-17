@@ -59,7 +59,7 @@ export interface RecordAuthor {
   role: Role
 }
 
-export type AttachmentKind = "pdf" | "image" | "lab"
+export type AttachmentKind = "pdf" | "image" | "lab" | "video" | "audio" | "doc"
 
 export interface AttachmentMeta {
   id: string
@@ -67,6 +67,10 @@ export interface AttachmentMeta {
   sizeBytes: number
   kind: AttachmentKind
   url?: string
+  /** SHA-256 of the uploaded bytes (absent on legacy rows). */
+  fileHash?: string
+  /** ISO timestamp until which the file is retained. */
+  retentionUntil?: string
 }
 
 export interface RecordBadge {
@@ -124,6 +128,13 @@ export interface AnalyticsBreakdownRow {
   label: string
   count: number
   share: number
+  /** Stable key for drill-down (e.g. a RecordType) — labels are display-only. */
+  key?: string
+}
+
+export interface AnalyticsSeriesPoint {
+  label: string
+  value: number
 }
 
 export interface AnalyticsEntry {
@@ -134,6 +145,8 @@ export interface AnalyticsEntry {
   description: string
   metrics: AnalyticsMetric[]
   breakdown?: AnalyticsBreakdownRow[]
+  /** U6 time series (oldest → newest) for trend charts. */
+  series?: AnalyticsSeriesPoint[]
   severity: "info" | "warning" | "critical"
 }
 

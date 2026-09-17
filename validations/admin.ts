@@ -215,11 +215,30 @@ export const referralDocumentLabels = [
 ] as const
 
 export const referralDocumentSchema = z.object({
-  referralId: z.uuid(),
+  referralId: z.string().uuid(),
   label: z.enum(referralDocumentLabels),
   url: z.string().min(1).max(2000),
   storagePath: z.string().min(1).max(500),
   fileType: z.string().min(1).max(120),
+  fileHash: z.string().min(1).max(128).optional().or(z.literal("")),
 })
 
 export type ReferralDocumentInput = z.output<typeof referralDocumentSchema>
+
+// F9 tasking: monitors assign a case to one officer/monitor with an optional
+// due date (today or future) and note.
+export const assignmentSchema = z.object({
+  recordId: z.string().uuid(),
+  assigneeId: z.string().min(1),
+  dueAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => value >= new Date().toISOString().slice(0, 10), {
+      message: "Due date cannot be in the past.",
+    })
+    .optional()
+    .or(z.literal("")),
+  note: z.string().trim().max(500).optional().or(z.literal("")),
+})
+
+export type AssignmentInput = z.output<typeof assignmentSchema>

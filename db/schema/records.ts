@@ -2,6 +2,7 @@ import {
   pgTable,
   uuid,
   text,
+  integer,
   jsonb,
   timestamp,
   index,
@@ -104,6 +105,11 @@ export const recordAttachments = pgTable(
     url: text("url").notNull(),
     storagePath: text("storage_path").notNull(),
     fileType: text("file_type").notNull(),
+    // N2 evidence integrity: SHA-256 of the bytes the client uploaded
+    // (nullable for legacy rows), plus known size and retention horizon.
+    fileHash: text("file_hash"),
+    fileSizeBytes: integer("file_size_bytes"),
+    retentionUntil: timestamp("retention_until", { withTimezone: true }),
     uploadedBy: text("uploaded_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

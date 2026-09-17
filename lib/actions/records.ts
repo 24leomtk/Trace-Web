@@ -22,6 +22,7 @@ import { domainForRecordType } from "@/lib/record-meta"
 import { describeRecord } from "@/lib/record-view"
 import { toUiRole } from "@/lib/roles"
 import { requireUser } from "@/lib/session"
+import { defaultRetentionUntil, fileKindFromMime } from "@/lib/format"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 import {
   canViewRecord,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/visibility"
 import type {
   AccessLevel,
+  AttachmentKind,
   CaseStatus,
   Domain,
   Role,
@@ -49,6 +51,8 @@ export interface UploadedAttachment {
   publicId: string
   fileType: string
   fileSizeBytes: number
+  /** N2 SHA-256 of the uploaded bytes (absent on legacy/mobile-old rows). */
+  fileHash?: string
 }
 
 export interface ViewerScope extends VisibilityScope {
@@ -366,11 +370,24 @@ async function toTraceRecord(
     attachments: attachments.map((attachment) => ({
       id: attachment.id,
       name: attachment.storagePath.split("/").pop() ?? "file",
-      sizeBytes: 0,
-      kind: "image" as const,
+      sizeBytes: attachment.fileSizeBytes ?? 0,
+      kind: kindForAttachment(attachment.fileType),
       url: attachment.url,
+      fileHash: attachment.fileHash ?? undefined,
+      retentionUntil: attachment.retentionUntil?.toISOString(),
     })),
   }
+}
+
+/** N2 MIME → display kind (legacy rows predate stored kinds). */
+function kindForAttachment(fileType: string): AttachmentKind {
+  const type = fileType.toLowerCase()
+  if (type.startsWith("image/")) return "image"
+  if (type === "application/pdf") return "pdf"
+  if (type.startsWith("video/")) return "video"
+  if (type.startsWith("audio/")) return "audio"
+  if (type.includes("forensic") || type.includes("lab")) return "lab"
+  return "doc"
 }
 
 // ---------------------------------------------------------------------------
@@ -716,12 +733,28 @@ export async function createRecord({
     await writeCodedProjections(tx, inserted, payload)
 
     if (attachments.length > 0) {
+      // N2: server-side allowlist (the client checks too, but uploads are
+      // direct-to-Cloudinary so the gate must live here as well).
+      for (const attachment of attachments) {
+        if (!fileKindFromMime(attachment.fileType)) {
+          throw new Error(
+            `Files of type "${attachment.fileType || "unknown"}" are not accepted.`
+          )
+        }
+      }
+      const retainedUntil = new Date(defaultRetentionUntil())
       await tx.insert(recordAttachments).values(
         attachments.map((attachment) => ({
           recordId: inserted.id,
           url: attachment.url,
           storagePath: attachment.publicId,
           fileType: attachment.fileType,
+          fileHash: attachment.fileHash,
+          fileSizeBytes:
+            Number.isFinite(attachment.fileSizeBytes) && attachment.fileSizeBytes >= 0
+              ? Math.floor(attachment.fileSizeBytes)
+              : undefined,
+          retentionUntil: retainedUntil,
           uploadedBy: scope.id,
         }))
       )

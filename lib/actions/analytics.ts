@@ -4,7 +4,7 @@ import { and, count, eq, sql } from "drizzle-orm"
 
 import { accidents, courtCaseAccess, records, trafficCitations } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
-import { referralSla } from "@/lib/format"
+import { lastWeekBuckets, referralSla } from "@/lib/format"
 import { formatDistrict } from "@/lib/roles"
 import { writeAuditTx } from "@/lib/server/audit"
 import type { AnalyticsEntry, Domain } from "@/lib/types"
@@ -42,6 +42,19 @@ function scopedConditions(scope: Scope, table: typeof records) {
   return conditions
 }
 
+/** Zero-filled weekly series from sparse {week, total} DB rows. */
+function toWeeklySeries(
+  rows: { week: string; total: number }[],
+  weeks = 12
+): { label: string; value: number }[] {
+  const buckets = lastWeekBuckets(weeks)
+  const byWeek = new Map(rows.map((row) => [row.week, row.total]))
+  return buckets.map((bucket) => ({
+    label: bucket.label,
+    value: byWeek.get(bucket.key) ?? 0,
+  }))
+}
+
 /** v1 catalog (Q28: E) — volumes, resolution rates, accident trends, citations. */
 export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
   const scope = await resolveScope()
@@ -61,6 +74,17 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
       .where(and(...base))
       .groupBy(records.recordType)
     const totalCases = volumes.reduce((sum, row) => sum + row.total, 0)
+    // U6 trend: filings per week, last 12 weeks.
+    const weeklyFilings = await tx
+      .select({
+        week: sql<string>`to_char(date_trunc('week', ${records.createdAt}), 'YYYY-MM-DD')`,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(records)
+      .where(
+        and(...base, sql`${records.createdAt} >= current_date - interval '84 days'`)
+      )
+      .groupBy(sql`date_trunc('week', ${records.createdAt})`)
     entries.push({
       id: "volumes",
       date: today,
@@ -72,14 +96,16 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
         value: String(row.total),
       })),
       breakdown: volumes.map((row) => ({
+        key: row.recordType,
         label: row.recordType.replace(/_/g, " "),
         count: row.total,
         share: totalCases > 0 ? row.total / totalCases : 0,
       })),
+      series: toWeeklySeries(weeklyFilings),
       severity: "info",
     })
 
-    // 2. Resolution rate.
+    // 2. Resolution funnel (U6: active → resolved/closed → archived).
     const [resolution] = await tx
       .select({
         total: sql<number>`count(*)::int`,
@@ -87,6 +113,15 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
       })
       .from(records)
       .where(and(...base))
+    const funnel = await tx
+      .select({
+        status: records.status,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(records)
+      .where(and(...base))
+      .groupBy(records.status)
+    const funnelOrder = ["active", "resolved", "closed", "archived"] as const
     const rate =
       resolution.total > 0 ? Math.round((resolution.resolved / resolution.total) * 100) : 0
     entries.push({
@@ -96,6 +131,14 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
       title: "Resolution rate",
       description: `${resolution.resolved} of ${resolution.total} cases resolved or closed.`,
       metrics: [{ label: "Resolved", value: `${rate}%` }],
+      breakdown: funnelOrder
+        .map((status) => funnel.find((row) => row.status === status))
+        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+        .map((row) => ({
+          label: row.status,
+          count: row.total,
+          share: resolution.total > 0 ? row.total / resolution.total : 0,
+        })),
       severity: rate < 30 ? "warning" : "info",
     })
 
@@ -116,6 +159,21 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
         )
       const fatalities = accidentRows.reduce((sum, row) => sum + (row.fatalities ?? 0), 0)
       const injuries = accidentRows.reduce((sum, row) => sum + (row.injuries ?? 0), 0)
+      // U6 trend: casualties per week, last 12 weeks.
+      const weeklyCasualties = await tx
+        .select({
+          week: sql<string>`to_char(date_trunc('week', ${accidents.accidentDate}::timestamptz), 'YYYY-MM-DD')`,
+          total: sql<number>`coalesce(sum(${accidents.fatalities} + ${accidents.injuries}), 0)::int`,
+        })
+        .from(accidents)
+        .innerJoin(records, eq(accidents.recordId, records.id))
+        .where(
+          and(
+            ...scopedConditions(scope, records),
+            sql`${accidents.accidentDate} >= current_date - 84`
+          )
+        )
+        .groupBy(sql`date_trunc('week', ${accidents.accidentDate}::timestamptz)`)
       entries.push({
         id: "accidents",
         date: today,
@@ -126,6 +184,7 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
           { label: "Fatalities", value: String(fatalities) },
           { label: "Injuries", value: String(injuries) },
         ],
+        series: toWeeklySeries(weeklyCasualties),
         severity: fatalities > 0 ? "critical" : injuries > 5 ? "warning" : "info",
       })
 
@@ -139,6 +198,21 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
         .innerJoin(records, eq(trafficCitations.recordId, records.id))
         .where(and(...scopedConditions(scope, records)))
       const paid = citationRows.filter((row) => row.isPaid).length
+      // U6 trend: citations issued per week, last 12 weeks.
+      const weeklyCitations = await tx
+        .select({
+          week: sql<string>`to_char(date_trunc('week', ${records.createdAt}), 'YYYY-MM-DD')`,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(records)
+        .where(
+          and(
+            ...scopedConditions(scope, records),
+            eq(records.recordType, "traffic_citation"),
+            sql`${records.createdAt} >= current_date - interval '84 days'`
+          )
+        )
+        .groupBy(sql`date_trunc('week', ${records.createdAt})`)
       entries.push({
         id: "citations",
         date: today,
@@ -149,6 +223,7 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
           { label: "Issued", value: String(citationRows.length) },
           { label: "Paid", value: String(paid) },
         ],
+        series: toWeeklySeries(weeklyCitations),
         severity: "info",
       })
     }

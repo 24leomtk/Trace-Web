@@ -211,3 +211,52 @@ function record(overrides) {
         strict_1.default.equal(sla.outcomeOverdue, false);
     });
 });
+(0, node_test_1.describe)("assignmentDue", () => {
+    const now = new Date("2026-09-17T12:00:00Z").getTime();
+    (0, node_test_1.it)("flags overdue open tasks", () => {
+        const due = (0, format_1.assignmentDue)("2026-09-15T12:00:00Z", "open", now);
+        strict_1.default.equal(due.overdue, true);
+        strict_1.default.equal(due.tone, "red");
+    });
+    (0, node_test_1.it)("warns within 3 days, quiet beyond", () => {
+        strict_1.default.equal((0, format_1.assignmentDue)("2026-09-19T12:00:00Z", "open", now).tone, "amber");
+        strict_1.default.equal((0, format_1.assignmentDue)("2026-09-30T12:00:00Z", "open", now).tone, "slate");
+    });
+    (0, node_test_1.it)("closed or dateless tasks are never overdue", () => {
+        strict_1.default.equal((0, format_1.assignmentDue)("2026-09-15T12:00:00Z", "done", now).overdue, false);
+        strict_1.default.equal((0, format_1.assignmentDue)(null, "open", now).overdue, false);
+        strict_1.default.equal((0, format_1.assignmentDue)(null, "open", now).daysLeft, null);
+    });
+});
+(0, node_test_1.describe)("lastWeekBuckets", () => {
+    (0, node_test_1.it)("returns Monday-start buckets oldest-first", () => {
+        var _a;
+        // 2026-09-17 is a Thursday; current week starts Mon 2026-09-14.
+        const buckets = (0, format_1.lastWeekBuckets)(3, new Date("2026-09-17T12:00:00Z"));
+        strict_1.default.deepEqual(buckets.map((bucket) => bucket.key), ["2026-08-31", "2026-09-07", "2026-09-14"]);
+        strict_1.default.equal((_a = buckets[2]) === null || _a === void 0 ? void 0 : _a.label, "14 Sep");
+    });
+});
+(0, node_test_1.describe)("fileKindFromMime", () => {
+    (0, node_test_1.it)("maps accepted kinds and rejects the rest", () => {
+        strict_1.default.equal((0, format_1.fileKindFromMime)("image/jpeg"), "image");
+        strict_1.default.equal((0, format_1.fileKindFromMime)("application/pdf"), "pdf");
+        strict_1.default.equal((0, format_1.fileKindFromMime)("video/mp4"), "video");
+        strict_1.default.equal((0, format_1.fileKindFromMime)("audio/mpeg"), "audio");
+        strict_1.default.equal((0, format_1.fileKindFromMime)("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "doc");
+        strict_1.default.equal((0, format_1.fileKindFromMime)("application/x-msdownload"), null);
+        strict_1.default.equal((0, format_1.fileKindFromMime)(""), null);
+    });
+});
+(0, node_test_1.describe)("defaultRetentionUntil / shortFileHash", () => {
+    (0, node_test_1.it)("retains for the policy horizon", () => {
+        const until = (0, format_1.defaultRetentionUntil)(new Date("2026-09-17T00:00:00Z"));
+        strict_1.default.equal(until.slice(0, 10), "2031-09-17");
+        strict_1.default.equal(format_1.RETENTION_YEARS, 5);
+    });
+    (0, node_test_1.it)("shortens hashes for display", () => {
+        strict_1.default.equal((0, format_1.shortFileHash)("abcdef1234567890"), "abcdef123456…");
+        strict_1.default.equal((0, format_1.shortFileHash)(null), null);
+        strict_1.default.equal((0, format_1.shortFileHash)(undefined), null);
+    });
+});

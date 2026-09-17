@@ -176,5 +176,5 @@ district monitors). Each pull is audit-logged as `report_generated`.
 | `GET`  | `/uploads/credentials`  | filing roles | Short-lived Cloudinary signing material |
 | `GET`  | `/health`               | public     | Liveness probe                       |
 
-Uploads are images only (`resource_type: image`, folder `trace/records/<userId>`),
-then attached to a case via `POST /records` (`AttachmentInput`).
+Uploads accept images, PDFs, video, audio, and documents (endpoint follows the file kind, folder `trace/records/<userId>`),
+then attached to a case via `POST /records` (`AttachmentInput`, optional `fileHash` SHA-256).

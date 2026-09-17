@@ -1,12 +1,17 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { ArrowDownRightIcon, ArrowUpRightIcon } from "lucide-react"
+import { ArrowDownRightIcon, ArrowUpRightIcon, DownloadIcon } from "lucide-react"
 
 import { getAnalyticsFeed } from "@/lib/actions/analytics"
 import { formatFullDate, formatTimelineDate } from "@/lib/format"
+import { RECORD_TYPE_META } from "@/lib/record-meta"
 import type { AnalyticsEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useHomeView } from "@/providers/home-view-context"
+import { useUser } from "@/providers/user-context"
+import type { RecordType } from "@/validations/record"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const SEVERITY_STYLE = {
@@ -45,6 +50,18 @@ export function AnalyticsFeed() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex justify-end print:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={() => downloadFeedCsv(feed)}
+        >
+          <DownloadIcon data-icon="inline-start" />
+          Export CSV
+        </Button>
+      </div>
       {feed.map((entry) => (
         <AnalyticsCard key={entry.id} entry={entry} />
       ))}
@@ -55,8 +72,56 @@ export function AnalyticsFeed() {
   )
 }
 
+/** U6 CSV export — metrics, breakdowns, and series for every card. */
+function downloadFeedCsv(feed: AnalyticsEntry[]) {
+  const quote = (value: string | number) =>
+    `"${String(value).replace(/"/g, '""')}"`
+  const lines = ["section,title,scope,date,kind,label,value"]
+  for (const entry of feed) {
+    for (const metric of entry.metrics) {
+      lines.push(
+        [entry.id, entry.title, entry.scopeLabel, entry.date, "metric", metric.label, metric.value]
+          .map(quote)
+          .join(",")
+      )
+    }
+    for (const row of entry.breakdown ?? []) {
+      lines.push(
+        [entry.id, entry.title, entry.scopeLabel, entry.date, "breakdown", row.label, `${row.count} (${(row.share * 100).toFixed(1)}%)`]
+          .map(quote)
+          .join(",")
+      )
+    }
+    for (const point of entry.series ?? []) {
+      lines.push(
+        [entry.id, entry.title, entry.scopeLabel, entry.date, "series", point.label, point.value]
+          .map(quote)
+          .join(",")
+      )
+    }
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = `trace-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
   const severity = SEVERITY_STYLE[entry.severity]
+  const { user } = useUser()
+  const { setTab, setCaseFilters } = useHomeView()
+
+  function drillType(key?: string): RecordType | null {
+    if (!key || !(key in RECORD_TYPE_META)) return null
+    const type = key as RecordType
+    if (user.domain && RECORD_TYPE_META[type].domain !== user.domain) return null
+    return type
+  }
 
   return (
     <article
@@ -117,29 +182,58 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
         ))}
       </div>
 
+      {entry.series && entry.series.length > 0 && (
+        <SeriesChart
+          points={entry.series}
+          label={`${entry.title} weekly trend`}
+          tone={entry.severity === "critical" ? "red" : "primary"}
+        />
+      )}
+
       {entry.breakdown && (
         <div className="flex flex-col gap-1.5">
-          {entry.breakdown.map((row) => (
-            <div key={row.label} className="flex items-center gap-3 text-xs">
-              <span className="w-32 shrink-0 truncate text-muted-foreground sm:w-40">
-                {row.label}
-              </span>
-              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn(
-                    "h-full rounded-full",
-                    entry.severity === "critical"
-                      ? "bg-red-400 dark:bg-red-500"
-                      : "bg-primary/60"
-                  )}
-                  style={{ width: `${row.share}%` }}
-                />
+          {entry.breakdown.map((row) => {
+            const type = drillType(row.key)
+            const bar = (
+              <>
+                <span className="w-32 shrink-0 truncate text-muted-foreground sm:w-40">
+                  {row.label}
+                </span>
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      entry.severity === "critical"
+                        ? "bg-red-400 dark:bg-red-500"
+                        : "bg-primary/60"
+                    )}
+                    style={{ width: `${row.share}%` }}
+                  />
+                </div>
+                <span className="w-14 shrink-0 text-right font-medium tabular-nums">
+                  {row.count.toLocaleString()}
+                </span>
+              </>
+            )
+            return type ? (
+              <button
+                key={row.label}
+                type="button"
+                title={`View ${row.label} cases`}
+                onClick={() => {
+                  setCaseFilters({ type, status: null })
+                  setTab("feed")
+                }}
+                className="flex items-center gap-3 rounded-lg text-xs transition-colors hover:bg-accent"
+              >
+                {bar}
+              </button>
+            ) : (
+              <div key={row.label} className="flex items-center gap-3 text-xs">
+                {bar}
               </div>
-              <span className="w-14 shrink-0 text-right font-medium tabular-nums">
-                {row.count.toLocaleString()}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -153,8 +247,56 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
   )
 }
 
-function DeltaBadge({ value }: { value: number }) {
-  const up = value > 0
+/** U6 dependency-free weekly trend bars (oldest → newest). */
+function SeriesChart({
+  points,
+  label,
+  tone,
+}: {
+  points: { label: string; value: number }[]
+  label: string
+  tone: "primary" | "red"
+}) {
+  const max = Math.max(1, ...points.map((point) => point.value))
+  const width = 240
+  const height = 56
+  const gap = 3
+  const barWidth = (width - gap * (points.length - 1)) / points.length
+  return (
+    <figure>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-14 w-full"
+        role="img"
+        aria-label={`${label}: ${points.map((p) => `${p.label} ${p.value}`).join(", ")}`}
+      >
+        {points.map((point, index) => {
+          const barHeight = Math.max(2, (point.value / max) * (height - 14))
+          return (
+            <rect
+              key={`${point.label}-${index}`}
+              x={index * (barWidth + gap)}
+              y={height - barHeight}
+              width={barWidth}
+              height={barHeight}
+              rx={1.5}
+              className={tone === "red" ? "fill-red-400 dark:fill-red-500" : "fill-primary/60"}
+            >
+              <title>{`${point.label}: ${point.value}`}</title>
+            </rect>
+          )
+        })}
+      </svg>
+      <figcaption className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">
+        <span>{points[0]?.label}</span>
+        <span>per week · max {max.toLocaleString()}</span>
+        <span>{points[points.length - 1]?.label}</span>
+      </figcaption>
+    </figure>
+  )
+}
+
+function DeltaBadge({ value }: { value: number }) {  const up = value > 0
   const flat = value === 0
   return (
     <span

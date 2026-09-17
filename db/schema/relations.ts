@@ -378,6 +378,22 @@ export const appRelations = defineRelations(schema, (r) => ({
       to: r.users.id,
     }),
   },
+  caseAssignments: {
+    record: r.one.records({
+      from: r.caseAssignments.recordId,
+      to: r.records.id,
+    }),
+    assignee: r.one.users({
+      from: r.caseAssignments.assigneeId,
+      to: r.users.id,
+      alias: "assignment_assignee",
+    }),
+    assigner: r.one.users({
+      from: r.caseAssignments.assignedBy,
+      to: r.users.id,
+      alias: "assignment_assigner",
+    }),
+  },
 
   // ══════════════════════════════════════════════════════════════════════════
   // notifications

@@ -38,10 +38,10 @@ export function AttachmentsField({ state, actions }: AttachmentsFieldProps) {
       >
         <PaperclipIcon className="size-5 text-muted-foreground" />
         <span className="text-sm font-medium">
-          Attach scans or photos
+          Attach scans, photos, or reports
         </span>
         <span className="text-xs text-muted-foreground">
-          Images only · drag files here or click to browse · up to 10 MB each
+          Photos, PDFs, video, audio, documents · drag files here or click to browse · up to 6 files
         </span>
       </button>
 

@@ -181,8 +181,12 @@ export interface AttachmentMeta {
   id: string
   name: string
   sizeBytes: number
-  kind: "pdf" | "image" | "lab"
+  kind: "pdf" | "image" | "lab" | "video" | "audio" | "doc"
   url?: string
+  /** SHA-256 of the uploaded bytes (absent on legacy rows). */
+  fileHash?: string
+  /** ISO timestamp until which the file is retained. */
+  retentionUntil?: string
 }
 
 export interface TraceRecord {
@@ -272,6 +276,13 @@ export interface AnalyticsBreakdownRow {
   label: string
   count: number
   share: number
+  /** Stable key for drill-down (e.g. a RecordType) — labels are display-only. */
+  key?: string
+}
+
+export interface AnalyticsSeriesPoint {
+  label: string
+  value: number
 }
 
 export interface AnalyticsEntry {
@@ -282,6 +293,8 @@ export interface AnalyticsEntry {
   description: string
   metrics: AnalyticsMetric[]
   breakdown?: AnalyticsBreakdownRow[]
+  /** Time series (oldest → newest) for trend charts. */
+  series?: AnalyticsSeriesPoint[]
   severity: "info" | "warning" | "critical"
 }
 

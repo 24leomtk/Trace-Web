@@ -12,7 +12,9 @@ export interface UploadCredentialsResult {
 }
 
 /** Hands the client short-lived signing material for a direct-to-Cloudinary
- * image upload. Images only — the signature pins resource_type to images. */
+ * upload. N2: images, PDFs, video, audio, and documents — the endpoint (and
+ * hence resource type) follows the allowlisted file kind; executables are
+ * rejected before upload and again server-side at filing time. */
 export async function getUploadCredentials(): Promise<UploadCredentialsResult> {
   const user = await requireUser()
   if (

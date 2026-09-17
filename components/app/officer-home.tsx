@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { AnalyticsFeed } from "@/components/app/analytics-feed"
+import { AssignmentQueue } from "@/components/app/assignment-queue"
 import { RecordTimeline } from "@/components/app/record-timeline"
 import { useHomeView, type FeedScope, type HomeTab } from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
@@ -48,6 +49,8 @@ export function OfficerHome() {
           {user.posting ?? user.district ?? user.domain}
         </p>
       </header>
+
+      <AssignmentQueue />
 
       {isMonitor && (
         <div className="flex gap-1 rounded-full border bg-muted/40 p-1">

@@ -16,7 +16,7 @@ import {
   removeReferralDocument,
 } from "@/lib/actions/referrals"
 import { getUploadCredentials } from "@/lib/actions/uploads"
-import { uploadImageToCloudinary } from "@/lib/upload"
+import { uploadFileToCloudinary } from "@/lib/upload"
 import { referralDocumentLabels } from "@/validations/admin"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -61,20 +61,21 @@ export function ReferralBundle({
 
   async function submitDocument(event: React.FormEvent) {
     event.preventDefault()
-    if (!file || !file.type.startsWith("image/")) {
-      toast.error("Choose an image file.")
+    if (!file) {
+      toast.error("Choose a file first.")
       return
     }
     setUploading(true)
     try {
       const credentials = await getUploadCredentials()
-      const uploaded = await uploadImageToCloudinary(file, credentials)
+      const uploaded = await uploadFileToCloudinary(file, credentials)
       await addReferralDocument({
         referralId,
         label,
         url: uploaded.url,
         storagePath: uploaded.publicId,
         fileType: uploaded.fileType,
+        fileHash: uploaded.fileHash,
       })
       toast.success("Brief document added.")
       setFile(null)
@@ -219,9 +220,9 @@ export function ReferralBundle({
               </select>
               <Input
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf,video/*,audio/*,.doc,.docx,.txt"
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                aria-label="Brief image"
+                aria-label="Brief file"
                 className="flex-1"
               />
             </div>

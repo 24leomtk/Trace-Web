@@ -12,6 +12,7 @@ import {
   wantedPersonCases,
 } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
+import { defaultRetentionUntil, fileKindFromMime } from "@/lib/format"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 import { escapeLike } from "@/lib/visibility"
 import { personSchema, type PersonInput } from "@/validations/admin"
@@ -128,14 +129,19 @@ export async function attachPersonFile({
   url,
   storagePath,
   fileType,
+  fileHash,
 }: {
   personId: string
   url: string
   storagePath: string
   fileType: string
+  fileHash?: string
 }): Promise<{ id: string }> {
   const scope = await getViewerScope()
   if (!canWorkPersons(scope.role)) throw new Error("Your role can't attach files.")
+  if (!fileKindFromMime(fileType)) {
+    throw new Error(`Files of type "${fileType || "unknown"}" are not accepted.`)
+  }
   return withUserCtx(scope.id, async (tx) => {
     const [person] = await tx
       .select({ id: personsOfInterest.id })
@@ -145,7 +151,15 @@ export async function attachPersonFile({
     if (!person) throw new Error("Person not found.")
     const [row] = await tx
       .insert(recordAttachments)
-      .values({ personId, url, storagePath, fileType, uploadedBy: scope.id })
+      .values({
+        personId,
+        url,
+        storagePath,
+        fileType,
+        fileHash: fileHash?.trim() || undefined,
+        retentionUntil: new Date(defaultRetentionUntil()),
+        uploadedBy: scope.id,
+      })
       .returning({ id: recordAttachments.id })
     await writeAuditTx(tx, {
       actorId: scope.id,

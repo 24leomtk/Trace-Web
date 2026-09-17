@@ -157,6 +157,7 @@ export async function addReferralDocument(input: {
   url: string
   storagePath: string
   fileType: string
+  fileHash?: string
 }): Promise<{ id: string }> {
   const scope = await getViewerScope()
   if (!isMonitor(scope)) throw new Error("Only monitors add brief documents.")
@@ -176,6 +177,7 @@ export async function addReferralDocument(input: {
         url: parsed.data.url,
         storagePath: parsed.data.storagePath,
         fileType: parsed.data.fileType,
+        fileHash: parsed.data.fileHash?.trim() || undefined,
         uploadedBy: scope.id,
       })
       .returning({ id: referralDocuments.id })

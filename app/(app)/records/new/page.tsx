@@ -13,7 +13,7 @@ import {
 } from "@/lib/actions/records"
 import { getUploadCredentials } from "@/lib/actions/uploads"
 import { normalizePlate } from "@/lib/format"
-import { uploadImageToCloudinary } from "@/lib/upload"
+import { uploadFileToCloudinary } from "@/lib/upload"
 import { domainForRecordType } from "@/lib/record-meta"
 import { recordSchemas } from "@/validations/record"
 import type { RecordType } from "@/validations/record"
@@ -108,8 +108,9 @@ export default function NewRecordPage() {
   const [fileState, fileActions] = useFileUpload({
     multiple: true,
     maxFiles: 6,
-    maxSize: 10 * 1024 * 1024,
-    accept: "image/*",
+    // Hook-level ceiling; tighter per-kind caps are enforced at upload time.
+    maxSize: 100 * 1024 * 1024,
+    accept: "image/*,application/pdf,video/*,audio/*,.doc,.docx,.txt",
   })
 
   const fields = RECORD_FORM_FIELDS[recordType]
@@ -278,18 +279,15 @@ export default function NewRecordPage() {
 
     setSubmitting(true)
     try {
-      const imageFiles = fileState.files
+      const filesToUpload = fileState.files
         .map((entry) => entry.file)
-        .filter(
-          (file): file is File =>
-            file instanceof File && file.type.startsWith("image/")
-        )
+        .filter((file): file is File => file instanceof File)
 
       let uploadedAttachments: UploadedAttachment[] = []
-      if (imageFiles.length > 0) {
+      if (filesToUpload.length > 0) {
         const credentials = await getUploadCredentials()
         uploadedAttachments = await Promise.all(
-          imageFiles.map((file) => uploadImageToCloudinary(file, credentials))
+          filesToUpload.map((file) => uploadFileToCloudinary(file, credentials))
         )
       }
 
