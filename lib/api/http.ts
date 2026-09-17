@@ -32,7 +32,7 @@ const ACTION_ERROR_RULES: Array<{ status: number; pattern: RegExp }> = [
   {
     status: 403,
     pattern:
-      /only monitors|only officers|monitors only|only system administrators|don't have access|outside your (scope|branch|district)|your role can't|your role does not|locked to|police users|police only|registrars only|insurer portal users only|court liaisons only/i,
+      /only monitors|only officers|monitors only|only system administrators|don't have access|outside your (scope|branch|district)|your role can't|your role does not|locked to|police users|police only|registrars only|insurer portal users only|court liaisons only|api key/i,
   },
 ]
 

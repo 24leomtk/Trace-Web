@@ -1,10 +1,11 @@
 "use server"
 
-import { and, desc, eq, gt, gte, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
   actions,
+  branches,
   courtCaseAccess,
   insurancePolicies,
   organizations,
@@ -12,20 +13,24 @@ import {
   records,
   referralDocuments,
   users,
+  vehicleCases,
   vehicles,
   wantedPersonCases,
 } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
+import { verifyApiKey } from "@/lib/actions/apikeys"
+import { normalizePlate } from "@/lib/format"
 import { describeRecord } from "@/lib/record-view"
+import { toUiRole } from "@/lib/roles"
 import { requireUser } from "@/lib/session"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
-import type { AccessLogEntry } from "@/lib/types"
+import type { AccessLogEntry, Domain } from "@/lib/types"
 import type { RecordType } from "@/validations/record"
 import {
   courtOutcomeSchema,
   courtReferralSchema,
 } from "@/validations/admin"
-import { getViewerScope } from "@/lib/actions/records"
+import { getViewerScope, type ViewerScope } from "@/lib/actions/records"
 import { canViewRecord } from "@/lib/visibility"
 import { notifyUser } from "@/lib/actions/notifications"
 
@@ -48,7 +53,7 @@ const LOOKUP_ACTION_TYPES = [
   "insurer_flag_lookup",
 ] as const
 
-async function checkLookupThrottle(actorId: string): Promise<void> {
+export async function checkLookupThrottle(actorId: string): Promise<void> {
   const windows = [
     { ms: 60_000, max: 20, label: ">20/min" },
     { ms: 3_600_000, max: 300, label: ">300/hr" },
@@ -409,8 +414,7 @@ export async function checkPlateFlag(plateNumber: string): Promise<FlagCheckResu
 /** Insurer self-serve: flag-only lookup on any plate, scoped to own org. */
 export async function insurerPlateLookup(
   plateNumber: string
-): Promise<FlagCheckResult> {
-  const scope = await getViewerScope()
+): Promise<FlagCheckResult> {  const scope = await getViewerScope()
   if (scope.role !== "INSURANCE_PORTAL_USER" || !scope.organizationId) {
     throw new Error("Insurer portal users only.")
   }
@@ -434,8 +438,7 @@ export async function insurerPlateLookup(
 }
 
 /** Insurer: read-only list of their own organization's policies. */
-export async function getMyPolicies() {
-  const scope = await getViewerScope()
+export async function getMyPolicies() {  const scope = await getViewerScope()
   if (scope.role !== "INSURANCE_PORTAL_USER" || !scope.organizationId) {
     throw new Error("Insurer portal users only.")
   }
@@ -456,6 +459,182 @@ export async function getMyPolicies() {
       .where(eq(insurancePolicies.insurerId, scope.organizationId!))
       .orderBy(desc(insurancePolicies.createdAt))
       .limit(100)
+  })
+}
+
+export interface PlateLookupResult {
+  flagged: boolean
+  /** Active case classes behind the flag (police only; always [] for insurers). */
+  reasons: string[]
+}
+
+/**
+ * F6 ANPR-ready lookup (Phase 3) — single indexed read plus the active case
+ * classes, throttled and audited like every other safety check. Powers both
+ * the `GET /api/v1/lookups/plate` reader endpoint and the lookup page.
+ */
+export async function plateLookupFast(plateNumber: string): Promise<PlateLookupResult> {
+  const scope = await getViewerScope()
+  return plateLookupCore(scope, plateNumber)
+}
+
+/**
+ * N4 machine variant (Phase 3) — same lookup authenticated by API key
+ * instead of session. The key acts as its bound user: role gates, scope,
+ * throttle, and audit apply unchanged.
+ */
+export async function plateLookupKey(
+  rawKey: string,
+  plateNumber: string
+): Promise<PlateLookupResult> {
+  const { userId, scopes } = await verifyApiKey(rawKey)
+  if (!scopes.includes("plate:read")) {
+    throw new Error("That API key lacks the plate:read scope.")
+  }
+  const scope = await scopeById(userId)
+  return plateLookupCore(scope, plateNumber)
+}
+
+/** Scope for a known user id without a session (trusted: key-verified). */
+async function scopeById(userId: string) {
+  const [row] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      role: users.role,
+      domain: users.domain,
+      branchId: users.branchId,
+      district: users.district,
+      organizationId: users.organizationId,
+      branchDistrict: branches.district,
+      branchDomain: branches.domain,
+    })
+    .from(users)
+    .leftJoin(branches, eq(users.branchId, branches.id))
+    .where(eq(users.id, userId))
+    .limit(1)
+  if (!row) throw new Error("That API key was not found.")
+  return {
+    id: row.id,
+    name: row.name,
+    role: toUiRole(row.role),
+    domain: (row.domain ?? row.branchDomain ?? null) as Domain | null,
+    branchId: row.branchId,
+    branchDistrict: row.branchDistrict,
+    district: row.district,
+    organizationId: row.organizationId,
+  }
+}
+
+async function plateLookupCore(
+  scope: ViewerScope,
+  plateNumber: string
+): Promise<PlateLookupResult> {
+  const isInsurer = scope.role === "INSURANCE_PORTAL_USER" && scope.organizationId
+  const isPolice =
+    scope.role === "OFFICER" ||
+    scope.role === "DISTRICT_MONITOR" ||
+    scope.role === "COUNTRY_MONITOR"
+  if (!isInsurer && !isPolice) {
+    throw new Error("Plate lookups are for police users and insurer portal users.")
+  }
+  const plate = normalizePlate(plateNumber)
+  if (!plate) return { flagged: false, reasons: [] }
+  await checkLookupThrottle(scope.id)
+  return withUserCtx(scope.id, async (tx) => {
+    const [vehicle] = await tx
+      .select({ id: vehicles.id, isFlagged: vehicles.isFlagged })
+      .from(vehicles)
+      .where(eq(vehicles.plateNumber, plate))
+      .limit(1)
+    const reasonRows = vehicle
+      ? await tx
+          .select({ caseType: vehicleCases.caseType })
+          .from(vehicleCases)
+          .where(
+            and(
+              eq(vehicleCases.vehicleId, vehicle.id),
+              eq(vehicleCases.status, "active")
+            )
+          )
+          .limit(10)
+      : []
+    const reasons = isPolice
+      ? [...new Set(reasonRows.map((row) => row.caseType))]
+      : []
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: isInsurer ? "insurer_flag_lookup" : "cross_branch_access",
+      vehicleId: vehicle?.id,
+      reason: `Fast plate lookup ${plate}: ${vehicle?.isFlagged ? "FLAGGED" : "clear"}.`,
+    })
+    return { flagged: vehicle?.isFlagged ?? false, reasons }
+  })
+}
+
+export interface FlaggedVehicleRow {
+  vehicleId: string
+  plateNumber: string
+  district: string | null
+  /** Oldest active case date (YYYY-MM-DD) — the review-age anchor. */
+  since: string
+  caseTypes: string[]
+}
+
+/**
+ * F6 flagged watchlist (Phase 3) — every currently-flagged plate in scope
+ * with how long it has been flagged. Read-only review discipline: flags
+ * clear automatically when their cases close.
+ */
+export async function flaggedVehicleWatchlist(
+  limit = 50
+): Promise<FlaggedVehicleRow[]> {
+  const scope = await getViewerScope()
+  const isPolice =
+    scope.role === "OFFICER" ||
+    scope.role === "DISTRICT_MONITOR" ||
+    scope.role === "COUNTRY_MONITOR"
+  if (!isPolice) throw new Error("Police users only.")
+  const district =
+    scope.role === "OFFICER"
+      ? (scope.branchDistrict ?? scope.district)
+      : scope.role === "DISTRICT_MONITOR"
+        ? scope.district
+        : null
+  return withUserCtx(scope.id, async (tx) => {
+    const districtFilter = district
+      ? and(
+          eq(vehicles.isFlagged, true),
+          eq(vehicleCases.district, district as never)
+        )
+      : eq(vehicles.isFlagged, true)
+    const rows = await tx
+      .select({
+        vehicleId: vehicles.id,
+        plateNumber: vehicles.plateNumber,
+        district: sql<string | null>`min(${vehicleCases.district})`,
+        since: sql<string>`to_char(min(${vehicleCases.createdAt}), 'YYYY-MM-DD')`,
+        caseTypes: sql<string[]>`array_agg(distinct ${vehicleCases.caseType})`,
+      })
+      .from(vehicles)
+      .innerJoin(
+        vehicleCases,
+        and(
+          eq(vehicleCases.vehicleId, vehicles.id),
+          eq(vehicleCases.status, "active")
+        )
+      )
+      .where(districtFilter)
+      .groupBy(vehicles.id, vehicles.plateNumber)
+      .orderBy(sql`min(${vehicleCases.createdAt})`)
+      .limit(Math.min(Math.max(limit, 1), 100))
+    return rows.map((row) => ({
+      vehicleId: row.vehicleId,
+      plateNumber: row.plateNumber,
+      district: row.district,
+      since: row.since,
+      caseTypes: (row.caseTypes ?? []).filter(Boolean),
+    }))
   })
 }
 

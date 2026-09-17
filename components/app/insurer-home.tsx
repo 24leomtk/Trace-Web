@@ -4,10 +4,10 @@ import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { listPolicies } from "@/lib/actions/insurance"
+import { bulkCreatePolicies, listPolicies } from "@/lib/actions/insurance"
 import { insurerPlateLookup } from "@/lib/actions/access"
 import { isPolicyLive } from "@/lib/visibility"
-import { daysUntil, expiryTone, formatCountdown } from "@/lib/format"
+import { daysUntil, expiryTone, formatCountdown, parsePolicyCsv, POLICY_CSV_TEMPLATE } from "@/lib/format"
 import { TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,13 @@ export function InsurerHome() {
   const [plate, setPlate] = useState("")
   const [flagResult, setFlagResult] = useState<boolean | null>(null)
   const [checking, setChecking] = useState(false)
+  const [csvText, setCsvText] = useState<string | null>(null)
+  const [csvName, setCsvName] = useState("")
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{
+    created: number
+    failed: { row: number; plate: string; error: string }[]
+  } | null>(null)
 
   async function checkFlag(event: React.FormEvent) {
     event.preventDefault()
@@ -36,6 +43,59 @@ export function InsurerHome() {
       toast.error("Lookup failed.")
     } finally {
       setChecking(false)
+    }
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob([POLICY_CSV_TEMPLATE], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = "trace-policies-template.csv"
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleCsvFile(file: File | undefined) {
+    setImportResult(null)
+    if (!file) {
+      setCsvText(null)
+      setCsvName("")
+      return
+    }
+    setCsvName(file.name)
+    setCsvText(await file.text())
+  }
+
+  async function runImport() {
+    if (!csvText) return
+    const parsed = parsePolicyCsv(csvText)
+    if (parsed.rows.length === 0) {
+      toast.error(
+        parsed.errors[0]?.message ?? "No valid rows found."
+      )
+      return
+    }
+    if (parsed.rows.length > 500) {
+      toast.error("Split the file — 500 rows max per import.")
+      return
+    }
+    setImporting(true)
+    try {
+      const result = await bulkCreatePolicies({ rows: parsed.rows })
+      setImportResult(result)
+      if (parsed.errors.length > 0) {
+        toast.error(`${parsed.errors.length} row(s) skipped before import.`)
+      } else {
+        toast.success(`${result.created} polic(ies) imported.`)
+      }
+      void queryClient.invalidateQueries({ queryKey: ["my-policies"] })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Import failed.")
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -72,6 +132,64 @@ export function InsurerHome() {
             : "Clear — no open case on this plate."}
         </p>
       )}
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Bulk import
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          CSV with plate_number, policy_number, start_date, end_date
+          (optional coverage_type, is_active, external_reference). Vehicles
+          must already be on file — unknown plates come back as row errors.
+          500 rows max.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+            Template
+          </Button>
+          <Input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="Policy CSV file"
+            className="max-w-64"
+            onChange={(event) => void handleCsvFile(event.target.files?.[0])}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={!csvText || importing}
+            onClick={() => void runImport()}
+          >
+            {importing ? "Importing…" : `Import${csvName ? ` ${csvName}` : ""}`}
+          </Button>
+        </div>
+        {csvText != null && (() => {
+          const preview = parsePolicyCsv(csvText)
+          return (
+            <p className="text-xs text-muted-foreground">
+              {preview.rows.length} valid row(s)
+              {preview.errors.length > 0 && ` · ${preview.errors.length} skipped: ${preview.errors[0]?.message}`}
+            </p>
+          )
+        })()}
+        {importResult && (
+          <div className="rounded-2xl border px-3 py-2 text-sm">
+            <p className="font-medium">
+              {importResult.created} created
+              {importResult.failed.length > 0 && ` · ${importResult.failed.length} failed`}
+            </p>
+            {importResult.failed.length > 0 && (
+              <ul className="mt-1 flex max-h-32 flex-col gap-0.5 overflow-y-auto text-xs text-muted-foreground">
+                {importResult.failed.map((failure) => (
+                  <li key={`${failure.row}-${failure.plate}`}>
+                    Row {failure.row} ({failure.plate || "—"}): {failure.error}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">

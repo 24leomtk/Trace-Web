@@ -148,6 +148,20 @@ export const insurancePolicySchema = z.object({
 
 export type InsurancePolicyInput = z.output<typeof insurancePolicySchema>
 
+// F7 bulk import: same policy shape keyed by plate (vehicles must pre-exist)
+// instead of vehicle id — CSV-friendly.
+export const bulkPolicyRowSchema = z.object({
+  plateNumber: z.string().trim().min(1).max(32),
+  policyNumber: z.string().trim().min(1).max(64),
+  coverageType: z.string().trim().max(64).optional().or(z.literal("")),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  isActive: z.boolean().default(true),
+  externalReference: z.string().trim().max(128).optional().or(z.literal("")),
+})
+
+export type BulkPolicyRowInput = z.output<typeof bulkPolicyRowSchema>
+
 export const courtReferralSchema = z.object({
   recordId: z.uuid(),
   courtLiaisonId: z.string().min(1),
@@ -242,3 +256,23 @@ export const assignmentSchema = z.object({
 })
 
 export type AssignmentInput = z.output<typeof assignmentSchema>
+
+// N4 machine keys: issued by system admins to one active user, bound by
+// scopes, optionally expiring.
+export const apiKeyScopes = ["plate:read"] as const
+
+export const apiKeySchema = z.object({
+  userId: z.string().min(1),
+  name: z.string().trim().min(2).max(80),
+  scopes: z.array(z.enum(apiKeyScopes)).min(1).max(10),
+  expiresAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((value) => value >= new Date().toISOString().slice(0, 10), {
+      message: "Expiry cannot be in the past.",
+    })
+    .optional()
+    .or(z.literal("")),
+})
+
+export type ApiKeyInput = z.output<typeof apiKeySchema>

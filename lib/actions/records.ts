@@ -8,6 +8,7 @@ import {
   accidents,
   branches,
   courtCaseAccess,
+  idempotencyKeys,
   missingPersonCases,
   recordAttachments,
   records,
@@ -346,6 +347,11 @@ async function toTraceRecord(
     record.recordType as RecordType,
     (record.data ?? {}) as Record<string, unknown>
   )
+  const payload = (record.data ?? {}) as Record<string, unknown>
+  const latitude =
+    typeof payload.latitude === "number" ? payload.latitude : null
+  const longitude =
+    typeof payload.longitude === "number" ? payload.longitude : null
   return {
     id: record.id,
     recordType: record.recordType as RecordType,
@@ -376,6 +382,10 @@ async function toTraceRecord(
       fileHash: attachment.fileHash ?? undefined,
       retentionUntil: attachment.retentionUntil?.toISOString(),
     })),
+    geo:
+      latitude != null && longitude != null
+        ? { latitude, longitude }
+        : null,
   }
 }
 
@@ -666,6 +676,11 @@ interface CreateRecordInput {
   accessLevel?: AccessLevel
   branchId?: string
   attachments?: UploadedAttachment[]
+  /**
+   * F2 offline safety: web retries send the same key per filing attempt, so a
+   * flaky connection can't file twice. Replays return the original response.
+   */
+  idempotencyKey?: string
 }
 
 export async function createRecord({
@@ -674,7 +689,8 @@ export async function createRecord({
   accessLevel = "branch",
   branchId,
   attachments = [],
-}: CreateRecordInput): Promise<{ id: string }> {
+  idempotencyKey,
+}: CreateRecordInput): Promise<{ id: string; idempotentReplay?: boolean }> {
   const scope = await getViewerScope()
   if (!canCreateType(scope, type)) {
     await writeAudit({
@@ -698,6 +714,21 @@ export async function createRecord({
   }
 
   const filing = await resolveFilingBranch(scope, branchId)
+
+  // F2 replay: a retried attempt returns the original filing, not a duplicate.
+  const key = idempotencyKey?.trim()
+  if (key) {
+    const [stored] = await db
+      .select()
+      .from(idempotencyKeys)
+      .where(
+        and(eq(idempotencyKeys.key, key), eq(idempotencyKeys.userId, scope.id))
+      )
+      .limit(1)
+    if (stored) {
+      return { ...(stored.response as { id: string }), idempotentReplay: true }
+    }
+  }
 
   return withUserCtx(scope.id, async (tx) => {
     // Link person when the payload references a known profile.
@@ -765,7 +796,21 @@ export async function createRecord({
       actionType: "record_created",
       recordId: inserted.id,
     })
-    return { id: inserted.id }
+    const result = { id: inserted.id }
+    if (key) {
+      try {
+        await tx.insert(idempotencyKeys).values({
+          key,
+          userId: scope.id,
+          statusCode: 200,
+          response: result,
+        })
+      } catch {
+        // Key raced (parallel retry): the case was still filed exactly once
+        // by this transaction; the duplicate response simply isn't cached.
+      }
+    }
+    return result
   })
 }
 

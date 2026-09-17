@@ -5,8 +5,9 @@ import { and, desc, eq } from "drizzle-orm"
 import { db } from "@/db"
 import { insurancePolicies, organizations, vehicles } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
+import { normalizePlate } from "@/lib/format"
 import { writeAuditTx } from "@/lib/server/audit"
-import { insurancePolicySchema, type InsurancePolicyInput } from "@/validations/admin"
+import { bulkPolicyRowSchema, insurancePolicySchema, type InsurancePolicyInput } from "@/validations/admin"
 import { getViewerScope } from "@/lib/actions/records"
 
 function emptyToUndefined(value?: string): string | undefined {
@@ -132,5 +133,81 @@ export async function listPolicies() {
       .where(eq(insurancePolicies.insurerId, scope.organizationId!))
       .orderBy(desc(insurancePolicies.updatedAt))
       .limit(100)
+  })
+}
+
+export interface BulkImportFailure {
+  row: number
+  plate: string
+  error: string
+}
+
+/**
+ * F7 bulk policy import (Phase 3) — up to 500 CSV-parsed rows in one call.
+ * Vehicles must already be on file (same rule as manual entry); unknown
+ * plates and duplicates come back as per-row failures instead of aborting
+ * the batch. One summary audit entry covers the run.
+ */
+export async function bulkCreatePolicies(input: {
+  rows: unknown[]
+}): Promise<{ created: number; failed: BulkImportFailure[] }> {
+  const scope = await requireInsurer()
+  const rows = (Array.isArray(input.rows) ? input.rows : []).slice(0, 500)
+  if (rows.length === 0) throw new Error("Nothing to import.")
+
+  return withUserCtx(scope.id, async (tx) => {
+    let created = 0
+    const failed: BulkImportFailure[] = []
+    for (let index = 0; index < rows.length; index++) {
+      const parsed = bulkPolicyRowSchema.safeParse(rows[index])
+      if (!parsed.success) {
+        failed.push({
+          row: index + 1,
+          plate: String((rows[index] as Record<string, unknown>)?.plateNumber ?? ""),
+          error: "Row didn't pass validation.",
+        })
+        continue
+      }
+      const data = parsed.data
+      try {
+        const [vehicle] = await tx
+          .select({ id: vehicles.id })
+          .from(vehicles)
+          .where(eq(vehicles.plateNumber, normalizePlate(data.plateNumber)))
+          .limit(1)
+        if (!vehicle) {
+          throw new Error("Vehicle not on file — register it before attaching a policy.")
+        }
+        await tx.insert(insurancePolicies).values({
+          vehicleId: vehicle.id,
+          insurerId: scope.organizationId!,
+          policyNumber: data.policyNumber.trim(),
+          coverageType: emptyToUndefined(data.coverageType),
+          startDate: data.startDate,
+          endDate: data.endDate,
+          isActive: data.isActive,
+          externalReference: emptyToUndefined(data.externalReference),
+          enteredBy: scope.id,
+        })
+        created += 1
+      } catch (error) {
+        failed.push({
+          row: index + 1,
+          plate: data.plateNumber,
+          error:
+            error instanceof Error && /duplicate|unique/i.test(error.message)
+              ? "Duplicate policy number for this vehicle."
+              : error instanceof Error
+                ? error.message
+                : "Import failed.",
+        })
+      }
+    }
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "policy_entered",
+      reason: `Bulk import: ${created} created, ${failed.length} failed.`,
+    })
+    return { created, failed: failed.slice(0, 50) }
   })
 }

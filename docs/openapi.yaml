@@ -1,0 +1,182 @@
+# TRACE Mobile / Integration API (N4 pilot) — OpenAPI 3.1
+#
+# Human-readable contract for /api/v1. Success: 200 raw JSON (actions
+# returning nothing give { ok: true }). Errors: non-2xx { error }.
+# Auth: session cookie (web), `Authorization: Bearer <token>` (Expo), or
+# `X-API-Key: trace_…` / `?api_key=trace_…` on key-enabled routes (pilot:
+# GET /lookups/plate, scope plate:read). See docs/mobile-api.md for the
+# field-level guide and docs/mobile-api-types.ts for client types.
+
+openapi: 3.1.0
+info:
+  title: TRACE API
+  version: 1.0.0
+  description: >-
+    Shared digital records for law enforcement (regular + traffic domains,
+    courts, insurers, vehicle registry). Same authorization, validation,
+    and audit as the web app.
+servers:
+  - url: https://<your-deployment>/api/v1
+  - url: http://localhost:3000/api/v1
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Session token (Expo) — converted server-side.
+    machineKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >-
+        trace_… machine key (admin-issued, scoped). Pilot scope: plate:read
+        on GET /lookups/plate. Also accepted as ?api_key=.
+  schemas:
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+    RecordType:
+      type: string
+      enum: [missing_person, wanted_person, stolen_property, crime_incident,
+        arrest_record, missing_vehicle, vehicle_offense, road_accident,
+        traffic_citation, vehicle_impoundment]
+    CaseStatus:
+      type: string
+      enum: [active, resolved, closed, archived]
+    FeedScope:
+      type: string
+      enum: [all, mine, district, country]
+    PlateLookupResult:
+      type: object
+      required: [flagged, reasons]
+      properties:
+        flagged: { type: boolean }
+        reasons:
+          type: array
+          items: { type: string }
+          description: Active case classes (police callers; [] for insurers).
+
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        "200": { description: OK }
+
+  /me:
+    get:
+      summary: Signed-in profile (role, scope)
+      responses:
+        "200": { description: Profile }
+        "401": { description: Sign in again, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+
+  /records:
+    get:
+      summary: Paginated case feed (own scope)
+      parameters:
+        - { name: cursor, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/RecordType' } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/CaseStatus' } }
+        - { name: scope, in: query, schema: { $ref: '#/components/schemas/FeedScope', default: all } }
+      responses:
+        "200": { description: "{ items, nextCursor }" }
+    post:
+      summary: File a case in the caller's domain
+      parameters:
+        - { name: Idempotency-Key, in: header, schema: { type: string, format: uuid }, description: Offline-safe retries replay the original response. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, data]
+              properties:
+                type: { $ref: '#/components/schemas/RecordType' }
+                data: { type: object, description: Typed payload per recordSchemas }
+                accessLevel: { type: string, enum: [branch, district, country], default: branch }
+                branchId: { type: string, format: uuid, description: Monitors only }
+      responses:
+        "200": { description: "{ id } (+ idempotentReplay on replay)" }
+        "422": { description: Validation issues }
+
+  /records/{id}:
+    get:
+      summary: Single case (visibility-gated; liaisons via live referral)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: TraceRecord }
+        "403": { description: Out of scope }
+        "404": { description: Unknown record }
+
+  /lookups:
+    post:
+      summary: Safety lookups (audited, throttled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [check, nationalId]
+                  properties: { check: { const: wanted }, nationalId: { type: string } }
+                - type: object
+                  required: [check, plateNumber]
+                  properties: { check: { const: plate }, plateNumber: { type: string } }
+      responses:
+        "200": { description: WantedCheckResult or FlagCheckResult }
+        "403": { description: Slow down (rate limit) or wrong role }
+
+  /lookups/plate:
+    get:
+      summary: ANPR-ready plate check
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+        - machineKey: []
+      parameters:
+        - { name: plate, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Flag + reasons
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlateLookupResult' }
+
+  /notifications:
+    get:
+      summary: "{ unread, items }"
+      responses:
+        "200": { description: Inbox }
+    post:
+      summary: "Mark read ({ id } for one, { all: true } for all)"
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /analytics/feed:
+    get:
+      summary: Scoped analytics cards (monitors; audited as report_generated)
+      responses:
+        "200": { description: AnalyticsEntry[] }
+        "403": { description: Monitors only }
+
+  /uploads/credentials:
+    get:
+      summary: Short-lived Cloudinary signing material (filing roles)
+      responses:
+        "200": { description: UploadCredentials }

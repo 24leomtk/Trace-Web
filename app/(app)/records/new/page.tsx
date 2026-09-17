@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeftIcon, LoaderCircleIcon, ScanLineIcon } from "lucide-react"
@@ -31,6 +31,7 @@ import {
 import { RecordTypeSelector } from "@/components/app/record-form/record-type-selector"
 import { RECORD_TYPE_META } from "@/lib/record-meta"
 import { AttachmentsField } from "@/components/app/record-form/attachments-field"
+import { GeoCapture } from "@/components/app/geo-capture"
 import { ScanSheet } from "@/components/app/scan-sheet"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -123,7 +124,29 @@ export default function NewRecordPage() {
     : fields.some((field) => field.path === "national_id")
       ? "national_id"
       : null
+  // F10: types with a free-text place also accept an optional GPS fix.
+  const hasLocationField = fields.some((field) =>
+    field.path.includes("location")
+  )
   const [scanOpen, setScanOpen] = useState(false)
+
+  // F2 offline safety: one idempotency key per filing attempt — retries of
+  // this attempt replay instead of double-filing. Drafts already autosave.
+  const attemptKey = useRef<string | null>(null)
+  if (attemptKey.current == null && typeof crypto !== "undefined") {
+    attemptKey.current = crypto.randomUUID()
+  }
+  const [online, setOnline] = useState(true)
+  useEffect(() => {
+    setOnline(navigator.onLine)
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener("online", update)
+    window.addEventListener("offline", update)
+    return () => {
+      window.removeEventListener("online", update)
+      window.removeEventListener("offline", update)
+    }
+  }, [])
 
   // ── U3 wizard + drafts ──────────────────────────────────────────────
   const STEPS = ["Type", "Details", "Visibility & files", "Review"] as const
@@ -297,6 +320,7 @@ export default function NewRecordPage() {
         accessLevel,
         branchId: needsBranchPicker ? branchId : undefined,
         attachments: uploadedAttachments,
+        idempotencyKey: attemptKey.current ?? undefined,
       })
       toast.success("Case filed.")
       try {
@@ -305,8 +329,14 @@ export default function NewRecordPage() {
         // ignore
       }
       router.push("/")
-    } catch {
-      toast.error("Could not file the case. Try again.")
+    } catch (error) {
+      toast.error(
+        !navigator.onLine
+          ? "You're offline — the draft is saved on this device. Reconnect and retry; it won't file twice."
+          : error instanceof Error
+            ? error.message
+            : "Could not file the case. Retry — a retry won't file twice."
+      )
       setSubmitting(false)
     }
   }
@@ -365,6 +395,16 @@ export default function NewRecordPage() {
       <p className=" -mt-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         Step {step + 1} of {STEPS.length} · {STEPS[step]}
       </p>
+
+      {!online && (
+        <p
+          role="alert"
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300"
+        >
+          You&apos;re offline — keep editing, the draft autosaves on this
+          device. Filing needs a connection.
+        </p>
+      )}
 
       {draftSavedAt && (
         <div className="flex flex-col gap-2 rounded-3xl border border-dashed px-4 py-3">
@@ -462,6 +502,21 @@ export default function NewRecordPage() {
                 title={scannablePath === "plate_number" ? "Scan plate code" : "Scan ID barcode"}
               />
             </div>
+          )}
+
+          {hasLocationField && (
+            <GeoCapture
+              latitude={values.latitude}
+              longitude={values.longitude}
+              onCaptured={(coords) => {
+                setValue("latitude", coords.latitude)
+                setValue("longitude", coords.longitude)
+              }}
+              onCleared={() => {
+                setValue("latitude", undefined)
+                setValue("longitude", undefined)
+              }}
+            />
           )}
 
           <div className="flex justify-between">
@@ -578,7 +633,7 @@ export default function NewRecordPage() {
             <Button type="button" variant="outline" onClick={() => setStep(2)}>
               Back
             </Button>
-            <Button type="submit" size="lg" disabled={submitting}>
+            <Button type="submit" size="lg" disabled={submitting || !online}>
               {submitting ? (
                 <>
                   <LoaderCircleIcon className="size-4 animate-spin" />

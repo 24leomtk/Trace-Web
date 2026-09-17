@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Building2Icon, LandmarkIcon, UsersIcon } from "lucide-react"
+import { Building2Icon, KeyRoundIcon, LandmarkIcon, UsersIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/admin/users", label: "Users", icon: UsersIcon },
   { href: "/admin/branches", label: "Branches", icon: Building2Icon },
   { href: "/admin/organizations", label: "Organizations", icon: LandmarkIcon },
+  { href: "/admin/api-keys", label: "API keys", icon: KeyRoundIcon },
 ]
 
 export function AdminSectionNav() {

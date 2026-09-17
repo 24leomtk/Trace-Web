@@ -37,6 +37,7 @@ import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
 import { CitationLedger } from "@/components/app/citation-ledger"
+import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ReferralBundle } from "@/components/app/referral-bundle"
 import {
@@ -145,6 +146,9 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         values[field.path] =
           raw ?? (field.kind === "stringlist" || field.kind === "rowlist" ? [] : "")
       }
+      // F10: carry the GPS fix (not a rendered field) so edits don't drop it.
+      if (typeof payload.latitude === "number") values.latitude = payload.latitude
+      if (typeof payload.longitude === "number") values.longitude = payload.longitude
       setEditValues(values)
       setEditing(true)
     } catch (error) {
@@ -258,6 +262,19 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         <p className="mt-1 text-xs text-muted-foreground">
           Filed by {record.author.name} · {formatDateTime(record.createdAt)} ·
           status {record.status} · {record.accessLevel} visibility
+          {record.geo && (
+            <>
+              {" · "}
+              <a
+                href={openStreetMapUrl(record.geo.latitude, record.geo.longitude)}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                GPS {formatCoords(record.geo.latitude, record.geo.longitude)}
+              </a>
+            </>
+          )}
         </p>
       </header>
 

@@ -85,6 +85,19 @@ CREATE TABLE "verifications" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "api_keys" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"user_id" text NOT NULL,
+	"name" text NOT NULL,
+	"key_hash" text NOT NULL UNIQUE,
+	"key_prefix" text NOT NULL,
+	"scopes" text[] NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"expires_at" timestamp with time zone,
+	"last_used_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "persons_of_interest" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	"full_name" text NOT NULL,
@@ -141,6 +154,9 @@ CREATE TABLE "record_attachments" (
 	"url" text NOT NULL,
 	"storage_path" text NOT NULL,
 	"file_type" text NOT NULL,
+	"file_hash" text,
+	"file_size_bytes" integer,
+	"retention_until" timestamp with time zone,
 	"uploaded_by" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -180,6 +196,16 @@ CREATE TABLE "accidents" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "citation_payments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"record_id" uuid NOT NULL,
+	"amount" numeric NOT NULL,
+	"receipt_no" text NOT NULL UNIQUE,
+	"note" text,
+	"received_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "missing_person_cases" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	"record_id" uuid NOT NULL,
@@ -200,6 +226,8 @@ CREATE TABLE "traffic_citations" (
 	"violation_type" text NOT NULL,
 	"fine_amount" numeric,
 	"is_paid" boolean DEFAULT false NOT NULL,
+	"court_date" date,
+	"court_id" uuid,
 	"district" "district",
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -237,10 +265,35 @@ CREATE TABLE "court_case_access" (
 	"renewed_at" timestamp with time zone,
 	"renewal_count" integer DEFAULT 0 NOT NULL,
 	"revoked_at" timestamp with time zone,
+	"first_viewed_at" timestamp with time zone,
 	"outcome" "court_case_outcome" DEFAULT 'pending'::"court_case_outcome" NOT NULL,
 	"outcome_notes" text,
 	"outcome_recorded_by" text,
 	"outcome_recorded_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "referral_documents" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"referral_id" uuid NOT NULL,
+	"label" text NOT NULL,
+	"url" text NOT NULL,
+	"storage_path" text NOT NULL,
+	"file_type" text NOT NULL,
+	"file_hash" text,
+	"uploaded_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "case_assignments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"record_id" uuid NOT NULL,
+	"assignee_id" text NOT NULL,
+	"assigned_by" text NOT NULL,
+	"note" text,
+	"due_at" timestamp with time zone,
+	"state" text DEFAULT 'open' NOT NULL,
+	"completed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -286,6 +339,7 @@ CREATE INDEX "branches_domain_idx" ON "branches" ("domain");--> statement-breakp
 CREATE INDEX "branches_district_idx" ON "branches" ("district");--> statement-breakpoint
 CREATE INDEX "organizations_org_type_idx" ON "organizations" ("org_type");--> statement-breakpoint
 CREATE INDEX "organizations_district_idx" ON "organizations" ("district");--> statement-breakpoint
+CREATE UNIQUE INDEX "organizations_name_uidx" ON "organizations" ("name");--> statement-breakpoint
 CREATE UNIQUE INDEX "accounts_issuer_account_id_uidx" ON "accounts" ("issuer","account_id");--> statement-breakpoint
 CREATE INDEX "accounts_user_id_idx" ON "accounts" ("user_id");--> statement-breakpoint
 CREATE INDEX "sessions_user_id_idx" ON "sessions" ("user_id");--> statement-breakpoint
@@ -295,6 +349,8 @@ CREATE INDEX "users_branch_id_idx" ON "users" ("branch_id");--> statement-breakp
 CREATE INDEX "users_district_idx" ON "users" ("district");--> statement-breakpoint
 CREATE INDEX "users_organization_id_idx" ON "users" ("organization_id");--> statement-breakpoint
 CREATE INDEX "verifications_identifier_idx" ON "verifications" ("identifier");--> statement-breakpoint
+CREATE INDEX "api_keys_user_id_idx" ON "api_keys" ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "api_keys_key_hash_uidx" ON "api_keys" ("key_hash");--> statement-breakpoint
 CREATE INDEX "persons_of_interest_national_id_idx" ON "persons_of_interest" ("national_id");--> statement-breakpoint
 CREATE INDEX "persons_of_interest_full_name_idx" ON "persons_of_interest" ("full_name");--> statement-breakpoint
 CREATE INDEX "vehicles_plate_number_idx" ON "vehicles" ("plate_number");--> statement-breakpoint
@@ -321,6 +377,8 @@ CREATE INDEX "accident_vehicles_accident_id_idx" ON "accident_vehicles" ("accide
 CREATE INDEX "accident_vehicles_vehicle_id_idx" ON "accident_vehicles" ("vehicle_id");--> statement-breakpoint
 CREATE INDEX "accidents_record_id_idx" ON "accidents" ("record_id");--> statement-breakpoint
 CREATE INDEX "accidents_district_date_idx" ON "accidents" ("district","accident_date");--> statement-breakpoint
+CREATE INDEX "citation_payments_record_id_idx" ON "citation_payments" ("record_id");--> statement-breakpoint
+CREATE INDEX "citation_payments_receipt_no_idx" ON "citation_payments" ("receipt_no");--> statement-breakpoint
 CREATE INDEX "missing_person_cases_record_id_idx" ON "missing_person_cases" ("record_id");--> statement-breakpoint
 CREATE INDEX "missing_person_cases_person_id_idx" ON "missing_person_cases" ("person_id");--> statement-breakpoint
 CREATE INDEX "missing_person_cases_district_idx" ON "missing_person_cases" ("district");--> statement-breakpoint
@@ -328,6 +386,7 @@ CREATE INDEX "missing_person_cases_status_idx" ON "missing_person_cases" ("statu
 CREATE INDEX "traffic_citations_record_id_idx" ON "traffic_citations" ("record_id");--> statement-breakpoint
 CREATE INDEX "traffic_citations_vehicle_id_idx" ON "traffic_citations" ("vehicle_id");--> statement-breakpoint
 CREATE INDEX "traffic_citations_district_idx" ON "traffic_citations" ("district");--> statement-breakpoint
+CREATE INDEX "traffic_citations_court_date_idx" ON "traffic_citations" ("court_date");--> statement-breakpoint
 CREATE INDEX "vehicle_cases_record_id_idx" ON "vehicle_cases" ("record_id");--> statement-breakpoint
 CREATE INDEX "vehicle_cases_vehicle_id_idx" ON "vehicle_cases" ("vehicle_id");--> statement-breakpoint
 CREATE INDEX "vehicle_cases_plate_number_idx" ON "vehicle_cases" ("plate_number");--> statement-breakpoint
@@ -341,6 +400,10 @@ CREATE INDEX "court_case_access_record_id_idx" ON "court_case_access" ("record_i
 CREATE INDEX "court_case_access_court_liaison_id_idx" ON "court_case_access" ("court_liaison_id");--> statement-breakpoint
 CREATE INDEX "court_case_access_expires_at_idx" ON "court_case_access" ("expires_at");--> statement-breakpoint
 CREATE INDEX "court_case_access_outcome_idx" ON "court_case_access" ("outcome");--> statement-breakpoint
+CREATE INDEX "referral_documents_referral_id_idx" ON "referral_documents" ("referral_id");--> statement-breakpoint
+CREATE INDEX "case_assignments_record_id_idx" ON "case_assignments" ("record_id");--> statement-breakpoint
+CREATE INDEX "case_assignments_assignee_id_idx" ON "case_assignments" ("assignee_id");--> statement-breakpoint
+CREATE INDEX "case_assignments_state_idx" ON "case_assignments" ("state");--> statement-breakpoint
 CREATE INDEX "case_reviews_record_id_idx" ON "case_reviews" ("record_id");--> statement-breakpoint
 CREATE INDEX "case_reviews_reviewer_id_idx" ON "case_reviews" ("reviewer_id");--> statement-breakpoint
 CREATE INDEX "idempotency_keys_user_id_idx" ON "idempotency_keys" ("user_id");--> statement-breakpoint
@@ -354,6 +417,7 @@ ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fkey" FOREIGN K
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_branch_id_branches_id_fkey" FOREIGN KEY ("branch_id") REFERENCES "branches"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_organization_id_organizations_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "vehicles" ADD CONSTRAINT "vehicles_registered_by_users_id_fkey" FOREIGN KEY ("registered_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "insurance_policies" ADD CONSTRAINT "insurance_policies_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "insurance_policies" ADD CONSTRAINT "insurance_policies_insurer_id_organizations_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES "organizations"("id");--> statement-breakpoint
@@ -369,10 +433,13 @@ ALTER TABLE "records" ADD CONSTRAINT "records_person_id_persons_of_interest_id_f
 ALTER TABLE "accident_vehicles" ADD CONSTRAINT "accident_vehicles_accident_id_accidents_id_fkey" FOREIGN KEY ("accident_id") REFERENCES "accidents"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "accident_vehicles" ADD CONSTRAINT "accident_vehicles_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
 ALTER TABLE "accidents" ADD CONSTRAINT "accidents_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "citation_payments" ADD CONSTRAINT "citation_payments_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "citation_payments" ADD CONSTRAINT "citation_payments_received_by_users_id_fkey" FOREIGN KEY ("received_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "missing_person_cases" ADD CONSTRAINT "missing_person_cases_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "missing_person_cases" ADD CONSTRAINT "missing_person_cases_person_id_persons_of_interest_id_fkey" FOREIGN KEY ("person_id") REFERENCES "persons_of_interest"("id");--> statement-breakpoint
 ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
+ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_court_id_organizations_id_fkey" FOREIGN KEY ("court_id") REFERENCES "organizations"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "vehicle_cases" ADD CONSTRAINT "vehicle_cases_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "vehicle_cases" ADD CONSTRAINT "vehicle_cases_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
 ALTER TABLE "wanted_person_cases" ADD CONSTRAINT "wanted_person_cases_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
@@ -381,6 +448,11 @@ ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_record_id_reco
 ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_court_liaison_id_users_id_fkey" FOREIGN KEY ("court_liaison_id") REFERENCES "users"("id");--> statement-breakpoint
 ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_referred_by_users_id_fkey" FOREIGN KEY ("referred_by") REFERENCES "users"("id");--> statement-breakpoint
 ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_outcome_recorded_by_users_id_fkey" FOREIGN KEY ("outcome_recorded_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "referral_documents" ADD CONSTRAINT "referral_documents_referral_id_court_case_access_id_fkey" FOREIGN KEY ("referral_id") REFERENCES "court_case_access"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "referral_documents" ADD CONSTRAINT "referral_documents_uploaded_by_users_id_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "case_assignments" ADD CONSTRAINT "case_assignments_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "case_assignments" ADD CONSTRAINT "case_assignments_assignee_id_users_id_fkey" FOREIGN KEY ("assignee_id") REFERENCES "users"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "case_assignments" ADD CONSTRAINT "case_assignments_assigned_by_users_id_fkey" FOREIGN KEY ("assigned_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "case_reviews" ADD CONSTRAINT "case_reviews_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "case_reviews" ADD CONSTRAINT "case_reviews_reviewer_id_users_id_fkey" FOREIGN KEY ("reviewer_id") REFERENCES "users"("id");--> statement-breakpoint
 ALTER TABLE "idempotency_keys" ADD CONSTRAINT "idempotency_keys_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE;--> statement-breakpoint

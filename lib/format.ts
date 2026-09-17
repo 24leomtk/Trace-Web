@@ -293,3 +293,117 @@ export function shortFileHash(hash: string | null | undefined): string | null {
   if (!hash) return null
   return hash.length > 12 ? `${hash.slice(0, 12)}…` : hash
 }
+
+export interface BulkPolicyCsvRow {
+  plateNumber: string
+  policyNumber: string
+  coverageType?: string
+  startDate: string
+  endDate: string
+  isActive: boolean
+  externalReference?: string
+}
+
+export interface BulkPolicyCsvError {
+  line: number
+  message: string
+}
+
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = []
+  let current = ""
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (quoted) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          quoted = false
+        }
+      } else {
+        current += char
+      }
+    } else if (char === '"') {
+      quoted = true
+    } else if (char === ",") {
+      cells.push(current)
+      current = ""
+    } else {
+      current += char
+    }
+  }
+  cells.push(current)
+  return cells.map((cell) => cell.trim())
+}
+
+function parseActiveFlag(raw: string): boolean {
+  const value = raw.trim().toLowerCase()
+  if (["false", "0", "no", "inactive", "expired"].includes(value)) return false
+  return true
+}
+
+/**
+ * F7 CSV → policy rows. Header must name plate_number, policy_number,
+ * start_date, end_date (plus optional coverage_type, is_active,
+ * external_reference); rows are validated lightly here and strictly
+ * server-side. Returns parsed rows plus per-line errors.
+ */
+export function parsePolicyCsv(csv: string): {
+  rows: BulkPolicyCsvRow[]
+  errors: BulkPolicyCsvError[]
+} {
+  const rows: BulkPolicyCsvRow[] = []
+  const errors: BulkPolicyCsvError[] = []
+  const lines = csv
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  if (lines.length === 0) {
+    return { rows, errors: [{ line: 0, message: "The file is empty." }] }
+  }
+  const header = splitCsvLine(lines[0]!).map((cell) =>
+    cell.toLowerCase().replace(/[\s-]+/g, "_")
+  )
+  const required = ["plate_number", "policy_number", "start_date", "end_date"]
+  const missing = required.filter((column) => !header.includes(column))
+  if (missing.length > 0) {
+    return {
+      rows,
+      errors: [{ line: 1, message: `Missing column(s): ${missing.join(", ")}.` }],
+    }
+  }
+  const indexOf = (column: string) => header.indexOf(column)
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCsvLine(lines[i]!)
+    const get = (column: string) => cells[indexOf(column)]?.trim() ?? ""
+    const plateNumber = get("plate_number")
+    const policyNumber = get("policy_number")
+    const startDate = get("start_date")
+    const endDate = get("end_date")
+    if (!plateNumber || !policyNumber || !startDate || !endDate) {
+      errors.push({ line: i + 1, message: "Missing required field(s)." })
+      continue
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      errors.push({ line: i + 1, message: "Dates must be YYYY-MM-DD." })
+      continue
+    }
+    rows.push({
+      plateNumber,
+      policyNumber,
+      coverageType: get("coverage_type") || undefined,
+      startDate,
+      endDate,
+      isActive: indexOf("is_active") === -1 ? true : parseActiveFlag(get("is_active")),
+      externalReference: get("external_reference") || undefined,
+    })
+  }
+  return { rows, errors }
+}
+
+/** CSV template for the bulk policy importer. */
+export const POLICY_CSV_TEMPLATE =
+  "plate_number,policy_number,coverage_type,start_date,end_date,is_active,external_reference\nMH 1234,POL-0001,comprehensive,2026-01-01,2026-12-31,true,REF-1\n"

@@ -36,22 +36,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordSchemas = exports.vehicleImpoundmentSchema = exports.trafficCitationSchema = exports.roadAccidentSchema = exports.vehicleOffenseSchema = exports.missingVehicleSchema = exports.arrestRecordSchema = exports.crimeIncidentSchema = exports.stolenPropertySchema = exports.wantedPersonSchema = exports.missingPersonSchema = exports.dangerLevelOptions = void 0;
 const z = __importStar(require("zod"));
 exports.dangerLevelOptions = ["low", "medium", "high", "extreme"];
+// F10 GPS capture: optional precise coordinates alongside the free-text
+// location. Never required — filing must work without a GPS fix.
+const geoFields = {
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+};
 // ---------------------------------------------------------------------------
 // Regular domain
 // ---------------------------------------------------------------------------
-exports.missingPersonSchema = z.object({
-    person_id: z.uuid().optional(), // link to persons_of_interest if matched
-    full_name: z.string().min(1),
-    national_id: z.string().optional(),
-    age: z.number().int().min(0).optional(),
-    sex: z.enum(["male", "female", "other"]).optional(),
-    last_seen_location: z.string().min(1),
-    last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    distinguishing_features: z.string().optional(),
-    reporter_name: z.string().min(1),
-    reporter_relationship: z.string().min(1),
-    reporter_contact: z.string().min(1),
-});
+exports.missingPersonSchema = z.object(Object.assign({ person_id: z.uuid().optional(), full_name: z.string().min(1), national_id: z.string().optional(), age: z.number().int().min(0).optional(), sex: z.enum(["male", "female", "other"]).optional(), last_seen_location: z.string().min(1), last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), distinguishing_features: z.string().optional(), reporter_name: z.string().min(1), reporter_relationship: z.string().min(1), reporter_contact: z.string().min(1) }, geoFields));
 exports.wantedPersonSchema = z.object({
     person_id: z.uuid().optional(),
     full_name: z.string().min(1),
@@ -62,84 +56,20 @@ exports.wantedPersonSchema = z.object({
     last_known_location: z.string().optional(),
     description: z.string().min(1),
 });
-exports.stolenPropertySchema = z.object({
-    item_description: z.string().min(1),
-    category: z.string().min(1),
-    estimated_value: z.number().nonnegative().optional(),
-    serial_number: z.string().optional(),
-    location_stolen: z.string().min(1),
-    date_stolen: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    owner_name: z.string().min(1),
-    owner_contact: z.string().min(1),
-});
-exports.crimeIncidentSchema = z.object({
-    incident_type: z.string().min(1),
-    description: z.string().min(1),
-    location: z.string().min(1),
-    date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    victims: z.array(z.string().min(1)).default([]),
-    witnesses: z.array(z.string().min(1)).default([]),
-    linked_person_ids: z.array(z.uuid()).default([]),
-});
-exports.arrestRecordSchema = z.object({
-    person_id: z.uuid().optional(),
-    full_name: z.string().min(1),
-    national_id: z.string().optional(),
-    charges: z.array(z.string().min(1)),
-    arrest_location: z.string().min(1),
-    arrest_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    arresting_officer: z.string().min(1),
-    linked_wanted_record_id: z.uuid().optional(),
-});
+exports.stolenPropertySchema = z.object(Object.assign({ item_description: z.string().min(1), category: z.string().min(1), estimated_value: z.number().nonnegative().optional(), serial_number: z.string().optional(), location_stolen: z.string().min(1), date_stolen: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), owner_name: z.string().min(1), owner_contact: z.string().min(1) }, geoFields));
+exports.crimeIncidentSchema = z.object(Object.assign({ incident_type: z.string().min(1), description: z.string().min(1), location: z.string().min(1), date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), victims: z.array(z.string().min(1)).default([]), witnesses: z.array(z.string().min(1)).default([]), linked_person_ids: z.array(z.uuid()).default([]) }, geoFields));
+exports.arrestRecordSchema = z.object(Object.assign({ person_id: z.uuid().optional(), full_name: z.string().min(1), national_id: z.string().optional(), charges: z.array(z.string().min(1)), arrest_location: z.string().min(1), arrest_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), arresting_officer: z.string().min(1), linked_wanted_record_id: z.uuid().optional() }, geoFields));
 // ---------------------------------------------------------------------------
 // Traffic domain
 // ---------------------------------------------------------------------------
-exports.missingVehicleSchema = z.object({
-    plate_number: z.string().min(1),
-    make: z.string().optional(),
-    model: z.string().optional(),
-    color: z.string().optional(),
-    last_seen_location: z.string().min(1),
-    last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    reporter_name: z.string().min(1),
-    reporter_contact: z.string().min(1),
-});
-exports.vehicleOffenseSchema = z.object({
-    plate_number: z.string().min(1),
-    offense_type: z.string().min(1),
-    description: z.string().min(1),
-    location: z.string().min(1),
-    date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    linked_crime_record_id: z.uuid().optional(),
-});
-exports.roadAccidentSchema = z.object({
-    location: z.string().min(1),
-    accident_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    description: z.string().min(1),
-    cause: z.string().optional(),
-    vehicles_involved: z.array(z.object({
+exports.missingVehicleSchema = z.object(Object.assign({ plate_number: z.string().min(1), make: z.string().optional(), model: z.string().optional(), color: z.string().optional(), last_seen_location: z.string().min(1), last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reporter_name: z.string().min(1), reporter_contact: z.string().min(1) }, geoFields));
+exports.vehicleOffenseSchema = z.object(Object.assign({ plate_number: z.string().min(1), offense_type: z.string().min(1), description: z.string().min(1), location: z.string().min(1), date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), linked_crime_record_id: z.uuid().optional() }, geoFields));
+exports.roadAccidentSchema = z.object(Object.assign({ location: z.string().min(1), accident_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), description: z.string().min(1), cause: z.string().optional(), vehicles_involved: z.array(z.object({
         plate_number: z.string().min(1),
         role: z.string().optional(), // e.g. "at_fault", "involved"
-    })),
-    fatalities: z.number().int().min(0).default(0),
-    injuries: z.number().int().min(0).default(0),
-});
-exports.trafficCitationSchema = z.object({
-    plate_number: z.string().min(1),
-    driver_name: z.string().optional(),
-    driver_license_no: z.string().optional(),
-    violation_type: z.string().min(1),
-    fine_amount: z.number().nonnegative(),
-    location: z.string().min(1),
-    date_issued: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
-exports.vehicleImpoundmentSchema = z.object({
-    plate_number: z.string().min(1),
-    reason: z.string().min(1),
-    impound_location: z.string().min(1),
-    impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    release_conditions: z.string().optional(),
-});
+    })), fatalities: z.number().int().min(0).default(0), injuries: z.number().int().min(0).default(0) }, geoFields));
+exports.trafficCitationSchema = z.object(Object.assign({ plate_number: z.string().min(1), driver_name: z.string().optional(), driver_license_no: z.string().optional(), violation_type: z.string().min(1), fine_amount: z.number().nonnegative(), location: z.string().min(1), date_issued: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }, geoFields));
+exports.vehicleImpoundmentSchema = z.object(Object.assign({ plate_number: z.string().min(1), reason: z.string().min(1), impound_location: z.string().min(1), impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), release_conditions: z.string().optional() }, geoFields));
 // ---------------------------------------------------------------------------
 exports.recordSchemas = {
     missing_person: exports.missingPersonSchema,

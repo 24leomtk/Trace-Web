@@ -2,6 +2,13 @@ import * as z from "zod"
 
 export const dangerLevelOptions = ["low", "medium", "high", "extreme"] as const
 
+// F10 GPS capture: optional precise coordinates alongside the free-text
+// location. Never required — filing must work without a GPS fix.
+const geoFields = {
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+}
+
 // ---------------------------------------------------------------------------
 // Regular domain
 // ---------------------------------------------------------------------------
@@ -18,6 +25,7 @@ export const missingPersonSchema = z.object({
   reporter_name: z.string().min(1),
   reporter_relationship: z.string().min(1),
   reporter_contact: z.string().min(1),
+  ...geoFields,
 })
 
 export const wantedPersonSchema = z.object({
@@ -40,6 +48,7 @@ export const stolenPropertySchema = z.object({
   date_stolen: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   owner_name: z.string().min(1),
   owner_contact: z.string().min(1),
+  ...geoFields,
 })
 
 export const crimeIncidentSchema = z.object({
@@ -50,6 +59,7 @@ export const crimeIncidentSchema = z.object({
   victims: z.array(z.string().min(1)).default([]),
   witnesses: z.array(z.string().min(1)).default([]),
   linked_person_ids: z.array(z.uuid()).default([]),
+  ...geoFields,
 })
 
 export const arrestRecordSchema = z.object({
@@ -61,6 +71,7 @@ export const arrestRecordSchema = z.object({
   arrest_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   arresting_officer: z.string().min(1),
   linked_wanted_record_id: z.uuid().optional(),
+  ...geoFields,
 })
 
 // ---------------------------------------------------------------------------
@@ -76,6 +87,7 @@ export const missingVehicleSchema = z.object({
   last_seen_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reporter_name: z.string().min(1),
   reporter_contact: z.string().min(1),
+  ...geoFields,
 })
 
 export const vehicleOffenseSchema = z.object({
@@ -85,6 +97,7 @@ export const vehicleOffenseSchema = z.object({
   location: z.string().min(1),
   date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   linked_crime_record_id: z.uuid().optional(),
+  ...geoFields,
 })
 
 export const roadAccidentSchema = z.object({
@@ -100,6 +113,7 @@ export const roadAccidentSchema = z.object({
   ),
   fatalities: z.number().int().min(0).default(0),
   injuries: z.number().int().min(0).default(0),
+  ...geoFields,
 })
 
 export const trafficCitationSchema = z.object({
@@ -110,6 +124,7 @@ export const trafficCitationSchema = z.object({
   fine_amount: z.number().nonnegative(),
   location: z.string().min(1),
   date_issued: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  ...geoFields,
 })
 
 export const vehicleImpoundmentSchema = z.object({
@@ -118,6 +133,7 @@ export const vehicleImpoundmentSchema = z.object({
   impound_location: z.string().min(1),
   impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   release_conditions: z.string().optional(),
+  ...geoFields,
 })
 
 // ---------------------------------------------------------------------------

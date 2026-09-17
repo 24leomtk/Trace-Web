@@ -75,6 +75,12 @@ Session cookies become `Authorization: Bearer <token>` headers via the
 server's `bearer()` plugin — the `/api/v1` handlers resolve the session from
 either form.
 
+Machine integrations (N4 pilot) use admin-issued API keys instead of a user
+session: `X-API-Key: trace_…` header (or `?api_key=trace_…`). Keys act as one
+provisioned user — role gates, scope, throttle, and audit apply unchanged —
+and are further bound by scopes. Pilot scope: `plate:read` on
+`GET /lookups/plate`. See `docs/openapi.yaml` for the machine contract.
+
 ## Endpoints
 
 ### Case records
@@ -140,9 +146,10 @@ changes here instead of out-of-band.
 
 ### Safety lookups
 
-| Method | Path        | Who                        | Description                              |
-| ------ | ----------- | -------------------------- | ---------------------------------------- |
-| `POST` | `/lookups`  | officer / monitor / insurer | Read-only flag checks, always audited   |
+| Method | Path               | Who                        | Description                              |
+| ------ | ------------------ | -------------------------- | ---------------------------------------- |
+| `POST` | `/lookups`         | officer / monitor / insurer | Read-only flag checks, always audited   |
+| `GET`  | `/lookups/plate?plate=` | officer / monitor / insurer | ANPR-ready flag check: `{ flagged, reasons }` |
 
 Body — `SafetyLookupBody`
 
@@ -154,6 +161,10 @@ Body — `SafetyLookupBody`
 - `wanted` (police only) → `WantedCheckResult` (`{ wanted, dangerLevel?, district? }`).
 - `plate` → `FlagCheckResult` (`{ flagged }`). Insurer callers get the same
   boolean-only answer via their scoped path. Never returns case detail.
+- `GET /lookups/plate?plate=MH+1234` → `PlateLookupResult`
+  (`{ flagged, reasons }`): same throttle + audit as POST; `reasons` lists
+  the active case classes (`missing_vehicle`, …) for police callers and is
+  always `[]` for insurers. Built for camera/reader integrations.
 
 Lookups are throttled per user (>20/min or >300/hr → `403` with a slow-down
 message) and every attempt is audit-logged — surface the message, don't

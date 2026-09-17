@@ -12,6 +12,8 @@
 --      90 days ("referred today").
 --   2. Recomputes every vehicle's is_flagged from active missing_vehicle /
 --      vehicle_offense / vehicle_impoundment rows.
+--   3. Resyncs traffic_citations.is_paid from the citation_payments ledger
+--      (the flag is derived at runtime; this heals any drift).
 -- ============================================================================
 
 begin;
@@ -58,5 +60,15 @@ set is_flagged = exists (
     and vc.case_type in ('missing_vehicle', 'vehicle_offense', 'vehicle_impoundment')
 ),
 updated_at = now();
+
+-- ---------------------------------------------------------------------------
+-- 3. Resync citation paid flags from the payment ledger
+-- ---------------------------------------------------------------------------
+update public.traffic_citations c
+set is_paid = coalesce((
+  select sum(p.amount) from public.citation_payments p
+  where p.record_id = c.record_id
+), 0) >= c.fine_amount
+where c.fine_amount is not null;
 
 commit;

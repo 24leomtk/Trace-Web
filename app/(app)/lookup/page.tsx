@@ -8,10 +8,11 @@ import { toast } from "sonner"
 import {
   checkPlateFlag,
   checkWantedByNationalId,
+  flaggedVehicleWatchlist,
   insurerPlateLookup,
 } from "@/lib/actions/access"
 import { unifiedSearch } from "@/lib/actions/search"
-import { normalizePlate } from "@/lib/format"
+import { daysSince, normalizePlate } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScanSheet } from "@/components/app/scan-sheet"
@@ -35,6 +36,8 @@ export default function LookupPage() {
   const [results, setResults] = useState<Awaited<ReturnType<typeof unifiedSearch>> | null>(null)
   const [busy, setBusy] = useState(false)
   const [scanTarget, setScanTarget] = useState<ScanTarget>(null)
+  const [watchlist, setWatchlist] = useState<Awaited<ReturnType<typeof flaggedVehicleWatchlist>> | null>(null)
+  const [watchBusy, setWatchBusy] = useState(false)
 
   function handleScanned(raw: string) {
     if (scanTarget === "plate") {
@@ -75,6 +78,17 @@ export default function LookupPage() {
       toast.error(error instanceof Error ? error.message : "Check failed.")
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function loadWatchlist() {
+    setWatchBusy(true)
+    try {
+      setWatchlist(await flaggedVehicleWatchlist())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Watchlist failed.")
+    } finally {
+      setWatchBusy(false)
     }
   }
 
@@ -169,6 +183,45 @@ export default function LookupPage() {
           </div>
         )}
       </section>
+
+      {isPolice && (
+        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Flagged watchlist · in scope
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Every flagged plate below has an active case. Flags clear
+            automatically when their cases close — review ages, don&apos;t
+            re-flag by hand.
+          </p>
+          <div>
+            <Button type="button" variant="outline" size="sm" disabled={watchBusy} onClick={loadWatchlist}>
+              {watchBusy ? "Loading…" : watchlist ? "Refresh" : "Load watchlist"}
+            </Button>
+          </div>
+          {watchlist && (
+            <div className="flex flex-col gap-2">
+              {watchlist.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nothing flagged in scope.</p>
+              ) : (
+                watchlist.map((entry) => {
+                  const age = daysSince(entry.since)
+                  return (
+                    <Link key={entry.vehicleId} href={`/vehicles/${entry.vehicleId}`} className="rounded-2xl border px-3 py-2 text-sm hover:bg-accent">
+                      <span className="font-medium">{entry.plateNumber}</span>
+                      <span className="text-muted-foreground">
+                        {" "}· {entry.caseTypes.map((t) => t.replace(/_/g, " ")).join(", ")}
+                        {entry.district ? ` · ${entry.district.replace(/_/g, " ")}` : ""}
+                        {age != null && ` · flagged ${age}d ago`}
+                      </span>
+                    </Link>
+                  )
+                })
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {isPolice && (
         <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">

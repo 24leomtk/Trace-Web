@@ -6,6 +6,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2"
 import { expo } from "@better-auth/expo"
 import { db } from "@/db"
 import * as schema from "@/db/schema"
+import { otpMessage, sendSms } from "@/lib/sms"
 import { bearer, phoneNumber } from "better-auth/plugins"
 
 export const auth = betterAuth({
@@ -47,9 +48,16 @@ export const auth = betterAuth({
       // Only accounts provisioned by a system administrator can sign in —
       // unknown numbers fail verification.
       sendOTP: async ({ phoneNumber, code }) => {
-        // No SMS gateway is wired up yet — the OTP is logged server-side so
-        // development sign-in works. Plug an SMS provider in here.
-        console.log(`[OTP] ${phoneNumber} -> ${code}`)
+        // N1: goes through the SMS seam — console fallback in dev, gateway
+        // when SMS_API_URL + SMS_API_KEY are set. A gateway failure must
+        // never break sign-in, so fall back to the dev log.
+        try {
+          await sendSms(phoneNumber, otpMessage(code))
+        } catch (error) {
+          console.log(
+            `[OTP fallback] ${phoneNumber} -> ${code} (${error instanceof Error ? error.message : "gateway error"})`
+          )
+        }
       },
       callbackOnVerification: async () => {
         // Roles are assigned at provisioning time by administrators.

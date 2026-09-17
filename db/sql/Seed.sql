@@ -22,6 +22,8 @@
 --   * persons/vehicles/records: fixed demos + ~40/~60/~120 generated,
 --     with coded projections and flag maintenance
 --   * policies, referrals (mixed outcomes), reviews, notifications, audit
+--   * new-feature fixtures: citation + part-payment (ledger), brief tranche
+--     on the live grant, open task assignment
 --   * fixtures: revoked + expires-in-2-days referrals, duplicate pair
 --     (merge test), multi-case vehicle, attachments, inactive account,
 --     2-case Rumphi district (suppression demo)
@@ -66,14 +68,18 @@ drop type if exists
 truncate public.actions,
   public.notifications,
   public.idempotency_keys,
+  public.api_keys,
   public.case_reviews,
+  public.case_assignments,
   public.court_case_access,
+  public.referral_documents,
   public.missing_person_cases,
   public.wanted_person_cases,
   public.vehicle_cases,
   public.accidents,
   public.accident_vehicles,
   public.traffic_citations,
+  public.citation_payments,
   public.record_attachments,
   public.insurance_policies,
   public.records,
@@ -258,11 +264,59 @@ insert into public.court_case_access
    now() + interval '90 days', 'pending');
 
 -- ---------------------------------------------------------------------------
+-- Fixed citation on BW 9999 with a part-payment (fine ledger demo: 4000/10000)
+-- ---------------------------------------------------------------------------
+insert into public.records
+  (id, record_type, domain, reported_by, branch_id, district,
+   vehicle_id, person_id, access_level, status, data, created_at) values
+  ('f0000000-0000-0000-0000-000000000106', 'traffic_citation', 'traffic',
+   'seed_officer_traffic', '22222222-2222-2222-2222-222222222222', 'lilongwe',
+   'e0000000-0000-0000-0000-000000000002', null, 'branch', 'active',
+   jsonb_build_object(
+     'plate_number', 'BW 9999',
+     'violation_type', 'Speeding',
+     'fine_amount', 10000,
+     'location', 'M1, Lilongwe',
+     'date_issued', (now() - interval '3 days')::date::text
+   ),
+   now() - interval '3 days');
+
+insert into public.traffic_citations
+  (record_id, vehicle_id, violation_type, fine_amount, is_paid, district) values
+  ('f0000000-0000-0000-0000-000000000106', 'e0000000-0000-0000-0000-000000000002',
+   'Speeding', 10000, false, 'lilongwe');
+
+insert into public.citation_payments
+  (record_id, amount, receipt_no, note, received_by) values
+  ('f0000000-0000-0000-0000-000000000106', 4000, 'R-SEED-0001',
+   'Seeded part-payment.', 'seed_officer_traffic');
+
+-- ---------------------------------------------------------------------------
+-- E-Brief tranche on the live grant + open task (bundle/tasking demo)
+-- ---------------------------------------------------------------------------
+insert into public.referral_documents
+  (referral_id, label, url, storage_path, file_type, uploaded_by)
+select g.id, 'charge_sheet',
+  'https://picsum.photos/seed/trace-charge/800/600', 'seed/charge.jpg',
+  'image/jpeg', 'seed_district_monitor'
+  from public.court_case_access g
+ where g.record_id = 'f0000000-0000-0000-0000-000000000002'
+   and g.revoked_at is null
+ limit 1;
+
+insert into public.case_assignments
+  (record_id, assignee_id, assigned_by, note, due_at, state) values
+  ('f0000000-0000-0000-0000-000000000002', 'seed_officer_traffic',
+   'seed_district_monitor', 'Re-interview the driver; attach statement.',
+   now() + interval '7 days', 'open');
+
+-- ---------------------------------------------------------------------------
 -- A few audit rows so the log is non-empty
 -- ---------------------------------------------------------------------------
 insert into public.actions (actor_id, action_type, record_id, reason) values
   ('seed_district_monitor', 'record_created', 'f0000000-0000-0000-0000-000000000001', 'Seeded wanted bulletin.'),
   ('seed_officer_traffic', 'record_created', 'f0000000-0000-0000-0000-000000000002', 'Seeded vehicle offense.'),
+  ('seed_officer_traffic', 'record_created', 'f0000000-0000-0000-0000-000000000106', 'Seeded citation with part-payment.'),
   ('seed_district_monitor', 'court_case_referred', 'f0000000-0000-0000-0000-000000000002', 'Seeded court referral.'),
   ('seed_registrar', 'vehicle_registered', null, 'Seeded verification of MH 1234.');
 

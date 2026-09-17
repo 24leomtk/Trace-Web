@@ -3,6 +3,7 @@ export * from "./enums"
 export * from "./branches"
 export * from "./organizations"
 export * from "./auth"
+export * from "./apikeys"
 
 // Reference entities shared across record types
 export * from "./persons"

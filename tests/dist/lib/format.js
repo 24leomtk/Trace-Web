@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = void 0;
+exports.POLICY_CSV_TEMPLATE = exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = void 0;
 exports.formatTimelineDate = formatTimelineDate;
 exports.formatFullDate = formatFullDate;
 exports.formatDateTime = formatDateTime;
@@ -25,6 +25,7 @@ exports.lastWeekBuckets = lastWeekBuckets;
 exports.fileKindFromMime = fileKindFromMime;
 exports.defaultRetentionUntil = defaultRetentionUntil;
 exports.shortFileHash = shortFileHash;
+exports.parsePolicyCsv = parsePolicyCsv;
 const DATE_FORMATTER_MONTH = new Intl.DateTimeFormat("en-US", {
     month: "short",
     timeZone: "UTC",
@@ -259,3 +260,98 @@ function shortFileHash(hash) {
         return null;
     return hash.length > 12 ? `${hash.slice(0, 12)}…` : hash;
 }
+function splitCsvLine(line) {
+    const cells = [];
+    let current = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (quoted) {
+            if (char === '"') {
+                if (line[i + 1] === '"') {
+                    current += '"';
+                    i++;
+                }
+                else {
+                    quoted = false;
+                }
+            }
+            else {
+                current += char;
+            }
+        }
+        else if (char === '"') {
+            quoted = true;
+        }
+        else if (char === ",") {
+            cells.push(current);
+            current = "";
+        }
+        else {
+            current += char;
+        }
+    }
+    cells.push(current);
+    return cells.map((cell) => cell.trim());
+}
+function parseActiveFlag(raw) {
+    const value = raw.trim().toLowerCase();
+    if (["false", "0", "no", "inactive", "expired"].includes(value))
+        return false;
+    return true;
+}
+/**
+ * F7 CSV → policy rows. Header must name plate_number, policy_number,
+ * start_date, end_date (plus optional coverage_type, is_active,
+ * external_reference); rows are validated lightly here and strictly
+ * server-side. Returns parsed rows plus per-line errors.
+ */
+function parsePolicyCsv(csv) {
+    const rows = [];
+    const errors = [];
+    const lines = csv
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    if (lines.length === 0) {
+        return { rows, errors: [{ line: 0, message: "The file is empty." }] };
+    }
+    const header = splitCsvLine(lines[0]).map((cell) => cell.toLowerCase().replace(/[\s-]+/g, "_"));
+    const required = ["plate_number", "policy_number", "start_date", "end_date"];
+    const missing = required.filter((column) => !header.includes(column));
+    if (missing.length > 0) {
+        return {
+            rows,
+            errors: [{ line: 1, message: `Missing column(s): ${missing.join(", ")}.` }],
+        };
+    }
+    const indexOf = (column) => header.indexOf(column);
+    for (let i = 1; i < lines.length; i++) {
+        const cells = splitCsvLine(lines[i]);
+        const get = (column) => { var _a, _b; return (_b = (_a = cells[indexOf(column)]) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : ""; };
+        const plateNumber = get("plate_number");
+        const policyNumber = get("policy_number");
+        const startDate = get("start_date");
+        const endDate = get("end_date");
+        if (!plateNumber || !policyNumber || !startDate || !endDate) {
+            errors.push({ line: i + 1, message: "Missing required field(s)." });
+            continue;
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+            errors.push({ line: i + 1, message: "Dates must be YYYY-MM-DD." });
+            continue;
+        }
+        rows.push({
+            plateNumber,
+            policyNumber,
+            coverageType: get("coverage_type") || undefined,
+            startDate,
+            endDate,
+            isActive: indexOf("is_active") === -1 ? true : parseActiveFlag(get("is_active")),
+            externalReference: get("external_reference") || undefined,
+        });
+    }
+    return { rows, errors };
+}
+/** CSV template for the bulk policy importer. */
+exports.POLICY_CSV_TEMPLATE = "plate_number,policy_number,coverage_type,start_date,end_date,is_active,external_reference\nMH 1234,POL-0001,comprehensive,2026-01-01,2026-12-31,true,REF-1\n";

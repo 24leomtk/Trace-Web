@@ -208,6 +208,8 @@ export interface TraceRecord {
   author: { name: string; role: Role }
   badges: RecordBadge[]
   attachments: AttachmentMeta[]
+  /** Precise coordinates when captured at filing (null otherwise). */
+  geo?: { latitude: number; longitude: number } | null
 }
 
 export interface Page<T> {
@@ -262,6 +264,12 @@ export interface WantedCheckResult {
 
 export interface FlagCheckResult {
   flagged: boolean
+}
+
+/** `GET /lookups/plate?plate=` — ANPR-ready check (reasons police-only). */
+export interface PlateLookupResult {
+  flagged: boolean
+  reasons: string[]
 }
 
 // ── Analytics ──────────────────────────────────────────────────────────────

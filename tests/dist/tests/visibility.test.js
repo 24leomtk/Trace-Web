@@ -7,6 +7,9 @@ const node_test_1 = require("node:test");
 const strict_1 = __importDefault(require("node:assert/strict"));
 const visibility_1 = require("../lib/visibility");
 const format_1 = require("../lib/format");
+const sms_1 = require("../lib/sms");
+const record_1 = require("../validations/record");
+const admin_1 = require("../validations/admin");
 const officer = {
     role: "OFFICER",
     domain: "regular",
@@ -258,5 +261,133 @@ function record(overrides) {
         strict_1.default.equal((0, format_1.shortFileHash)("abcdef1234567890"), "abcdef123456…");
         strict_1.default.equal((0, format_1.shortFileHash)(null), null);
         strict_1.default.equal((0, format_1.shortFileHash)(undefined), null);
+    });
+});
+(0, node_test_1.describe)("parsePolicyCsv", () => {
+    (0, node_test_1.it)("parses the shipped template", () => {
+        var _a, _b;
+        const parsed = (0, format_1.parsePolicyCsv)(format_1.POLICY_CSV_TEMPLATE);
+        strict_1.default.equal(parsed.errors.length, 0);
+        strict_1.default.equal(parsed.rows.length, 1);
+        strict_1.default.equal((_a = parsed.rows[0]) === null || _a === void 0 ? void 0 : _a.plateNumber, "MH 1234");
+        strict_1.default.equal((_b = parsed.rows[0]) === null || _b === void 0 ? void 0 : _b.isActive, true);
+    });
+    (0, node_test_1.it)("handles quoted commas and flags bad rows", () => {
+        var _a, _b;
+        const parsed = (0, format_1.parsePolicyCsv)('plate_number,policy_number,start_date,end_date\n"MH, 99",P1,2026-01-01,2026-12-31\nMH 2,,2026-01-01,bad-date\n');
+        strict_1.default.equal(parsed.rows.length, 1);
+        strict_1.default.equal((_a = parsed.rows[0]) === null || _a === void 0 ? void 0 : _a.plateNumber, "MH, 99");
+        strict_1.default.equal(parsed.errors.length, 1);
+        strict_1.default.equal((_b = parsed.errors[0]) === null || _b === void 0 ? void 0 : _b.line, 3);
+    });
+    (0, node_test_1.it)("requires the core columns", () => {
+        var _a, _b;
+        const parsed = (0, format_1.parsePolicyCsv)("plate_number,policy_number\nMH 1,P1\n");
+        strict_1.default.equal(parsed.rows.length, 0);
+        strict_1.default.match((_b = (_a = parsed.errors[0]) === null || _a === void 0 ? void 0 : _a.message) !== null && _b !== void 0 ? _b : "", /Missing column/);
+    });
+    (0, node_test_1.it)("parses inactive flags", () => {
+        var _a, _b;
+        const parsed = (0, format_1.parsePolicyCsv)("plate_number,policy_number,start_date,end_date,is_active\nMH 1,P1,2026-01-01,2026-12-31,false\nMH 2,P2,2026-01-01,2026-12-31,\n");
+        strict_1.default.equal((_a = parsed.rows[0]) === null || _a === void 0 ? void 0 : _a.isActive, false);
+        strict_1.default.equal((_b = parsed.rows[1]) === null || _b === void 0 ? void 0 : _b.isActive, true);
+    });
+});
+(0, node_test_1.describe)("record geo fields (F10)", () => {
+    (0, node_test_1.it)("accepts optional coordinates on location-bearing types", () => {
+        const result = record_1.crimeIncidentSchema.safeParse({
+            incident_type: "Theft",
+            description: "Bike stolen.",
+            location: "Old Town",
+            date_occurred: "2026-09-17",
+            latitude: -13.98333,
+            longitude: 33.78333,
+        });
+        strict_1.default.equal(result.success, true);
+    });
+    (0, node_test_1.it)("rejects out-of-range coordinates", () => {
+        const result = record_1.crimeIncidentSchema.safeParse({
+            incident_type: "Theft",
+            description: "Bike stolen.",
+            location: "Old Town",
+            date_occurred: "2026-09-17",
+            latitude: -100,
+            longitude: 33.78333,
+        });
+        strict_1.default.equal(result.success, false);
+    });
+    (0, node_test_1.it)("filing still works without GPS", () => {
+        const result = record_1.crimeIncidentSchema.safeParse({
+            incident_type: "Theft",
+            description: "Bike stolen.",
+            location: "Old Town",
+            date_occurred: "2026-09-17",
+        });
+        strict_1.default.equal(result.success, true);
+    });
+    (0, node_test_1.it)("wanted persons carry no geo fields (extras are stripped)", () => {
+        const result = record_1.wantedPersonSchema.safeParse({
+            full_name: "Jane Doe",
+            offense: "Theft",
+            danger_level: "low",
+            description: "Wanted.",
+            latitude: -13.98,
+        });
+        strict_1.default.equal(result.success, true);
+        strict_1.default.equal(result.data.latitude, undefined);
+    });
+});
+(0, node_test_1.describe)("resolveSmsConfig / otpMessage (N1)", () => {
+    (0, node_test_1.it)("defaults to the log provider without gateway vars", () => {
+        const savedUrl = process.env.SMS_API_URL;
+        const savedKey = process.env.SMS_API_KEY;
+        delete process.env.SMS_API_URL;
+        delete process.env.SMS_API_KEY;
+        try {
+            strict_1.default.equal((0, sms_1.resolveSmsConfig)().provider, "log");
+        }
+        finally {
+            if (savedUrl !== undefined)
+                process.env.SMS_API_URL = savedUrl;
+            if (savedKey !== undefined)
+                process.env.SMS_API_KEY = savedKey;
+        }
+    });
+    (0, node_test_1.it)("selects http when the gateway is configured", () => {
+        const config = (0, sms_1.resolveSmsConfig)({
+            SMS_API_URL: "https://sms.example.test/send",
+            SMS_API_KEY: "secret",
+            SMS_SENDER_ID: "TRACE",
+        });
+        strict_1.default.equal(config.provider, "http");
+        strict_1.default.equal(config.senderId, "TRACE");
+    });
+    (0, node_test_1.it)("phrases the OTP with its expiry", () => {
+        strict_1.default.match((0, sms_1.otpMessage)("123456"), /123456/);
+        strict_1.default.match((0, sms_1.otpMessage)("123456"), /5 minutes/);
+    });
+});
+(0, node_test_1.describe)("apiKeySchema (N4)", () => {
+    (0, node_test_1.it)("accepts a scoped, optionally expiring key", () => {
+        const result = admin_1.apiKeySchema.safeParse({
+            userId: "user-1",
+            name: "ANPR camera 3",
+            scopes: ["plate:read"],
+            expiresAt: "2099-01-01",
+        });
+        strict_1.default.equal(result.success, true);
+    });
+    (0, node_test_1.it)("rejects unknown scopes and past expiry", () => {
+        strict_1.default.equal(admin_1.apiKeySchema.safeParse({
+            userId: "user-1",
+            name: "ANPR camera 3",
+            scopes: ["cases:read"],
+        }).success, false);
+        strict_1.default.equal(admin_1.apiKeySchema.safeParse({
+            userId: "user-1",
+            name: "ANPR camera 3",
+            scopes: ["plate:read"],
+            expiresAt: "2000-01-01",
+        }).success, false);
     });
 });

@@ -22,12 +22,17 @@ import {
   isCitationPaid,
   lastWeekBuckets,
   normalizePlate,
+  parsePolicyCsv,
+  POLICY_CSV_TEMPLATE,
   referralSla,
   REFERRAL_OUTCOME_SLA_DAYS,
   REFERRAL_VIEW_SLA_DAYS,
   RETENTION_YEARS,
   shortFileHash,
 } from "../lib/format"
+import { otpMessage, resolveSmsConfig } from "../lib/sms"
+import { crimeIncidentSchema, wantedPersonSchema } from "../validations/record"
+import { apiKeySchema } from "../validations/admin"
 
 const officer: VisibilityScope = {
   role: "OFFICER",
@@ -402,5 +407,152 @@ describe("defaultRetentionUntil / shortFileHash", () => {
     assert.equal(shortFileHash("abcdef1234567890"), "abcdef123456…")
     assert.equal(shortFileHash(null), null)
     assert.equal(shortFileHash(undefined), null)
+  })
+})
+
+describe("parsePolicyCsv", () => {
+  it("parses the shipped template", () => {
+    const parsed = parsePolicyCsv(POLICY_CSV_TEMPLATE)
+    assert.equal(parsed.errors.length, 0)
+    assert.equal(parsed.rows.length, 1)
+    assert.equal(parsed.rows[0]?.plateNumber, "MH 1234")
+    assert.equal(parsed.rows[0]?.isActive, true)
+  })
+
+  it("handles quoted commas and flags bad rows", () => {
+    const parsed = parsePolicyCsv(
+      'plate_number,policy_number,start_date,end_date\n"MH, 99",P1,2026-01-01,2026-12-31\nMH 2,,2026-01-01,bad-date\n'
+    )
+    assert.equal(parsed.rows.length, 1)
+    assert.equal(parsed.rows[0]?.plateNumber, "MH, 99")
+    assert.equal(parsed.errors.length, 1)
+    assert.equal(parsed.errors[0]?.line, 3)
+  })
+
+  it("requires the core columns", () => {
+    const parsed = parsePolicyCsv("plate_number,policy_number\nMH 1,P1\n")
+    assert.equal(parsed.rows.length, 0)
+    assert.match(parsed.errors[0]?.message ?? "", /Missing column/)
+  })
+
+  it("parses inactive flags", () => {
+    const parsed = parsePolicyCsv(
+      "plate_number,policy_number,start_date,end_date,is_active\nMH 1,P1,2026-01-01,2026-12-31,false\nMH 2,P2,2026-01-01,2026-12-31,\n"
+    )
+    assert.equal(parsed.rows[0]?.isActive, false)
+    assert.equal(parsed.rows[1]?.isActive, true)
+  })
+})
+
+describe("record geo fields (F10)", () => {
+  it("accepts optional coordinates on location-bearing types", () => {
+    const result = crimeIncidentSchema.safeParse({
+      incident_type: "Theft",
+      description: "Bike stolen.",
+      location: "Old Town",
+      date_occurred: "2026-09-17",
+      latitude: -13.98333,
+      longitude: 33.78333,
+    })
+    assert.equal(result.success, true)
+  })
+
+  it("rejects out-of-range coordinates", () => {
+    const result = crimeIncidentSchema.safeParse({
+      incident_type: "Theft",
+      description: "Bike stolen.",
+      location: "Old Town",
+      date_occurred: "2026-09-17",
+      latitude: -100,
+      longitude: 33.78333,
+    })
+    assert.equal(result.success, false)
+  })
+
+  it("filing still works without GPS", () => {
+    const result = crimeIncidentSchema.safeParse({
+      incident_type: "Theft",
+      description: "Bike stolen.",
+      location: "Old Town",
+      date_occurred: "2026-09-17",
+    })
+    assert.equal(result.success, true)
+  })
+
+  it("wanted persons carry no geo fields (extras are stripped)", () => {
+    const result = wantedPersonSchema.safeParse({
+      full_name: "Jane Doe",
+      offense: "Theft",
+      danger_level: "low",
+      description: "Wanted.",
+      latitude: -13.98,
+    })
+    assert.equal(result.success, true)
+    assert.equal(
+      (result.data as Record<string, unknown>).latitude,
+      undefined
+    )
+  })
+})
+
+describe("resolveSmsConfig / otpMessage (N1)", () => {
+  it("defaults to the log provider without gateway vars", () => {
+    const savedUrl = process.env.SMS_API_URL
+    const savedKey = process.env.SMS_API_KEY
+    delete process.env.SMS_API_URL
+    delete process.env.SMS_API_KEY
+    try {
+      assert.equal(resolveSmsConfig().provider, "log")
+    } finally {
+      if (savedUrl !== undefined) process.env.SMS_API_URL = savedUrl
+      if (savedKey !== undefined) process.env.SMS_API_KEY = savedKey
+    }
+  })
+
+  it("selects http when the gateway is configured", () => {
+    const config = resolveSmsConfig({
+      SMS_API_URL: "https://sms.example.test/send",
+      SMS_API_KEY: "secret",
+      SMS_SENDER_ID: "TRACE",
+    })
+    assert.equal(config.provider, "http")
+    assert.equal(config.senderId, "TRACE")
+  })
+
+  it("phrases the OTP with its expiry", () => {
+    assert.match(otpMessage("123456"), /123456/)
+    assert.match(otpMessage("123456"), /5 minutes/)
+  })
+})
+
+describe("apiKeySchema (N4)", () => {
+  it("accepts a scoped, optionally expiring key", () => {
+    const result = apiKeySchema.safeParse({
+      userId: "user-1",
+      name: "ANPR camera 3",
+      scopes: ["plate:read"],
+      expiresAt: "2099-01-01",
+    })
+    assert.equal(result.success, true)
+  })
+
+  it("rejects unknown scopes and past expiry", () => {
+    assert.equal(
+      apiKeySchema.safeParse({
+        userId: "user-1",
+        name: "ANPR camera 3",
+        scopes: ["cases:read"],
+      }).success,
+      false
+    )
+    assert.equal(
+      apiKeySchema.safeParse({
+        userId: "user-1",
+        name: "ANPR camera 3",
+        scopes: ["plate:read"],
+        expiresAt: "2000-01-01",
+      }).success,
+      false
+    )
   })
 })

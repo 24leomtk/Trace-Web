@@ -12,6 +12,49 @@
 --   everyone else    -> no case rows (admin/auditor/insurer/registrar)
 
 create extension if not exists pgcrypto;
+create extension if not exists pg_trgm;
+
+-- ── Schema hardening (SQL Drizzle doesn't express — safe to re-run) ───────
+-- 1. Trigram indexes backing the unified person/plate search (ILIKE %…%).
+create index if not exists persons_of_interest_full_name_trgm_idx
+  on public.persons_of_interest using gin (full_name gin_trgm_ops);
+create index if not exists persons_of_interest_national_id_trgm_idx
+  on public.persons_of_interest using gin (national_id gin_trgm_ops);
+create index if not exists vehicles_plate_number_trgm_idx
+  on public.vehicles using gin (plate_number gin_trgm_ops);
+
+-- 2. Per-role scope rules on users (mirrors the scoping comment on users in
+--    db/schema/auth.ts; app code enforces first, this is the backstop).
+--    If this fails, an existing row violates the rules — find it with:
+--      select id, role, domain, branch_id, district, organization_id
+--        from public.users where not (
+--        (role::text = 'officer' and domain is not null and branch_id is not null and district is null and organization_id is null)
+--        or (role::text = 'district_monitor' and domain is not null and district is not null and branch_id is null and organization_id is null)
+--        or (role::text = 'country_monitor' and domain is not null and branch_id is null and district is null and organization_id is null)
+--        or (role::text in ('system_admin', 'compliance_auditor') and domain is null and branch_id is null and district is null and organization_id is null)
+--        or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar') and organization_id is not null and domain is null and branch_id is null and district is null));
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'users_role_scope_chk') then
+    alter table public.users add constraint users_role_scope_chk check (
+      (role::text = 'officer'
+        and domain is not null and branch_id is not null
+        and district is null and organization_id is null)
+      or (role::text = 'district_monitor'
+        and domain is not null and district is not null
+        and branch_id is null and organization_id is null)
+      or (role::text = 'country_monitor'
+        and domain is not null
+        and branch_id is null and district is null and organization_id is null)
+      or (role::text in ('system_admin', 'compliance_auditor')
+        and domain is null and branch_id is null
+        and district is null and organization_id is null)
+      or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar')
+        and organization_id is not null
+        and domain is null and branch_id is null and district is null)
+    );
+  end if;
+end $$;
 
 do $$
 begin
@@ -227,6 +270,10 @@ alter table public.actions enable row level security;
 alter table public.case_reviews enable row level security;
 alter table public.notifications enable row level security;
 alter table public.idempotency_keys enable row level security;
+alter table public.citation_payments enable row level security;
+alter table public.referral_documents enable row level security;
+alter table public.case_assignments enable row level security;
+alter table public.api_keys enable row level security;
 
 -- users: own row always; system admin + auditor see all; police see the
 -- staff directory (names on records/referrals); external roles (court /
@@ -463,6 +510,59 @@ create policy idempotency_own on public.idempotency_keys for all to app_user
   using (user_id = public.app_user_id())
   with check (user_id = public.app_user_id());
 
+-- citation_payments (fine ledger, append-only): readable wherever the parent
+-- citation is readable; written by police in scope (app checks reporter vs
+-- monitor). is_paid is recomputed from this table.
+drop policy if exists citation_payments_read on public.citation_payments;
+create policy citation_payments_read on public.citation_payments for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists citation_payments_write on public.citation_payments;
+create policy citation_payments_write on public.citation_payments for insert to app_user
+  with check (public.app_is_police());
+
+-- referral_documents (e-Brief tranches): monitors + the grant's liaison can
+-- read; only monitors attach or remove (app enforces which).
+drop policy if exists referral_docs_read on public.referral_documents;
+create policy referral_docs_read on public.referral_documents for select to app_user
+  using (
+    public.app_is_monitor()
+    or exists (
+      select 1 from public.court_case_access g
+      where g.id = referral_id
+        and (g.court_liaison_id = public.app_user_id() or g.referred_by = public.app_user_id())
+    )
+  );
+drop policy if exists referral_docs_insert on public.referral_documents;
+create policy referral_docs_insert on public.referral_documents for insert to app_user
+  with check (public.app_is_monitor());
+drop policy if exists referral_docs_delete on public.referral_documents;
+create policy referral_docs_delete on public.referral_documents for delete to app_user
+  using (public.app_is_monitor());
+
+-- case_assignments (tasking): assignee + assigner + anyone who can read the
+-- case; monitors create; assignee or monitor completes/cancels (app checks).
+drop policy if exists assignments_read on public.case_assignments;
+create policy assignments_read on public.case_assignments for select to app_user
+  using (
+    assignee_id = public.app_user_id()
+    or assigned_by = public.app_user_id()
+    or exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r))
+  );
+drop policy if exists assignments_insert on public.case_assignments;
+create policy assignments_insert on public.case_assignments for insert to app_user
+  with check (assigned_by = public.app_user_id() and public.app_is_monitor());
+drop policy if exists assignments_update on public.case_assignments;
+create policy assignments_update on public.case_assignments for update to app_user
+  using (assignee_id = public.app_user_id() or public.app_is_monitor())
+  with check (assignee_id = public.app_user_id() or public.app_is_monitor());
+
+-- api_keys: system admins only (verification runs as the schema owner and
+-- bypasses RLS, like the sign-in flow).
+drop policy if exists api_keys_admin on public.api_keys;
+create policy api_keys_admin on public.api_keys for all to app_user
+  using (public.app_is_system_admin())
+  with check (public.app_is_system_admin());
+
 -- actions (append-only audit log): own entries + monitors/admin/auditor.
 -- District scoping for district monitors is applied in app code.
 drop policy if exists actions_read on public.actions;
@@ -480,6 +580,9 @@ create policy actions_insert on public.actions for insert to app_user
 -- Append-only enforcement (also for records: cases are never hard-deleted).
 revoke update, delete on public.actions from app_user;
 revoke delete on public.records from app_user;
+revoke update, delete on public.citation_payments from app_user;
+revoke update on public.referral_documents from app_user;
+revoke delete on public.case_assignments from app_user;
 revoke delete on public.missing_person_cases,
   public.wanted_person_cases,
   public.vehicle_cases,

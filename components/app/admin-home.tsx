@@ -1,10 +1,11 @@
 import Link from "next/link"
-import { Building2Icon, LandmarkIcon, ScrollTextIcon, UsersIcon } from "lucide-react"
+import { Building2Icon, KeyRoundIcon, LandmarkIcon, ScrollTextIcon, UsersIcon } from "lucide-react"
 
 const LINKS = [
   { href: "/admin/users", label: "Manage users", detail: "Provision accounts across all 8 roles.", icon: UsersIcon },
   { href: "/admin/branches", label: "Branches", detail: "Stations and posts per domain and district.", icon: Building2Icon },
   { href: "/admin/organizations", label: "Organizations", detail: "Courts, insurers, vehicle registry.", icon: LandmarkIcon },
+  { href: "/admin/api-keys", label: "API keys", detail: "Machine credentials for integrations.", icon: KeyRoundIcon },
   { href: "/audit", label: "Audit log", detail: "Full visibility, all districts.", icon: ScrollTextIcon },
 ]
 

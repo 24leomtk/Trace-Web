@@ -97,6 +97,8 @@ export interface TraceRecord {
   author: RecordAuthor
   badges: RecordBadge[]
   attachments: AttachmentMeta[]
+  /** F10 precise coordinates when captured at filing (null otherwise). */
+  geo?: { latitude: number; longitude: number } | null
 }
 
 export interface VehicleSummary {
