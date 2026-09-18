@@ -47,6 +47,7 @@ import {
 } from "@/components/app/record-form/dynamic-fields"
 import { RECORD_FORM_FIELDS } from "@/components/app/record-form/fields"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -772,12 +773,13 @@ export default function RecordDetailPage({
                   </SelectContent>
                 </Select>
                 <div className="flex gap-2">
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={taskDue}
+                    onChange={setTaskDue}
+                    label="Due date (optional)"
+                    placeholder="Due date (optional)"
                     min={new Date().toISOString().slice(0, 10)}
-                    onChange={(event) => setTaskDue(event.target.value)}
-                    aria-label="Due date (optional)"
+                    className="flex-1"
                   />
                   <Input
                     value={taskNote}

@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/citations"
 import { formatDateKey } from "@/lib/format"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -274,12 +275,14 @@ export function CitationLedger({
           </h2>
           <form onSubmit={submitSchedule} className="flex flex-col gap-2">
             <div className="flex gap-2">
-              <Input
-                type="date"
+              <DatePicker
                 value={courtDate}
+                onChange={setCourtDate}
+                label="Court date"
+                placeholder="Court date"
                 min={todayKey}
-                onChange={(event) => setCourtDate(event.target.value)}
-                aria-label="Court date"
+                allowClear={false}
+                className="flex-1"
               />
               <Select value={courtId || undefined} onValueChange={setCourtId}>
                 <SelectTrigger aria-label="Court" className="h-9 flex-1">

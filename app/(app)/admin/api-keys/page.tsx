@@ -19,6 +19,7 @@ import {
 } from "@/components/app/admin-section"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -131,11 +132,12 @@ export default function AdminApiKeysPage() {
             />
           </AdminField>
           <AdminField label="Expires" hint="Blank = no expiry.">
-            <Input
-              type="date"
+            <DatePicker
               value={form.expiresAt}
+              onChange={(expiresAt) => setForm({ ...form, expiresAt })}
+              label="Expiry date"
+              placeholder="No expiry"
               min={new Date().toISOString().slice(0, 10)}
-              onChange={(event) => setForm({ ...form, expiresAt: event.target.value })}
             />
           </AdminField>
           <DialogFooter className="sm:col-span-2">

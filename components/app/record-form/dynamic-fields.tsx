@@ -28,6 +28,13 @@ import {
 } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type {
   AnyFieldDef,
   PlainFieldDef,
@@ -428,16 +435,56 @@ function CalendarField({
         />
         {withTime && (
           <div className="border-t p-2">
-            <label className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground">
+            <span className="mb-1 block text-xs font-medium tracking-wide text-muted-foreground">
               Time
-            </label>
-            <Input
-              type="time"
-              value={timeValue}
-              onChange={(event) => selectTime(event.target.value)}
-              aria-label={`${label} time`}
-              className="bg-background dark:bg-input/20"
-            />
+            </span>
+            <div className="flex gap-1.5">
+              <Select
+                value={timeValue ? timeValue.slice(0, 2) : undefined}
+                onValueChange={(hour) => {
+                  const minute = timeValue ? timeValue.slice(3, 5) : "00"
+                  selectTime(`${hour}:${minute}`)
+                }}
+              >
+                <SelectTrigger aria-label={`${label} hour`} className="h-8 flex-1">
+                  <SelectValue placeholder="HH" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, hour) => {
+                    const key = String(hour).padStart(2, "0")
+                    return (
+                      <SelectItem key={key} value={key}>
+                        {key}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              <span aria-hidden="true" className="self-center text-sm text-muted-foreground">
+                :
+              </span>
+              <Select
+                value={timeValue ? timeValue.slice(3, 5) : undefined}
+                onValueChange={(minute) => {
+                  const hour = timeValue ? timeValue.slice(0, 2) : "00"
+                  selectTime(`${hour}:${minute}`)
+                }}
+              >
+                <SelectTrigger aria-label={`${label} minute`} className="h-8 flex-1">
+                  <SelectValue placeholder="MM" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, index) => {
+                    const key = String(index * 5).padStart(2, "0")
+                    return (
+                      <SelectItem key={key} value={key}>
+                        {key}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </PopoverContent>
