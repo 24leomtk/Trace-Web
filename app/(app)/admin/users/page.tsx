@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -21,10 +23,18 @@ import {
   AdminListPagination,
   AdminSearchInput,
   AdminSection,
-  adminInputClassName,
 } from "@/components/app/admin-section"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const PAGE_SIZE = 15
@@ -40,21 +50,24 @@ const ROLE_HINT: Record<string, string> = {
   VEHICLE_REGISTRAR: "Needs the registry organization.",
 }
 
+const EMPTY_FORM = {
+  name: "",
+  phoneNumber: "",
+  role: "OFFICER",
+  badgeNumber: "",
+  domain: "regular",
+  branchId: "",
+  district: "",
+  organizationId: "",
+}
+
 export default function AdminUsersPage() {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [role, setRole] = useState("all")
   const [page, setPage] = useState(0)
-  const [form, setForm] = useState({
-    name: "",
-    phoneNumber: "",
-    role: "OFFICER",
-    badgeNumber: "",
-    domain: "regular",
-    branchId: "",
-    district: "",
-    organizationId: "",
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
 
   const { data, isLoading } = useQuery({
@@ -78,6 +91,11 @@ export default function AdminUsersPage() {
     await queryClient.invalidateQueries({ queryKey: ["managed-users"] })
   }
 
+  function openDialog() {
+    setForm(EMPTY_FORM)
+    setDialogOpen(true)
+  }
+
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault()
     setCreating(true)
@@ -93,16 +111,8 @@ export default function AdminUsersPage() {
         organizationId: form.organizationId,
       })
       toast.success("Account provisioned.")
-      setForm({
-        name: "",
-        phoneNumber: "",
-        role: "OFFICER",
-        badgeNumber: "",
-        domain: "regular",
-        branchId: "",
-        district: "",
-        organizationId: "",
-      })
+      setForm(EMPTY_FORM)
+      setDialogOpen(false)
       await refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create account.")
@@ -115,9 +125,34 @@ export default function AdminUsersPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <AdminSection
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit rounded-full px-2">
+            <Link href="/">
+              <ArrowLeftIcon data-icon="inline-start" />
+              Administration
+            </Link>
+          </Button>
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">
+            TRACE administration
+          </p>
+          <h1 className="mt-1 text-xl font-medium">Users</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            No self-registration — every account is created here. Deactivation revokes sessions immediately; history is kept.
+          </p>
+        </div>
+        <Button onClick={openDialog} className="shrink-0">
+          <PlusIcon data-icon="inline-start" />
+          Provision account
+        </Button>
+      </header>
+
+      <ResponsiveModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
         title="Provision account"
         description="No self-registration — every account is created here."
+        className="sm:max-w-lg"
       >
         <form onSubmit={handleCreate} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <AdminField label="Full name">
@@ -193,13 +228,16 @@ export default function AdminUsersPage() {
               />
             </AdminField>
           )}
-          <div className="sm:col-span-2">
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button type="submit" disabled={creating}>
               {creating ? "Provisioning…" : "Provision account"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      </AdminSection>
+      </ResponsiveModal>
 
       <AdminSection title="Accounts" description="Deactivation revokes sessions immediately; history is kept.">
         <div className="flex flex-col gap-3">
@@ -207,17 +245,17 @@ export default function AdminUsersPage() {
             <div className="flex-1">
               <AdminSearchInput value={query} onChange={setQuery} placeholder="Search name or phone…" />
             </div>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className={adminInputClassName}
-              aria-label="Filter by role"
-            >
-              <option value="all">All roles</option>
-              {managedRoleOptions.map((value) => (
-                <option key={value} value={value}>{value.replace(/_/g, " ")}</option>
-              ))}
-            </select>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger aria-label="Filter by role" className="w-full sm:w-48">
+                <SelectValue placeholder="All roles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All roles</SelectItem>
+                {managedRoleOptions.map((value) => (
+                  <SelectItem key={value} value={value}>{value.replace(/_/g, " ")}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {isLoading ? (

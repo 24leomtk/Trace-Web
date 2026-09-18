@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -15,9 +17,13 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+
+const EMPTY_FORM = { userId: "", name: "", expiresAt: "" }
 
 /**
  * N4 machine keys (Phase 3) — system admins issue per-user keys bound by
@@ -25,7 +31,8 @@ import { Skeleton } from "@/components/ui/skeleton"
  */
 export default function AdminApiKeysPage() {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ userId: "", name: "", expiresAt: "" })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [freshKey, setFreshKey] = useState<string | null>(null)
 
@@ -40,6 +47,11 @@ export default function AdminApiKeysPage() {
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["admin-api-keys"] })
+  }
+
+  function openDialog() {
+    setForm(EMPTY_FORM)
+    setDialogOpen(true)
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -57,7 +69,8 @@ export default function AdminApiKeysPage() {
         expiresAt: form.expiresAt || undefined,
       })
       setFreshKey(result.key)
-      setForm({ userId: "", name: "", expiresAt: "" })
+      setForm(EMPTY_FORM)
+      setDialogOpen(false)
       await refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not issue key.")
@@ -68,9 +81,33 @@ export default function AdminApiKeysPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <AdminSection
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit rounded-full px-2">
+            <Link href="/">
+              <ArrowLeftIcon data-icon="inline-start" />
+              Administration
+            </Link>
+          </Button>
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">
+            TRACE administration
+          </p>
+          <h1 className="mt-1 text-xl font-medium">API keys</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Acts as one user with the plate:read scope (ANPR readers). Copy the key now — it never shows again.
+          </p>
+        </div>
+        <Button onClick={openDialog} className="shrink-0">
+          <PlusIcon data-icon="inline-start" />
+          Issue key
+        </Button>
+      </header>
+
+      <ResponsiveModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
         title="Issue API key"
-        description="Acts as one user with the plate:read scope (ANPR readers). Copy the key now — it never shows again."
+        description="Acts as one user with the plate:read scope (ANPR readers)."
       >
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <AdminField label="Acting user">
@@ -101,33 +138,37 @@ export default function AdminApiKeysPage() {
               onChange={(event) => setForm({ ...form, expiresAt: event.target.value })}
             />
           </AdminField>
-          <div className="flex items-end">
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button type="submit" disabled={saving}>
               {saving ? "Issuing…" : "Issue key"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-        {freshKey && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/10">
-            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-              Copy now — this is the only time it shows:
-            </p>
-            <p className="mt-1 font-mono text-sm break-all select-all">{freshKey}</p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-2"
-              onClick={() => {
-                void navigator.clipboard.writeText(freshKey)
-                toast.success("Copied.")
-              }}
-            >
-              Copy
-            </Button>
-          </div>
-        )}
-      </AdminSection>
+      </ResponsiveModal>
+
+      {freshKey && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/10">
+          <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+            Copy now — this is the only time it shows:
+          </p>
+          <p className="mt-1 font-mono text-sm break-all select-all">{freshKey}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={() => {
+              void navigator.clipboard.writeText(freshKey)
+              toast.success("Copied.")
+            }}
+          >
+            Copy
+          </Button>
+        </div>
+      )}
 
       <AdminSection title="Active keys">
         {isLoading ? (

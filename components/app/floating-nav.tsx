@@ -10,6 +10,7 @@ import {
   FilePlus2Icon,
   GavelIcon,
   HouseIcon,
+  KeyRoundIcon,
   LandmarkIcon,
   LogOutIcon,
   ScrollTextIcon,
@@ -162,6 +163,13 @@ export function FloatingNav() {
               active={pathname.startsWith("/admin/organizations")}
             >
               <LandmarkIcon className="size-5" />
+            </NavButton>
+            <NavButton
+              label="API keys"
+              href="/admin/api-keys"
+              active={pathname.startsWith("/admin/api-keys")}
+            >
+              <KeyRoundIcon className="size-5" />
             </NavButton>
             <NavButton
               label="Audit log"

@@ -17,6 +17,7 @@ import { formatDateKey, fromDateKey, toDateKey } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Command,
   CommandEmpty,
@@ -458,15 +459,14 @@ function TextareaStyled({
   label: string
 }) {
   return (
-    <textarea
-      data-slot="record-textarea"
+    <Textarea
       rows={3}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder ?? label}
       aria-label={label}
       aria-invalid={invalid || undefined}
-      className="flex w-full resize-none rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm outline-none transition-[color,box-shadow] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/20 dark:aria-invalid:border-destructive/50"
+      className="dark:bg-input/20"
     />
   )
 }
@@ -574,7 +574,7 @@ function StringListEditor({
             </button>
           </span>
         ))}
-        <input
+        <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -585,7 +585,8 @@ function StringListEditor({
           }}
           onBlur={commit}
           placeholder={items.length > 0 ? "Add another…" : field.placeholder}
-          className="min-w-24 flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+          aria-label={field.label}
+          className="h-7 min-w-24 flex-1 border-0 bg-transparent px-1 py-0.5 shadow-none focus-visible:border-transparent focus-visible:ring-0"
         />
       </div>
     </div>

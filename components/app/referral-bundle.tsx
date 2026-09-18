@@ -20,6 +20,13 @@ import { uploadFileToCloudinary } from "@/lib/upload"
 import { referralDocumentLabels } from "@/validations/admin"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const CHECKLIST: { label: (typeof referralDocumentLabels)[number]; title: string }[] = [
@@ -202,22 +209,23 @@ export function ReferralBundle({
         {canUpload && (
           <form onSubmit={submitDocument} className="flex flex-col gap-2">
             <div className="flex gap-2">
-              <select
+              <Select
                 value={label}
-                onChange={(event) =>
-                  setLabel(
-                    event.target.value as (typeof referralDocumentLabels)[number]
-                  )
+                onValueChange={(value) =>
+                  setLabel(value as (typeof referralDocumentLabels)[number])
                 }
-                className="h-9 flex-1 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
-                aria-label="Document type"
               >
-                {referralDocumentLabels.map((value) => (
-                  <option key={value} value={value}>
-                    {value.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Document type" className="h-9 flex-1">
+                  <SelectValue placeholder="Document type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {referralDocumentLabels.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 type="file"
                 accept="image/*,application/pdf,video/*,audio/*,.doc,.docx,.txt"

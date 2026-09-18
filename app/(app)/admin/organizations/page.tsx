@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -15,25 +17,35 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 
+const EMPTY_FORM = {
+  name: "",
+  orgType: "court",
+  district: "",
+  contactPhone: "",
+  contactEmail: "",
+}
+
 export default function AdminOrganizationsPage() {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({
-    name: "",
-    orgType: "court",
-    district: "",
-    contactPhone: "",
-    contactEmail: "",
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: () => listOrganizations(),
   })
+
+  function openDialog() {
+    setForm(EMPTY_FORM)
+    setDialogOpen(true)
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -47,7 +59,8 @@ export default function AdminOrganizationsPage() {
         contactEmail: form.contactEmail,
       })
       toast.success("Organization saved.")
-      setForm({ name: "", orgType: "court", district: "", contactPhone: "", contactEmail: "" })
+      setForm(EMPTY_FORM)
+      setDialogOpen(false)
       await queryClient.invalidateQueries({ queryKey: ["admin-organizations"] })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save.")
@@ -58,7 +71,34 @@ export default function AdminOrganizationsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <AdminSection title="Add organization" description="Courts, insurers, and the vehicle registry authority.">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit rounded-full px-2">
+            <Link href="/">
+              <ArrowLeftIcon data-icon="inline-start" />
+              Administration
+            </Link>
+          </Button>
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">
+            TRACE administration
+          </p>
+          <h1 className="mt-1 text-xl font-medium">Organizations</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Courts, insurers, and the vehicle registry authority.
+          </p>
+        </div>
+        <Button onClick={openDialog} className="shrink-0">
+          <PlusIcon data-icon="inline-start" />
+          Add organization
+        </Button>
+      </header>
+
+      <ResponsiveModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title="Add organization"
+        description="Courts, insurers, and the vehicle registry authority."
+      >
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <AdminField label="Name">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required minLength={2} />
@@ -91,11 +131,22 @@ export default function AdminOrganizationsPage() {
           <AdminField label="Contact phone">
             <Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} placeholder="+265… (optional)" />
           </AdminField>
-          <div className="sm:col-span-2">
+          <AdminField label="Contact email">
+            <Input
+              type="email"
+              value={form.contactEmail}
+              onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+              placeholder="Optional"
+            />
+          </AdminField>
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
             <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Add organization"}</Button>
-          </div>
+          </DialogFooter>
         </form>
-      </AdminSection>
+      </ResponsiveModal>
 
       <AdminSection title="Organizations">
         {isLoading ? (

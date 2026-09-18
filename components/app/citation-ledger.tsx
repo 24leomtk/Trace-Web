@@ -15,6 +15,13 @@ import {
 import { formatDateKey } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
 function mwk(value: number): string {
@@ -274,19 +281,18 @@ export function CitationLedger({
                 onChange={(event) => setCourtDate(event.target.value)}
                 aria-label="Court date"
               />
-              <select
-                value={courtId}
-                onChange={(event) => setCourtId(event.target.value)}
-                className="h-9 flex-1 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
-                aria-label="Court"
-              >
-                <option value="">Select court…</option>
-                {(courtsQuery.data ?? []).map((court) => (
-                  <option key={court.id} value={court.id}>
-                    {court.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={courtId || undefined} onValueChange={setCourtId}>
+                <SelectTrigger aria-label="Court" className="h-9 flex-1">
+                  <SelectValue placeholder="Select court…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(courtsQuery.data ?? []).map((court) => (
+                    <SelectItem key={court.id} value={court.id}>
+                      {court.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <Button type="submit" size="sm" className="w-fit" disabled={scheduling}>
               {scheduling ? "Scheduling…" : ledger.courtDate ? "Reschedule" : "Schedule"}

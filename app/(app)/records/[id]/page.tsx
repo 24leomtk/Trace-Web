@@ -40,6 +40,7 @@ import { CitationLedger } from "@/components/app/citation-ledger"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ReferralBundle } from "@/components/app/referral-bundle"
+import { StatusUpdateDialog } from "@/components/app/status-update-dialog"
 import {
   DynamicFields,
   type FormValues,
@@ -47,14 +48,24 @@ import {
 import { RECORD_FORM_FIELDS } from "@/components/app/record-form/fields"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/providers/user-context"
 
-const STATUSES: CaseStatus[] = ["active", "resolved", "closed", "archived"]
 const LEVELS: AccessLevel[] = ["branch", "district", "country"]
 
-function setDeep(target: Record<string, unknown>, path: string, value: unknown) {
+function setDeep(
+  target: Record<string, unknown>,
+  path: string,
+  value: unknown
+) {
   const segments = path.split(".")
   let node = target
   for (let index = 0; index < segments.length - 1; index++) {
@@ -65,7 +76,11 @@ function setDeep(target: Record<string, unknown>, path: string, value: unknown) 
   node[segments[segments.length - 1]] = value
 }
 
-export default function RecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function RecordDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   const { id } = use(params)
   const { user } = useUser()
   const queryClient = useQueryClient()
@@ -82,7 +97,10 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const [taskDue, setTaskDue] = useState("")
   const [taskNote, setTaskNote] = useState("")
   const [tab, setTab] = useState("case")
-
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false)
+  const [statusSaving, setStatusSaving] = useState(false)
+  const isMonitor =
+    user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
   const recordQuery = useQuery({
     queryKey: ["record", id],
     queryFn: () => getRecord(id),
@@ -121,11 +139,8 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     enabled: isMonitor,
   })
 
-  const isMonitor =
-    user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
   const isLiaison = user.role === "COURT_LIAISON"
-  const canReview =
-    isMonitor || (recordQuery.data?.reportedBy === user.id)
+  const canReview = isMonitor || recordQuery.data?.reportedBy === user.id
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["record", id] })
@@ -133,6 +148,24 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     await queryClient.invalidateQueries({ queryKey: ["reviews", id] })
     await queryClient.invalidateQueries({ queryKey: ["assignments", id] })
     await queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
+  }
+
+  async function confirmStatusChange(next: CaseStatus, statusReason: string) {
+    setStatusSaving(true)
+    try {
+      await changeStatus({
+        id,
+        status: next,
+        reason: statusReason || `Status → ${next}.`,
+      })
+      toast.success(`Status → ${next}.`)
+      setStatusDialogOpen(false)
+      await refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setStatusSaving(false)
+    }
   }
 
   async function startEditing() {
@@ -144,15 +177,20 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       for (const field of RECORD_FORM_FIELDS[record.recordType]) {
         const raw = payload[field.path]
         values[field.path] =
-          raw ?? (field.kind === "stringlist" || field.kind === "rowlist" ? [] : "")
+          raw ??
+          (field.kind === "stringlist" || field.kind === "rowlist" ? [] : "")
       }
       // F10: carry the GPS fix (not a rendered field) so edits don't drop it.
-      if (typeof payload.latitude === "number") values.latitude = payload.latitude
-      if (typeof payload.longitude === "number") values.longitude = payload.longitude
+      if (typeof payload.latitude === "number")
+        values.latitude = payload.latitude
+      if (typeof payload.longitude === "number")
+        values.longitude = payload.longitude
       setEditValues(values)
       setEditing(true)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not load payload.")
+      toast.error(
+        error instanceof Error ? error.message : "Could not load payload."
+      )
     }
   }
 
@@ -207,8 +245,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const record = recordQuery.data
   const meta = RECORD_TYPE_META[record.recordType]
   const canEdit =
-    record.status === "active" &&
-    (record.reportedBy === user.id || isMonitor)
+    record.status === "active" && (record.reportedBy === user.id || isMonitor)
   const isPolice =
     user.role === "OFFICER" ||
     user.role === "DISTRICT_MONITOR" ||
@@ -223,7 +260,12 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       : []),
     { value: "reviews", label: "Reviews & tasks" },
     ...(isMonitor || isLiaison
-      ? [{ value: "justice", label: isLiaison ? "Referral & outcome" : "Justice" }]
+      ? [
+          {
+            value: "justice",
+            label: isLiaison ? "Referral & outcome" : "Justice",
+          },
+        ]
       : []),
     ...(isMonitor || (user.role === "OFFICER" && isFiler)
       ? [{ value: "manage", label: "Manage" }]
@@ -241,11 +283,27 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       </div>
 
       <header className="flex flex-col gap-1">
-        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          {meta.label} · {record.district.replace(/_/g, " ")} · {record.branchName}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+              {meta.label} · {record.district.replace(/_/g, " ")} ·{" "}
+              {record.branchName}
+            </p>
+            <h1 className="text-xl font-semibold">{record.title}</h1>
+          </div>
+          {isMonitor && (
+            <Button
+              size="sm"
+              onClick={() => setStatusDialogOpen(true)}
+              className="shrink-0 rounded-full print:hidden"
+            >
+              Update status · {record.status}
+            </Button>
+          )}
+        </div>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {record.summary}
         </p>
-        <h1 className="text-xl font-semibold">{record.title}</h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">{record.summary}</p>
         <div className="mt-1 flex flex-wrap gap-1.5">
           {record.badges.map((badge) => (
             <span
@@ -266,7 +324,10 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
             <>
               {" · "}
               <a
-                href={openStreetMapUrl(record.geo.latitude, record.geo.longitude)}
+                href={openStreetMapUrl(
+                  record.geo.latitude,
+                  record.geo.longitude
+                )}
                 target="_blank"
                 rel="noreferrer"
                 className="underline underline-offset-2"
@@ -303,7 +364,10 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       </div>
 
       {tab === "people" && (
-        <LinkedEntities personId={record.personId} vehicleId={record.vehicleId} />
+        <LinkedEntities
+          personId={record.personId}
+          vehicleId={record.vehicleId}
+        />
       )}
 
       {record.attachments.length > 0 && (
@@ -312,157 +376,568 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           className="w-fit rounded-full print:hidden"
           onClick={() => setShowAttachments(true)}
         >
-          View {record.attachments.length} attachment{record.attachments.length === 1 ? "" : "s"}
+          View {record.attachments.length} attachment
+          {record.attachments.length === 1 ? "" : "s"}
         </Button>
       )}
 
       {tab === "case" && (
         <>
           {editing ? (
-        <form onSubmit={submitEdit} className="flex flex-col gap-4 rounded-3xl border bg-card p-4 print:hidden">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Edit case (active records only)
-          </h2>
-          <DynamicFields
-            fields={RECORD_FORM_FIELDS[record.recordType]}
-            values={editValues}
-            setValue={(path, value) =>
-              setEditValues((prev) => ({ ...prev, [path]: value }))
-            }
-            errors={{}}
-          />
-          <div className="flex gap-2">
-            <Button type="submit" size="sm">Save changes</Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : (
-        canEdit && (
-          <div className="print:hidden">
-            <Button variant="outline" size="sm" onClick={startEditing}>
-              Edit case details
-            </Button>
-          </div>
-        )
-      )}
+            <form
+              onSubmit={submitEdit}
+              className="flex flex-col gap-4 rounded-3xl border bg-card p-4 print:hidden"
+            >
+              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Edit case (active records only)
+              </h2>
+              <DynamicFields
+                fields={RECORD_FORM_FIELDS[record.recordType]}
+                values={editValues}
+                setValue={(path, value) =>
+                  setEditValues((prev) => ({ ...prev, [path]: value }))
+                }
+                errors={{}}
+              />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm">
+                  Save changes
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          ) : (
+            canEdit && (
+              <div className="print:hidden">
+                <Button variant="outline" size="sm" onClick={startEditing}>
+                  Edit case details
+                </Button>
+              </div>
+            )
+          )}
 
-      {record.recordType === "traffic_citation" && (
-        <CitationLedger
-          recordId={record.id}
-          canManage={record.reportedBy === user.id || isMonitor}
-          isMonitor={isMonitor}
-        />
-      )}
+          {record.recordType === "traffic_citation" && (
+            <CitationLedger
+              recordId={record.id}
+              canManage={record.reportedBy === user.id || isMonitor}
+              isMonitor={isMonitor}
+            />
+          )}
 
-      {record.recordType === "vehicle_impoundment" && isMonitor && record.status === "active" && (
-        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Release
-          </h2>
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-fit"
-            onClick={async () => {
-              try {
-                await changeStatus({
-                  id: record.id,
-                  status: "resolved",
-                  reason: "Released from impound.",
-                })
-                toast.success("Vehicle released.")
-                await refresh()
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Failed.")
-              }
-            }}
-          >
-              Mark released
-            </Button>
-        </section>
-      )}
+          {record.recordType === "vehicle_impoundment" &&
+            isMonitor &&
+            record.status === "active" && (
+              <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+                <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Release
+                </h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                  onClick={async () => {
+                    try {
+                      await changeStatus({
+                        id: record.id,
+                        status: "resolved",
+                        reason: "Released from impound.",
+                      })
+                      toast.success("Vehicle released.")
+                      await refresh()
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error ? error.message : "Failed."
+                      )
+                    }
+                  }}
+                >
+                  Mark released
+                </Button>
+              </section>
+            )}
         </>
       )}
 
       {tab === "reviews" && (
-      <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
-        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Reviews & follow-up notes
-        </h2>
-        {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {reviewsQuery.data.map((review) => (
-              <li key={review.id} className="rounded-2xl border px-3 py-2 text-sm">
-                <p>{review.note}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {review.reviewerName} · {formatDateTime(review.createdAt)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">No reviews yet.</p>
-        )}
-        {canReview && (
-          <form
-            className="flex flex-col gap-2 print:hidden"
-            onSubmit={async (event) => {
-              event.preventDefault()
-              try {
-                await addReview({ recordId: record.id, note: reviewNote })
-                toast.success("Review added.")
-                setReviewNote("")
-                await refresh()
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Failed.")
-              }
-            }}
-          >
-            <Textarea
-              value={reviewNote}
-              onChange={(event) => setReviewNote(event.target.value)}
-              placeholder="Add a review note or follow-up…"
-            />
-            <Button type="submit" size="sm" className="w-fit" disabled={!reviewNote.trim()}>
-              Add review
-            </Button>
-          </form>
-        )}
-      </section>
+        <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Reviews & follow-up notes
+          </h2>
+          {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {reviewsQuery.data.map((review) => (
+                <li
+                  key={review.id}
+                  className="rounded-2xl border px-3 py-2 text-sm"
+                >
+                  <p>{review.note}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {review.reviewerName} · {formatDateTime(review.createdAt)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No reviews yet.</p>
+          )}
+          {canReview && (
+            <form
+              className="flex flex-col gap-2 print:hidden"
+              onSubmit={async (event) => {
+                event.preventDefault()
+                try {
+                  await addReview({ recordId: record.id, note: reviewNote })
+                  toast.success("Review added.")
+                  setReviewNote("")
+                  await refresh()
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error ? error.message : "Failed."
+                  )
+                }
+              }}
+            >
+              <Textarea
+                value={reviewNote}
+                onChange={(event) => setReviewNote(event.target.value)}
+                placeholder="Add a review note or follow-up…"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                className="w-fit"
+                disabled={!reviewNote.trim()}
+              >
+                Add review
+              </Button>
+            </form>
+          )}
+        </section>
       )}
 
       {isMonitor && (
         <>
           {tab === "manage" && (
-          <>
-          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Status
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {STATUSES.map((status) => (
-                <Button
-                  key={status}
-                  size="sm"
-                  variant={record.status === status ? "default" : "outline"}
-                  onClick={async () => {
-                    try {
-                      await changeStatus({ id: record.id, status })
-                      toast.success(`Status → ${status}.`)
-                      await refresh()
-                    } catch (error) {
-                      toast.error(error instanceof Error ? error.message : "Failed.")
-                    }
-                  }}
-                >
-                  {status}
-                </Button>
-              ))}
-            </div>
-          </section>
+            <>
+              <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+                <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Status
+                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-md border px-2 py-1 text-sm font-medium">
+                    {record.status}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setStatusDialogOpen(true)}
+                  >
+                    Update status…
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Status changes are logged with a reason and notify the filing officer.
+                </p>
+              </section>
 
+              <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+                <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Visibility
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {LEVELS.map((level) => (
+                    <Button
+                      key={level}
+                      size="sm"
+                      variant={
+                        record.accessLevel === level ? "default" : "outline"
+                      }
+                      onClick={async () => {
+                        try {
+                          await setAccessLevel({ id: record.id, level })
+                          toast.success(`Visibility → ${level}.`)
+                          await refresh()
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error ? error.message : "Failed."
+                          )
+                        }
+                      }}
+                    >
+                      {level}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+
+              {user.role === "DISTRICT_MONITOR" && (
+                <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+                  <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Reassign branch
+                  </h2>
+                  <form
+                    className="flex gap-2"
+                    onSubmit={async (event) => {
+                      event.preventDefault()
+                      if (!reassignTo) return
+                      try {
+                        await reassignRecord({
+                          id: record.id,
+                          branchId: reassignTo,
+                        })
+                        toast.success("Case reassigned.")
+                        setReassignTo("")
+                        await refresh()
+                      } catch (error) {
+                        toast.error(
+                          error instanceof Error ? error.message : "Failed."
+                        )
+                      }
+                    }}
+                  >
+                    <Select
+                      value={reassignTo || undefined}
+                      onValueChange={setReassignTo}
+                    >
+                      <SelectTrigger
+                        aria-label="Target branch"
+                        className="h-9 flex-1"
+                      >
+                        <SelectValue placeholder="Select branch…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(branchesQuery.data ?? [])
+                          .filter((branch) => branch.id !== record.branchId)
+                          .map((branch) => (
+                            <SelectItem key={branch.id} value={branch.id}>
+                              {branch.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button type="submit" size="sm">
+                      Move
+                    </Button>
+                  </form>
+                </section>
+              )}
+            </>
+          )}
+
+          {tab === "reviews" && (
+            <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Tasking
+              </h2>
+              {(assignmentsQuery.data ?? []).length > 0 ? (
+                <ul className="flex flex-col gap-2">
+                  {(assignmentsQuery.data ?? []).map((task) => {
+                    const due = assignmentDue(task.dueAt, task.state)
+                    return (
+                      <li
+                        key={task.id}
+                        className="rounded-2xl border px-3 py-2 text-sm"
+                      >
+                        <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                          <span>{task.assigneeName}</span>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs",
+                              task.state === "open"
+                                ? due.overdue
+                                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                                  : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
+                                : "border-border bg-muted/40 text-muted-foreground"
+                            )}
+                          >
+                            {task.state === "open"
+                              ? due.overdue
+                                ? `Overdue ${Math.abs(due.daysLeft ?? 0)}d`
+                                : due.daysLeft != null
+                                  ? due.daysLeft === 0
+                                    ? "Due today"
+                                    : `Due in ${due.daysLeft}d`
+                                  : "Open"
+                              : task.state}
+                          </span>
+                        </p>
+                        {(task.note || task.dueAt) && (
+                          <p className="text-xs text-muted-foreground">
+                            {[
+                              task.note,
+                              task.dueAt
+                                ? `due ${task.dueAt.slice(0, 10)}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
+                        {task.state === "open" && (
+                          <div className="mt-1.5 flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  await completeAssignment(task.id)
+                                  toast.success("Task done.")
+                                  await refresh()
+                                } catch (error) {
+                                  toast.error(
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Failed."
+                                  )
+                                }
+                              }}
+                            >
+                              Done
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  await cancelAssignment(task.id)
+                                  toast.success("Task cancelled.")
+                                  await refresh()
+                                } catch (error) {
+                                  toast.error(
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Failed."
+                                  )
+                                }
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No tasks yet.</p>
+              )}
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={async (event) => {
+                  event.preventDefault()
+                  if (!taskAssignee) {
+                    toast.error("Choose who to task.")
+                    return
+                  }
+                  try {
+                    await assignCase({
+                      recordId: record.id,
+                      assigneeId: taskAssignee,
+                      dueAt: taskDue || undefined,
+                      note: taskNote || undefined,
+                    })
+                    toast.success("Task assigned.")
+                    setTaskAssignee("")
+                    setTaskDue("")
+                    setTaskNote("")
+                    await refresh()
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error ? error.message : "Failed."
+                    )
+                  }
+                }}
+              >
+                <Select
+                  value={taskAssignee || undefined}
+                  onValueChange={setTaskAssignee}
+                >
+                  <SelectTrigger aria-label="Assignee" className="h-9">
+                    <SelectValue placeholder="Select officer…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(assignableQuery.data ?? []).map((person) => (
+                      <SelectItem key={person.id} value={person.id}>
+                        {person.name} · {person.detail}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={taskDue}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(event) => setTaskDue(event.target.value)}
+                    aria-label="Due date (optional)"
+                  />
+                  <Input
+                    value={taskNote}
+                    onChange={(event) => setTaskNote(event.target.value)}
+                    placeholder="Task note (optional)"
+                    aria-label="Task note"
+                  />
+                </div>
+                <Button type="submit" size="sm" className="w-fit">
+                  Assign task
+                </Button>
+              </form>
+            </section>
+          )}
+
+          {tab === "justice" && (
+            <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4 print:hidden">
+              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Court referrals
+              </h2>
+              {referralsQuery.data && referralsQuery.data.length > 0 ? (
+                <ul className="flex flex-col gap-3">
+                  {referralsQuery.data.map((referral) => {
+                    const sla = referralSla(
+                      referral.referredAt,
+                      referral.firstViewedAt,
+                      null
+                    )
+                    return (
+                      <li
+                        key={referral.id}
+                        className="flex flex-col gap-2 rounded-2xl border px-3 py-2 text-sm"
+                      >
+                        <p className="font-medium">{referral.liaisonName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {referral.reason || "No reason given"} · until{" "}
+                          {referral.expiresAt
+                            ? formatDateTime(referral.expiresAt)
+                            : "—"}{" "}
+                          · outcome: {referral.outcome}
+                        </p>
+                        <p className="flex flex-wrap gap-1.5 text-xs">
+                          <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
+                            Referred {sla.daysSinceReferral}d ago
+                          </span>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium",
+                              sla.viewOverdue
+                                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                                : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            )}
+                          >
+                            {sla.daysToView == null
+                              ? sla.viewOverdue
+                                ? "Unviewed · overdue"
+                                : "Unviewed"
+                              : `Viewed in ${sla.daysToView}d`}
+                          </span>
+                          <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
+                            {referral.documentsCount} brief doc
+                            {referral.documentsCount === 1 ? "" : "s"}
+                          </span>
+                        </p>
+                        <div className="mt-1.5 flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              await renewCourtAccess(referral.id)
+                              toast.success("Access renewed for 90 days.")
+                              await refresh()
+                            }}
+                          >
+                            Renew
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              await revokeCourtAccess(referral.id)
+                              toast.success("Access revoked.")
+                              await refresh()
+                            }}
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                        <ReferralBundle
+                          referralId={referral.id}
+                          canUpload
+                          caseAttachmentCount={record.attachments.length}
+                        />
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No live referrals.
+                </p>
+              )}
+              <form
+                className="flex flex-col gap-2"
+                onSubmit={async (event) => {
+                  event.preventDefault()
+                  if (!liaisonId) {
+                    toast.error("Choose a court liaison.")
+                    return
+                  }
+                  try {
+                    await referCaseToCourt({
+                      recordId: record.id,
+                      courtLiaisonId: liaisonId,
+                      reason,
+                    })
+                    toast.success("Case referred (90-day access).")
+                    setLiaisonId("")
+                    setReason("")
+                    await refresh()
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error ? error.message : "Failed."
+                    )
+                  }
+                }}
+              >
+                <Select
+                  value={liaisonId || undefined}
+                  onValueChange={setLiaisonId}
+                >
+                  <SelectTrigger aria-label="Court liaison" className="h-9">
+                    <SelectValue placeholder="Select liaison…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(liaisonsQuery.data ?? []).map((liaison) => (
+                      <SelectItem key={liaison.id} value={liaison.id}>
+                        {liaison.name}
+                        {liaison.orgName ? ` · ${liaison.orgName}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Reason, e.g. referred for prosecution"
+                />
+                <Button type="submit" size="sm" className="w-fit">
+                  Refer to court
+                </Button>
+              </form>
+            </section>
+          )}
+        </>
+      )}
+
+      {user.role === "OFFICER" &&
+        record.reportedBy === user.id &&
+        tab === "manage" && (
           <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Visibility
@@ -479,7 +954,9 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                       toast.success(`Visibility → ${level}.`)
                       await refresh()
                     } catch (error) {
-                      toast.error(error instanceof Error ? error.message : "Failed.")
+                      toast.error(
+                        error instanceof Error ? error.message : "Failed."
+                      )
                     }
                   }}
                 >
@@ -487,347 +964,11 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                 </Button>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground">
+              You can widen your own case. De-escalation is monitor-only.
+            </p>
           </section>
-
-          {user.role === "DISTRICT_MONITOR" && (
-            <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Reassign branch
-              </h2>
-              <form
-                className="flex gap-2"
-                onSubmit={async (event) => {
-                  event.preventDefault()
-                  if (!reassignTo) return
-                  try {
-                    await reassignRecord({ id: record.id, branchId: reassignTo })
-                    toast.success("Case reassigned.")
-                    setReassignTo("")
-                    await refresh()
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Failed.")
-                  }
-                }}
-              >
-                <select
-                  value={reassignTo}
-                  onChange={(event) => setReassignTo(event.target.value)}
-                  className="h-9 flex-1 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
-                  aria-label="Target branch"
-                >
-                  <option value="">Select branch…</option>
-                  {(branchesQuery.data ?? [])
-                    .filter((branch) => branch.id !== record.branchId)
-                    .map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </option>
-                    ))}
-                </select>
-                <Button type="submit" size="sm">Move</Button>
-              </form>
-            </section>
-          )}
-          </>
-          )}
-
-          {tab === "reviews" && (
-          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Tasking
-            </h2>
-            {(assignmentsQuery.data ?? []).length > 0 ? (
-              <ul className="flex flex-col gap-2">
-                {(assignmentsQuery.data ?? []).map((task) => {
-                  const due = assignmentDue(task.dueAt, task.state)
-                  return (
-                    <li key={task.id} className="rounded-2xl border px-3 py-2 text-sm">
-                      <p className="flex flex-wrap items-center gap-1.5 font-medium">
-                        <span>{task.assigneeName}</span>
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs",
-                            task.state === "open"
-                              ? due.overdue
-                                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-                                : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
-                              : "border-border bg-muted/40 text-muted-foreground"
-                          )}
-                        >
-                          {task.state === "open"
-                            ? due.overdue
-                              ? `Overdue ${Math.abs(due.daysLeft ?? 0)}d`
-                              : due.daysLeft != null
-                                ? due.daysLeft === 0
-                                  ? "Due today"
-                                  : `Due in ${due.daysLeft}d`
-                                : "Open"
-                            : task.state}
-                        </span>
-                      </p>
-                      {(task.note || task.dueAt) && (
-                        <p className="text-xs text-muted-foreground">
-                          {[task.note, task.dueAt ? `due ${task.dueAt.slice(0, 10)}` : null]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      )}
-                      {task.state === "open" && (
-                        <div className="mt-1.5 flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={async () => {
-                              try {
-                                await completeAssignment(task.id)
-                                toast.success("Task done.")
-                                await refresh()
-                              } catch (error) {
-                                toast.error(error instanceof Error ? error.message : "Failed.")
-                              }
-                            }}
-                          >
-                            Done
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={async () => {
-                              try {
-                                await cancelAssignment(task.id)
-                                toast.success("Task cancelled.")
-                                await refresh()
-                              } catch (error) {
-                                toast.error(error instanceof Error ? error.message : "Failed.")
-                              }
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">No tasks yet.</p>
-            )}
-            <form
-              className="flex flex-col gap-2"
-              onSubmit={async (event) => {
-                event.preventDefault()
-                if (!taskAssignee) {
-                  toast.error("Choose who to task.")
-                  return
-                }
-                try {
-                  await assignCase({
-                    recordId: record.id,
-                    assigneeId: taskAssignee,
-                    dueAt: taskDue || undefined,
-                    note: taskNote || undefined,
-                  })
-                  toast.success("Task assigned.")
-                  setTaskAssignee("")
-                  setTaskDue("")
-                  setTaskNote("")
-                  await refresh()
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Failed.")
-                }
-              }}
-            >
-              <select
-                value={taskAssignee}
-                onChange={(event) => setTaskAssignee(event.target.value)}
-                className="h-9 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
-                aria-label="Assignee"
-              >
-                <option value="">Select officer…</option>
-                {(assignableQuery.data ?? []).map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name} · {person.detail}
-                  </option>
-                ))}
-              </select>
-              <div className="flex gap-2">
-                <Input
-                  type="date"
-                  value={taskDue}
-                  min={new Date().toISOString().slice(0, 10)}
-                  onChange={(event) => setTaskDue(event.target.value)}
-                  aria-label="Due date (optional)"
-                />
-                <Input
-                  value={taskNote}
-                  onChange={(event) => setTaskNote(event.target.value)}
-                  placeholder="Task note (optional)"
-                  aria-label="Task note"
-                />
-              </div>
-              <Button type="submit" size="sm" className="w-fit">
-              Assign task
-            </Button>
-          </form>
-          </section>
-          )}
-
-          {tab === "justice" && (
-          <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4 print:hidden">
-            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Court referrals
-            </h2>
-            {referralsQuery.data && referralsQuery.data.length > 0 ? (
-              <ul className="flex flex-col gap-3">
-                {referralsQuery.data.map((referral) => {
-                  const sla = referralSla(referral.referredAt, referral.firstViewedAt, null)
-                  return (
-                  <li key={referral.id} className="flex flex-col gap-2 rounded-2xl border px-3 py-2 text-sm">
-                    <p className="font-medium">{referral.liaisonName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {referral.reason || "No reason given"} · until{" "}
-                      {referral.expiresAt ? formatDateTime(referral.expiresAt) : "—"} ·
-                      outcome: {referral.outcome}
-                    </p>
-                    <p className="flex flex-wrap gap-1.5 text-xs">
-                      <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
-                        Referred {sla.daysSinceReferral}d ago
-                      </span>
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium",
-                          sla.viewOverdue
-                            ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-                        )}
-                      >
-                        {sla.daysToView == null
-                          ? sla.viewOverdue
-                            ? "Unviewed · overdue"
-                            : "Unviewed"
-                          : `Viewed in ${sla.daysToView}d`}
-                      </span>
-                      <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
-                        {referral.documentsCount} brief doc{referral.documentsCount === 1 ? "" : "s"}
-                      </span>
-                    </p>
-                    <div className="mt-1.5 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          await renewCourtAccess(referral.id)
-                          toast.success("Access renewed for 90 days.")
-                          await refresh()
-                        }}
-                      >
-                        Renew
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          await revokeCourtAccess(referral.id)
-                          toast.success("Access revoked.")
-                          await refresh()
-                        }}
-                      >
-                        Revoke
-                      </Button>
-                    </div>
-                    <ReferralBundle
-                      referralId={referral.id}
-                      canUpload
-                      caseAttachmentCount={record.attachments.length}
-                    />
-                  </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">No live referrals.</p>
-            )}
-            <form
-              className="flex flex-col gap-2"
-              onSubmit={async (event) => {
-                event.preventDefault()
-                if (!liaisonId) {
-                  toast.error("Choose a court liaison.")
-                  return
-                }
-                try {
-                  await referCaseToCourt({
-                    recordId: record.id,
-                    courtLiaisonId: liaisonId,
-                    reason,
-                  })
-                  toast.success("Case referred (90-day access).")
-                  setLiaisonId("")
-                  setReason("")
-                  await refresh()
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Failed.")
-                }
-              }}
-            >
-              <select
-                value={liaisonId}
-                onChange={(event) => setLiaisonId(event.target.value)}
-                className="h-9 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
-                aria-label="Court liaison"
-              >
-                <option value="">Select liaison…</option>
-                {(liaisonsQuery.data ?? []).map((liaison) => (
-                  <option key={liaison.id} value={liaison.id}>
-                    {liaison.name}{liaison.orgName ? ` · ${liaison.orgName}` : ""}
-                  </option>
-                ))}
-              </select>
-              <Input
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="Reason, e.g. referred for prosecution"
-              />
-              <Button type="submit" size="sm" className="w-fit">
-                Refer to court
-              </Button>
-            </form>
-          </section>
-          )}
-        </>
-      )}
-
-      {user.role === "OFFICER" && record.reportedBy === user.id && tab === "manage" && (
-        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Visibility
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {LEVELS.map((level) => (
-              <Button
-                key={level}
-                size="sm"
-                variant={record.accessLevel === level ? "default" : "outline"}
-                onClick={async () => {
-                  try {
-                    await setAccessLevel({ id: record.id, level })
-                    toast.success(`Visibility → ${level}.`)
-                    await refresh()
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Failed.")
-                  }
-                }}
-              >
-                {level}
-              </Button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            You can widen your own case. De-escalation is monitor-only.
-          </p>
-        </section>
-      )}
+        )}
 
       {isLiaison && tab === "justice" && (
         <LiaisonOutcomeForm
@@ -846,6 +987,15 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         recordTitle={record.title}
         attachments={record.attachments}
       />
+      {isMonitor && (
+        <StatusUpdateDialog
+          open={statusDialogOpen}
+          onOpenChange={setStatusDialogOpen}
+          currentStatus={record.status}
+          saving={statusSaving}
+          onConfirm={confirmStatusChange}
+        />
+      )}
     </div>
   )
 }
@@ -868,7 +1018,8 @@ function LiaisonOutcomeForm({
   const queryClient = useQueryClient()
   const referrals = useQuery({
     queryKey: ["my-referrals"],
-    queryFn: () => import("@/lib/actions/records").then((m) => m.getMyReferrals()),
+    queryFn: () =>
+      import("@/lib/actions/records").then((m) => m.getMyReferrals()),
   })
   const mine = referrals.data?.find((entry) => entry.record.id === recordId)
 
@@ -885,46 +1036,54 @@ function LiaisonOutcomeForm({
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Case outcome
         </h2>
-      <form
-        className="flex flex-col gap-2"
-        onSubmit={async (event) => {
-          event.preventDefault()
-          try {
-            await recordCourtOutcome({
-              referralId: mine.referralId,
-              outcome,
-              outcomeNotes,
-            })
-            toast.success("Outcome recorded.")
-            await queryClient.invalidateQueries({ queryKey: ["record", recordId] })
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed.")
-          }
-        }}
-      >
-        <select
-          value={outcome}
-          onChange={(event) => setOutcome(event.target.value)}
-          className="h-9 rounded-2xl border bg-input/50 px-2.5 text-sm outline-none"
-          aria-label="Outcome"
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={async (event) => {
+            event.preventDefault()
+            try {
+              await recordCourtOutcome({
+                referralId: mine.referralId,
+                outcome,
+                outcomeNotes,
+              })
+              toast.success("Outcome recorded.")
+              await queryClient.invalidateQueries({
+                queryKey: ["record", recordId],
+              })
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed.")
+            }
+          }}
         >
-          {["pending", "charged", "withdrawn", "dismissed", "convicted", "acquitted", "other"].map(
-            (value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            )
-          )}
-        </select>
-        <Textarea
-          value={outcomeNotes}
-          onChange={(event) => setOutcomeNotes(event.target.value)}
-          placeholder="Outcome notes (optional)"
-        />
-        <Button type="submit" size="sm" className="w-fit">
-          Record outcome
-        </Button>
-      </form>
+          <Select value={outcome} onValueChange={setOutcome}>
+            <SelectTrigger aria-label="Outcome" className="h-9">
+              <SelectValue placeholder="Select outcome…" />
+            </SelectTrigger>
+            <SelectContent>
+              {[
+                "pending",
+                "charged",
+                "withdrawn",
+                "dismissed",
+                "convicted",
+                "acquitted",
+                "other",
+              ].map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Textarea
+            value={outcomeNotes}
+            onChange={(event) => setOutcomeNotes(event.target.value)}
+            placeholder="Outcome notes (optional)"
+          />
+          <Button type="submit" size="sm" className="w-fit">
+            Record outcome
+          </Button>
+        </form>
       </section>
     </div>
   )
