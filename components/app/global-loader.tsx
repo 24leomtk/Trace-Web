@@ -12,7 +12,6 @@ const STATUS_MESSAGES = [
   "Loading case workspace…",
   "Preparing duty roster…",
 ]
-
 interface GlobalLoaderProps {
   className?: string
   message?: string
@@ -48,8 +47,8 @@ export function GlobalLoader({
     >
       {/* Background ambient glow */}
       <div className="pointer-events-none absolute -z-10 flex items-center justify-center">
-        <div className="size-64 animate-pulse rounded-none bg-primary/5 blur-3xl dark:bg-primary/10" />
-        <div className="size-40 rounded-none bg-emerald-500/5 blur-2xl dark:bg-emerald-400/10" />
+        <div className="size-64 animate-pulse rounded-full bg-primary/5 blur-3xl dark:bg-primary/10" />
+        <div className="size-40 rounded-full bg-emerald-500/5 blur-2xl dark:bg-emerald-400/10" />
       </div>
 
       {/* Main emblem / radar ring */}
@@ -65,7 +64,7 @@ export function GlobalLoader({
             repeat: Infinity,
             ease: "easeOut",
           }}
-          className="absolute size-24 rounded-none border border-primary/40 dark:border-primary/50"
+          className="absolute size-24 rounded-full border border-primary/40 dark:border-primary/50"
         />
 
         {/* Mid rotating dashed orbit */}
@@ -76,7 +75,7 @@ export function GlobalLoader({
             repeat: Infinity,
             ease: "linear",
           }}
-          className="absolute size-20 rounded-none border border-dashed border-primary/20 dark:border-primary/30"
+          className="absolute size-20 rounded-full border border-dashed border-primary/20 dark:border-primary/30"
         />
 
         {/* Center glowing badge container */}
@@ -84,12 +83,12 @@ export function GlobalLoader({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          className="relative z-10 flex size-16 items-center justify-center rounded-none border border-border/80 bg-background/80 shadow-lg shadow-primary/5 backdrop-blur-md dark:border-border/60 dark:bg-card/70"
+          className="relative z-10 flex size-16 items-center justify-center rounded-2xl border border-border/80 bg-background/80 shadow-lg shadow-primary/5 backdrop-blur-md dark:border-border/60 dark:bg-card/70"
         >
           {/* Subtle pulse overlay inside icon */}
           <motion.img
             src="/logo.png"
-            alt="TRACE"
+            alt="Chipatala Registry"
             width={34}
             height={34}
             className="object-contain drop-shadow-xs dark:invert"
@@ -105,8 +104,8 @@ export function GlobalLoader({
 
           {/* Online/active ping beacon */}
           <span className="absolute -top-1 -right-1 flex size-3">
-            <span className="absolute inline-flex size-full animate-ping rounded-none bg-emerald-400 opacity-75 dark:bg-emerald-300" />
-            <span className="relative inline-flex size-3 rounded-none bg-emerald-500 ring-2 ring-background dark:bg-emerald-400" />
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75 dark:bg-emerald-300" />
+            <span className="relative inline-flex size-3 rounded-full bg-emerald-500 ring-2 ring-background dark:bg-emerald-400" />
           </span>
         </motion.div>
       </div>
@@ -114,13 +113,13 @@ export function GlobalLoader({
       {/* Brand headers */}
       <div className="flex max-w-xs flex-col items-center gap-1.5">
         <div className="flex items-center gap-1.5 text-lg font-bold tracking-tight text-foreground sm:text-xl">
-          <span>TRACE</span>
+          <span>Chipatala Registry</span>
         </div>
 
         {showBadge && (
           <div className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
             <ShieldCheckIcon className="size-3 text-emerald-600 dark:text-emerald-400" />
-            <span>Tracking · Records · Case Evidence</span>
+            <span>Malawi National Health Records</span>
           </div>
         )}
       </div>
@@ -134,7 +133,7 @@ export function GlobalLoader({
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -4, filter: "blur(2px)" }}
             transition={{ duration: 0.28, ease: "easeInOut" }}
-            className="inline-flex items-center gap-1.5 rounded-none border border-border/60 bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground shadow-2xs backdrop-blur-xs"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground shadow-2xs backdrop-blur-xs"
           >
             <ActivityIcon className="size-3 animate-pulse text-primary" />
             <span>{currentMessage}</span>
@@ -143,9 +142,9 @@ export function GlobalLoader({
       </div>
 
       {/* Indeterminate linear loading bar */}
-      <div className="mt-5 h-1 w-44 overflow-hidden rounded-none bg-muted">
+      <div className="mt-5 h-1 w-44 overflow-hidden rounded-full bg-muted">
         <motion.div
-          className="h-full rounded-none bg-gradient-to-r from-primary/30 via-primary to-primary/30"
+          className="h-full rounded-full bg-gradient-to-r from-primary/30 via-primary to-primary/30"
           animate={{
             x: ["-100%", "100%"],
           }}

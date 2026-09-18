@@ -191,7 +191,7 @@ export function RecordTimeline() {
 
 function EmptyTimeline({ filtered }: { filtered?: boolean }) {
   return (
-    <div className="rounded-[min(var(--radius-3xl),20px)] border border-dashed py-12 text-center">
+    <div className="rounded-none border border-dashed py-12 text-center">
       <p className="text-sm font-medium">
         {filtered ? "No matching cases" : "No cases yet"}
       </p>
@@ -206,7 +206,7 @@ function EmptyTimeline({ filtered }: { filtered?: boolean }) {
 
 function LoadErrorState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-[min(var(--radius-3xl),20px)] border border-dashed px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-none border border-dashed px-6 py-10 text-center">
       <TriangleAlertIcon className="size-5 text-destructive" />
       <p className="text-sm font-medium">Couldn&apos;t load cases</p>
       <p className="max-w-xs text-xs text-muted-foreground">{message}</p>

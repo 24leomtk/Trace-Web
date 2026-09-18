@@ -33,7 +33,7 @@ export function AttachmentsField({ state, actions }: AttachmentsFieldProps) {
         onDragLeave={actions.handleDragLeave}
         onDragOver={actions.handleDragOver}
         onDrop={actions.handleDrop}
-        className="flex w-full flex-col items-center justify-center gap-1.5 rounded-[min(var(--radius-3xl),20px)] border border-dashed bg-input/30 px-4 py-6 text-center transition-colors hover:bg-muted/50 aria-invalid:border-destructive data-dragging:border-ring data-dragging:bg-muted/60"
+        className="flex w-full flex-col items-center justify-center gap-1.5 rounded-none border border-dashed bg-input/30 px-4 py-6 text-center transition-colors hover:bg-muted/50 aria-invalid:border-destructive data-dragging:border-ring data-dragging:bg-muted/60"
         data-dragging={state.isDragging || undefined}
       >
         <PaperclipIcon className="size-5 text-muted-foreground" />
@@ -41,7 +41,8 @@ export function AttachmentsField({ state, actions }: AttachmentsFieldProps) {
           Attach scans, photos, or reports
         </span>
         <span className="text-xs text-muted-foreground">
-          Photos, PDFs, video, audio, documents · drag files here or click to browse · up to 6 files
+          Photos, PDFs, video, audio, documents · drag files here or click to
+          browse · up to 6 files
         </span>
       </button>
 

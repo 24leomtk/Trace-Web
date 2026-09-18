@@ -44,7 +44,7 @@ export function AnalyticsFeed() {
 
   if (isError) {
     return (
-      <p className="rounded-[min(var(--radius-3xl),20px)] border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
         Could not load analytics. Try again shortly.
       </p>
     )
@@ -155,7 +155,7 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
   return (
     <article
       className={cn(
-        "relative flex flex-col gap-3 rounded-[min(var(--radius-3xl),20px)] border bg-card p-5",
+        "relative flex flex-col gap-3 rounded-none border bg-card p-5",
         entry.severity === "critical" && "border-red-200 dark:border-red-500/20"
       )}
     >
@@ -358,10 +358,7 @@ function AnalyticsSkeleton() {
   return (
     <div className="flex flex-col gap-4">
       {[0, 1].map((row) => (
-        <div
-          key={row}
-          className="rounded-[min(var(--radius-3xl),20px)] border p-5"
-        >
+        <div key={row} className="rounded-none border p-5">
           <Skeleton className="h-3 w-40" />
           <Skeleton className="mt-3 h-4 w-3/4" />
           <Skeleton className="mt-2 h-3 w-full" />

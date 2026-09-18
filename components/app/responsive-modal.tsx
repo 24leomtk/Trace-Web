@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog"
 
 const SHEET_CLASS =
-  "max-lg:top-auto max-lg:bottom-0 max-lg:left-0 max-lg:right-0 max-lg:-translate-x-0 max-lg:-translate-y-0 max-lg:w-full max-lg:max-w-full max-lg:rounded-b-none max-lg:rounded-t-[min(var(--radius-4xl),24px)] max-lg:border-x-0 max-lg:border-b-0 max-lg:p-5 max-lg:pb-8 max-lg:data-open:slide-in-from-bottom-6 max-lg:data-open:zoom-in-100 max-lg:data-closed:slide-out-to-bottom-6 max-lg:data-closed:zoom-out-100"
+  "max-lg:top-auto max-lg:bottom-0 max-lg:left-0 max-lg:right-0 max-lg:-translate-x-0 max-lg:-translate-y-0 max-lg:w-full max-lg:max-w-full max-lg:rounded-b-none  max-lg:border-x-0 max-lg:border-b-0 max-lg:p-5 max-lg:pb-8 max-lg:data-open:slide-in-from-bottom-6 max-lg:data-open:zoom-in-100 max-lg:data-closed:slide-out-to-bottom-6 max-lg:data-closed:zoom-out-100"
 
 interface ResponsiveModalProps extends React.ComponentProps<typeof Dialog> {
   title: string
