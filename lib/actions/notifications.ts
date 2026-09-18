@@ -99,3 +99,13 @@ export async function markAllNotificationsRead(): Promise<void> {
       .where(eq(notifications.userId, user.id))
   })
 }
+
+/** Dismiss a notification — deletes only the caller's own row. */
+export async function deleteNotification(id: string): Promise<void> {
+  const user = await requireUser()
+  await withUserCtx(user.id, async (tx) => {
+    await tx
+      .delete(notifications)
+      .where(and(eq(notifications.id, id), eq(notifications.userId, user.id)))
+  })
+}

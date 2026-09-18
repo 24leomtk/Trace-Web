@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
-import { useHomeView } from "@/providers/home-view-context"
+import { EMPTY_CASE_FILTERS, useHomeView } from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
 import type { RecordType } from "@/validations/record"
 import { Button } from "@/components/ui/button"
@@ -292,7 +292,7 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
                 type="button"
                 title={`View ${row.label} cases`}
                 onClick={() => {
-                  setCaseFilters({ type, status: null })
+                  setCaseFilters({ ...EMPTY_CASE_FILTERS, type })
                   setTab("feed")
                 }}
                 className="flex items-center gap-3 rounded-none text-xs transition-colors hover:bg-accent"

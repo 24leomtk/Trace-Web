@@ -4,7 +4,12 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useDebounce } from "use-debounce"
-import { ArrowLeftIcon, PlusIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  ListFilterIcon,
+  PlusIcon,
+  UserRoundIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -26,16 +31,13 @@ import {
   AdminSection,
 } from "@/components/app/admin-section"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
+import {
+  BaseFiltersCommand,
+  type ActiveFilter,
+} from "@/components/base-filters-command"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const PAGE_SIZE = 8
@@ -67,6 +69,7 @@ export default function AdminUsersPage() {
   const [query, setQuery] = useState("")
   const [debouncedQuery] = useDebounce(query.trim(), 350)
   const [role, setRole] = useState("all")
+  const [draftRole, setDraftRole] = useState("all")
   const [page, setPage] = useState(0)
   const [form, setForm] = useState(EMPTY_FORM)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -92,8 +95,24 @@ export default function AdminUsersPage() {
   })
 
   useEffect(() => {
+    setDraftRole(role)
+  }, [role])
+
+  useEffect(() => {
     setPage(0)
   }, [debouncedQuery, role])
+
+  const roleActiveFilters: ActiveFilter[] =
+    role === "all"
+      ? []
+      : [
+          {
+            key: "role",
+            label: "Role",
+            value: role.replace(/_/g, " "),
+            onClear: () => setRole("all"),
+          },
+        ]
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["managed-users"] })
@@ -280,7 +299,7 @@ export default function AdminUsersPage() {
         }
       >
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex items-start gap-2">
             <div className="flex-1">
               <AdminSearchInput
                 value={query}
@@ -288,22 +307,34 @@ export default function AdminUsersPage() {
                 placeholder="Search name or phone…"
               />
             </div>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger
-                aria-label="Filter by role"
-                className="w-full sm:w-48"
-              >
-                <SelectValue placeholder="All roles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
-                {managedRoleOptions.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {value.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <BaseFiltersCommand
+              title="Filter accounts"
+              description="Narrow the list by role."
+              filterGroups={[
+                {
+                  key: "role",
+                  heading: "Role",
+                  currentValue: draftRole,
+                  onSelect: (value) =>
+                    setDraftRole(value === draftRole ? "all" : value),
+                  options: [
+                    { value: "all", label: "All roles", icon: ListFilterIcon },
+                    ...managedRoleOptions.map((value) => ({
+                      value,
+                      label: value.replace(/_/g, " "),
+                      icon: UserRoundIcon,
+                    })),
+                  ],
+                },
+              ]}
+              activeFilters={roleActiveFilters}
+              onClearAll={() => {
+                setDraftRole("all")
+                setRole("all")
+              }}
+              onApplyFilters={() => setRole(draftRole)}
+              hasChanges={draftRole !== role}
+            />
           </div>
 
           {isLoading ? (

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -150,6 +150,26 @@ async function liveLiaisonIds(recordId: string): Promise<string[]> {
 function str(data: Record<string, unknown>, key: string): string {
   const value = data[key]
   return typeof value === "string" ? value.trim() : ""
+}
+
+/** Parse a local `yyyy-mm-dd` filter key into a Date (end-of-day when `end`). */
+function parseDateKey(
+  key: string | undefined,
+  end = false
+): Date | null {
+  if (!key) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key.trim())
+  if (!match) return null
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    end ? 23 : 0,
+    end ? 59 : 0,
+    end ? 59 : 0,
+    end ? 999 : 0
+  )
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 /** Find-or-create an ad-hoc vehicle row for a plate (is_verified: false). */
@@ -422,6 +442,9 @@ interface ListRecordsInput {
   scope?: "all" | "mine" | "district" | "country"
   /** Free-text search over the derived title/summary/badges/type. */
   query?: string
+  /** Filed-date window (local `yyyy-mm-dd` keys, inclusive). */
+  from?: string
+  to?: string
 }
 
 export async function listRecords({
@@ -431,6 +454,8 @@ export async function listRecords({
   status,
   scope: requestedScope = "all",
   query = "",
+  from,
+  to,
 }: ListRecordsInput = {}): Promise<Page<TraceRecord>> {
   const scope = await getViewerScope()
   if (
@@ -447,6 +472,10 @@ export async function listRecords({
     const filters = []
     if (type) filters.push(eq(records.recordType, type))
     if (status) filters.push(eq(records.status, status))
+    const fromDate = parseDateKey(from)
+    const toDate = parseDateKey(to, true)
+    if (fromDate) filters.push(gte(records.createdAt, fromDate))
+    if (toDate) filters.push(lte(records.createdAt, toDate))
 
     let visibility
     if (scope.role === "OFFICER") {

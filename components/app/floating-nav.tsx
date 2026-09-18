@@ -2,9 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
 import {
-  BellIcon,
   Building2Icon,
   CarFrontIcon,
   FilePlus2Icon,
@@ -21,11 +19,10 @@ import {
 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
-import { unreadNotificationCount } from "@/lib/actions/notifications"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { NavButton } from "@/components/app/nav-button"
 import { ThemeToggle } from "@/components/app/theme-toggle"
-import { CaseFiltersCommand } from "@/components/app/case-filters-command"
+import { NotificationPopover } from "@/components/notifications"
 import { useUser } from "@/providers/user-context"
 
 type Modal = "signout" | null
@@ -35,11 +32,6 @@ export function FloatingNav() {
   const pathname = usePathname()
   const { user } = useUser()
   const [modal, setModal] = useState<Modal>(null)
-  const { data: unread } = useQuery({
-    queryKey: ["unread-count"],
-    queryFn: unreadNotificationCount,
-    refetchInterval: 60_000,
-  })
 
   async function signOut() {
     await authClient.signOut()
@@ -70,7 +62,6 @@ export function FloatingNav() {
             <NavButton label="Home" href="/" active={pathname === "/"}>
               <HouseIcon className="size-5" />
             </NavButton>
-            {pathname === "/" && <CaseFiltersCommand />}
             {canFile && (
               <NavButton
                 label="File a case"
@@ -193,21 +184,7 @@ export function FloatingNav() {
           </>
         )}
 
-        <NavButton
-          key="notifications"
-          label="Notifications"
-          href="/notifications"
-          active={pathname.startsWith("/notifications")}
-        >
-          <span className="relative">
-            <BellIcon className="size-5" />
-            {!!unread && unread > 0 && (
-              <span className="text-destructive-foreground absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center bg-destructive text-[10px] font-bold">
-                {unread > 9 ? "9+" : unread}
-              </span>
-            )}
-          </span>
-        </NavButton>
+        <NotificationPopover />
         <NavButton
           key="sign-out"
           label="Sign out"

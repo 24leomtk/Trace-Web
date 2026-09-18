@@ -18,6 +18,7 @@ import { useInfiniteList } from "@/hooks/use-infinite-list"
 import { useHomeView } from "@/providers/home-view-context"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
+import { CaseFiltersCommand } from "@/components/app/case-filters-command"
 import { SearchInput } from "@/components/app/search-input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -61,8 +62,12 @@ export function RecordTimeline() {
 
   const filterType: RecordType | undefined = caseFilters.type ?? undefined
   const filterStatus: CaseStatus | undefined = caseFilters.status ?? undefined
-  const hasFilters = Boolean(filterType || filterStatus || debouncedQuery)
-  const filterKey = `${feedScope}|${filterType ?? ""}|${filterStatus ?? ""}|${debouncedQuery}`
+  const filterFrom = caseFilters.from ?? undefined
+  const filterTo = caseFilters.to ?? undefined
+  const hasFilters = Boolean(
+    filterType || filterStatus || filterFrom || filterTo || debouncedQuery
+  )
+  const filterKey = `${feedScope}|${filterType ?? ""}|${filterStatus ?? ""}|${filterFrom ?? ""}|${filterTo ?? ""}|${debouncedQuery}`
 
   const { items, isLoading, isFetchingMore, hasMore, sentinelRef } =
     useInfiniteList<TraceRecord>({
@@ -75,6 +80,8 @@ export function RecordTimeline() {
             status: filterStatus,
             scope: feedScope === "all" ? undefined : feedScope,
             query: debouncedQuery || undefined,
+            from: filterFrom,
+            to: filterTo,
           })
           setLoadError(null)
           return page
@@ -91,11 +98,15 @@ export function RecordTimeline() {
 
   return (
     <div className="flex flex-col gap-4">
-      <SearchInput
-        value={query}
-        onChange={setQuery}
-        placeholder="Search cases by name, plate, place…"
-      />
+      <div className="flex items-start gap-2">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search cases by name, plate, place…"
+          className="flex-1"
+        />
+        <CaseFiltersCommand />
+      </div>
 
       {isLoading ? (
         <TimelineSkeleton />
@@ -312,7 +323,7 @@ function EmptyTimeline({
         {query
           ? `Nothing matches “${query}” in this feed.`
           : filtered
-            ? "Nothing falls inside the current type and status filters."
+            ? "Nothing falls inside the current filters."
             : "Filed cases appear here as soon as your branch logs them."}
       </p>
     </div>

@@ -138,7 +138,7 @@ function CountrySelect({
             variant="outline"
             size={variant}
             className={cn(
-              "flex gap-1 rounded-s-2xl rounded-e-none border-e-0 px-2.5 py-0 leading-none hover:bg-transparent focus:z-10 data-pressed:bg-transparent",
+              "flex gap-1 rounded-s-none rounded-e-none border-e-0 px-2.5 py-0 leading-none hover:bg-transparent focus:z-10 data-pressed:bg-transparent",
               disabled && "opacity-50"
             )}
             disabled={true}
@@ -205,7 +205,7 @@ function FlagComponent({ country, countryName }: BasePhoneInput.FlagProps) {
   const Flag = flags[country]
 
   return (
-    <span className="flex h-4 w-4 items-center justify-center [&_svg:not([class*='size-'])]:size-full! [&_svg:not([class*='size-'])]:rounded-[5px]">
+    <span className="flex h-4 w-4 items-center justify-center [&_svg:not([class*='size-'])]:size-full! [&_svg:not([class*='size-'])]:rounded-none">
       {Flag ? (
         <Flag title={countryName} />
       ) : (

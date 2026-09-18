@@ -12,9 +12,17 @@ export type FeedScope = "all" | "mine" | "district" | "country"
 export interface CaseFeedFilters {
   type: RecordType | null
   status: CaseStatus | null
+  /** Filed-date window (local `yyyy-mm-dd` keys, inclusive). */
+  from: string | null
+  to: string | null
 }
 
-export const EMPTY_CASE_FILTERS: CaseFeedFilters = { type: null, status: null }
+export const EMPTY_CASE_FILTERS: CaseFeedFilters = {
+  type: null,
+  status: null,
+  from: null,
+  to: null,
+}
 
 interface HomeViewContextValue {
   tab: HomeTab
