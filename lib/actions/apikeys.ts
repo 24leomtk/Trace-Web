@@ -1,17 +1,13 @@
 "use server"
 
-import { createHash, randomBytes } from "node:crypto"
+import { randomBytes } from "node:crypto"
 import { desc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
 import { apiKeys, users } from "@/db/schema"
 import { requireSystemAdmin } from "@/lib/actions/admin"
 import { apiKeySchema } from "@/validations/admin"
-
-/** SHA-256 of a raw key — the only form ever stored. */
-export function hashApiKey(raw: string): string {
-  return createHash("sha256").update(raw).digest("hex")
-}
+import { hashApiKey } from "@/lib/server/api-key-hash"
 
 export interface ApiKeyRow {
   id: string
