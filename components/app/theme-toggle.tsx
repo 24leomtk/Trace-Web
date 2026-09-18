@@ -88,7 +88,7 @@ export function ThemeToggle() {
           onPointerUp={handlePointerUp}
           onPointerLeave={clearPressTimer}
           className={cn(
-            "size-10 rounded-full text-muted-foreground hover:text-foreground",
+            "size-10 rounded-none text-muted-foreground hover:text-foreground",
             current.value !== "system" &&
               "bg-secondary text-secondary-foreground"
           )}

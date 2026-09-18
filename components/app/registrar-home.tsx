@@ -21,7 +21,7 @@ export function RegistrarHome() {
   >([])
   const [searching, setSearching] = useState(false)
 
-  async function search(event: React.FormEvent) {
+  async function search(event: React.SubmitEvent) {
     event.preventDefault()
     if (!query.trim()) return
     setSearching(true)

@@ -47,7 +47,7 @@ export default function AdminOrganizationsPage() {
     setDialogOpen(true)
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.SubmitEvent) {
     event.preventDefault()
     setSaving(true)
     try {
@@ -77,7 +77,7 @@ export default function AdminOrganizationsPage() {
             asChild
             variant="ghost"
             size="sm"
-            className="mb-2 w-fit rounded-full px-2"
+            className="mb-2 w-fit rounded-none px-2"
           >
             <Link href="/">
               <ArrowLeftIcon data-icon="inline-start" />

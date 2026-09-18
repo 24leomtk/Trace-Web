@@ -63,7 +63,7 @@ export function FloatingNav() {
     <>
       <nav
         aria-label="Primary"
-        className="fixed z-40 flex items-center gap-0.5 rounded-[min(var(--radius-4xl),24px)] border bg-popover/90 p-1.5 shadow-lg ring-1 ring-foreground/5 backdrop-blur-xl dark:ring-foreground/10 bottom-5 left-1/2 -translate-x-1/2 flex-row lg:top-1/2 lg:right-6 lg:bottom-auto lg:left-auto lg:-translate-x-0 lg:-translate-y-1/2 lg:flex-col print:hidden"
+        className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 flex-row items-center gap-0.5 border bg-popover/90 p-1.5 shadow-lg ring-1 ring-foreground/5 backdrop-blur-xl lg:top-1/2 lg:right-6 lg:bottom-auto lg:left-auto lg:-translate-x-0 lg:-translate-y-1/2 lg:flex-col dark:ring-foreground/10 print:hidden"
       >
         {isPolice && (
           <>
@@ -202,7 +202,7 @@ export function FloatingNav() {
           <span className="relative">
             <BellIcon className="size-5" />
             {!!unread && unread > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+              <span className="text-destructive-foreground absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center bg-destructive text-[10px] font-bold">
                 {unread > 9 ? "9+" : unread}
               </span>
             )}

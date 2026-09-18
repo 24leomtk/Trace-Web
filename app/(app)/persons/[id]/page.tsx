@@ -45,7 +45,7 @@ export default function PersonDetailPage({
     )
   }
 
-  async function findDuplicates(event: React.FormEvent) {
+  async function findDuplicates(event: React.SubmitEvent) {
     event.preventDefault()
     if (!mergeQuery.trim()) return
     setCandidates(
@@ -162,7 +162,7 @@ export default function PersonDetailPage({
 
 function BackLink() {
   return (
-    <Button asChild variant="ghost" size="sm" className="w-fit rounded-full">
+    <Button asChild variant="ghost" size="sm" className="w-fit rounded-none">
       <Link href="/lookup">
         <ArrowLeftIcon data-icon="inline-start" />
         Back to lookup

@@ -90,7 +90,7 @@ export function RecordTimeline() {
                 <TimelineSeparator className="bg-border" />
                 <TimelineIndicator
                   className={cn(
-                    "size-2.5 translate-y-1.5 rounded-full border-0",
+                    "size-2.5 translate-y-1.5 rounded-none border-0",
                     TONE_DOT_CLASS[meta.tone]
                   )}
                 />
@@ -122,7 +122,7 @@ export function RecordTimeline() {
                     variant="outline"
                     size="sm"
                     onClick={() => setAttachmentRecord(record)}
-                    className="mt-3 w-fit gap-1.5 rounded-full"
+                    className="mt-3 w-fit gap-1.5 rounded-none"
                   >
                     <PaperclipIcon data-icon="inline-start" />
                     Attachments
@@ -149,7 +149,7 @@ export function RecordTimeline() {
                     >
                       <span
                         className={cn(
-                          "size-1.5 rounded-full",
+                          "size-1.5 rounded-none",
                           TONE_DOT_CLASS[badge.tone]
                         )}
                       />

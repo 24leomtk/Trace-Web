@@ -38,7 +38,7 @@ function ResponsiveModal({
       >
         <div
           aria-hidden="true"
-          className="mx-auto -mt-1 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/20 lg:hidden"
+          className="mx-auto -mt-1 h-1 w-10 shrink-0 rounded-none bg-muted-foreground/20 lg:hidden"
         />
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

@@ -15,7 +15,12 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
-export const CASE_STATUSES: CaseStatus[] = ["active", "resolved", "closed", "archived"]
+export const CASE_STATUSES: CaseStatus[] = [
+  "active",
+  "resolved",
+  "closed",
+  "archived",
+]
 
 const STATUS_HELP: Record<CaseStatus, string> = {
   active: "Open and still being worked.",
@@ -47,7 +52,7 @@ export function StatusUpdateDialog({
     }
   }, [open, currentStatus])
 
-  function submit(event: React.FormEvent) {
+  function submit(event: React.SubmitEvent) {
     event.preventDefault()
     void onConfirm(status, reason.trim())
   }
@@ -64,7 +69,10 @@ export function StatusUpdateDialog({
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Status
           </span>
-          <Select value={status} onValueChange={(value) => setStatus(value as CaseStatus)}>
+          <Select
+            value={status}
+            onValueChange={(value) => setStatus(value as CaseStatus)}
+          >
             <SelectTrigger aria-label="New status">
               <SelectValue placeholder="Select status…" />
             </SelectTrigger>
@@ -77,11 +85,14 @@ export function StatusUpdateDialog({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[11px] text-muted-foreground">{STATUS_HELP[status]}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {STATUS_HELP[status]}
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Reason <span className="font-normal normal-case opacity-60">optional</span>
+            Reason{" "}
+            <span className="font-normal normal-case opacity-60">optional</span>
           </span>
           <Textarea
             value={reason}
@@ -91,7 +102,11 @@ export function StatusUpdateDialog({
           />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button type="submit" disabled={saving || status === currentStatus}>

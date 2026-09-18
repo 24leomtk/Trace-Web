@@ -59,7 +59,7 @@ export function AnalyticsFeed() {
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-full"
+          className="rounded-none"
           onClick={() => downloadFeedCsv(feed)}
         >
           <DownloadIcon data-icon="inline-start" />
@@ -162,7 +162,7 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <span
           aria-hidden="true"
-          className={cn("size-2 rounded-full", severity.dot)}
+          className={cn("size-2 rounded-none", severity.dot)}
         />
         <time
           dateTime={entry.date}
@@ -228,10 +228,10 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
                 <span className="w-32 shrink-0 truncate text-muted-foreground sm:w-40">
                   {row.label}
                 </span>
-                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-none bg-muted">
                   <div
                     className={cn(
-                      "h-full rounded-full",
+                      "h-full rounded-none",
                       entry.severity === "critical"
                         ? "bg-red-400 dark:bg-red-500"
                         : "bg-primary/60"

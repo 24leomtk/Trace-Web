@@ -58,7 +58,7 @@ export default function LookupPage() {
     setScanTarget(null)
   }
 
-  async function runWantedCheck(event: React.FormEvent) {
+  async function runWantedCheck(event: React.SubmitEvent) {
     event.preventDefault()
     if (!nationalId.trim()) return
     setBusy(true)
@@ -71,7 +71,7 @@ export default function LookupPage() {
     }
   }
 
-  async function runFlagCheck(event: React.FormEvent) {
+  async function runFlagCheck(event: React.SubmitEvent) {
     event.preventDefault()
     const normalized = normalizePlate(plate)
     if (!normalized) return
@@ -100,7 +100,7 @@ export default function LookupPage() {
     }
   }
 
-  async function runSearch(event: React.FormEvent) {
+  async function runSearch(event: React.SubmitEvent) {
     event.preventDefault()
     if (!query.trim()) return
     setBusy(true)

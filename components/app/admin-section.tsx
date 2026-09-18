@@ -56,7 +56,7 @@ export function AdminSection({
     <section className="flex flex-col gap-4 rounded-[min(var(--radius-3xl),20px)] border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground [&_svg]:size-4">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-none bg-secondary text-secondary-foreground [&_svg]:size-4">
             {icon}
           </div>
           <div>
@@ -310,14 +310,14 @@ export function AdminToggle({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+        "relative h-6 w-11 shrink-0 rounded-none transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
         checked ? "bg-primary" : "bg-input"
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow transition-transform",
+          "absolute top-0.5 left-0.5 size-5 rounded-none bg-background shadow transition-transform",
           checked && "translate-x-5"
         )}
       />
@@ -377,7 +377,7 @@ export function AdminToggle({
                 <li key={line} className="flex items-start gap-2">
                   <span
                     aria-hidden="true"
-                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground"
+                    className="mt-1.5 size-1.5 shrink-0 rounded-none bg-muted-foreground"
                   />
                   <span>{line}</span>
                 </li>

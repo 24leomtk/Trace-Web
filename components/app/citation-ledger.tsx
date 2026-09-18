@@ -68,7 +68,7 @@ export function CitationLedger({
     })
   }
 
-  async function submitPayment(event: React.FormEvent) {
+  async function submitPayment(event: React.SubmitEvent) {
     event.preventDefault()
     const parsed = Number(amount)
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -97,7 +97,7 @@ export function CitationLedger({
     }
   }
 
-  async function submitSchedule(event: React.FormEvent) {
+  async function submitSchedule(event: React.SubmitEvent) {
     event.preventDefault()
     if (!courtDate) {
       toast.error("Choose a court date.")

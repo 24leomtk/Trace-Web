@@ -97,7 +97,7 @@ export function AssignmentQueue() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="shrink-0 rounded-full"
+                  className="shrink-0 rounded-none"
                   aria-label={`Mark task done: ${item.recordTitle}`}
                   onClick={async () => {
                     try {

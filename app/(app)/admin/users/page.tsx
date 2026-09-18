@@ -96,7 +96,7 @@ export default function AdminUsersPage() {
     setDialogOpen(true)
   }
 
-  async function handleCreate(event: React.FormEvent) {
+  async function handleCreate(event: React.SubmitEvent) {
     event.preventDefault()
     setCreating(true)
     try {
@@ -135,7 +135,7 @@ export default function AdminUsersPage() {
             asChild
             variant="ghost"
             size="sm"
-            className="mb-2 w-fit rounded-full px-2"
+            className="mb-2 w-fit rounded-none px-2"
           >
             <Link href="/">
               <ArrowLeftIcon data-icon="inline-start" />

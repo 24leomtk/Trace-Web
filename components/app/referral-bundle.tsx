@@ -71,7 +71,7 @@ export function ReferralBundle({
     })
   }
 
-  async function submitDocument(event: React.FormEvent) {
+  async function submitDocument(event: React.SubmitEvent) {
     event.preventDefault()
     if (!file) {
       toast.error("Choose a file first.")

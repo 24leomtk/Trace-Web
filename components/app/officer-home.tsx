@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils"
 import { AnalyticsFeed } from "@/components/app/analytics-feed"
 import { AssignmentQueue } from "@/components/app/assignment-queue"
 import { RecordTimeline } from "@/components/app/record-timeline"
-import { useHomeView, type FeedScope, type HomeTab } from "@/providers/home-view-context"
+import {
+  useHomeView,
+  type FeedScope,
+  type HomeTab,
+} from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
 
 const SCOPE_TABS: { value: FeedScope; label: string }[] = [
@@ -53,14 +57,14 @@ export function OfficerHome() {
       <AssignmentQueue />
 
       {isMonitor && (
-        <div className="flex gap-1 rounded-full border bg-muted/40 p-1">
+        <div className="flex gap-1 rounded-none border bg-muted/40 p-1">
           {(["feed", "reports"] as HomeTab[]).map((value) => (
             <button
               key={value}
               type="button"
               onClick={() => setTab(value)}
               className={cn(
-                "flex-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+                "flex-1 rounded-none px-3 py-1.5 text-sm font-medium transition-colors",
                 tab === value
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
@@ -76,7 +80,7 @@ export function OfficerHome() {
         <div
           role="tablist"
           aria-label="Case scope"
-          className="flex gap-1 overflow-x-auto rounded-full border bg-muted/40 p-1"
+          className="flex gap-1 overflow-x-auto rounded-none border bg-muted/40 p-1"
         >
           {scopes.map((option) => (
             <button
@@ -86,7 +90,7 @@ export function OfficerHome() {
               aria-selected={feedScope === option.value}
               onClick={() => setFeedScope(option.value)}
               className={cn(
-                "flex-1 rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+                "flex-1 rounded-none px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
                 feedScope === option.value
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"

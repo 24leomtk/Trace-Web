@@ -193,7 +193,7 @@ function VerifyForm() {
           size="sm"
           disabled={resendIn > 0 || status === "verifying"}
           onClick={() => void resend()}
-          className="rounded-full text-muted-foreground"
+          className="rounded-none text-muted-foreground"
         >
           {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
         </Button>

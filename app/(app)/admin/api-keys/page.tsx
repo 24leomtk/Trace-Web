@@ -51,7 +51,7 @@ export default function AdminApiKeysPage() {
     setDialogOpen(true)
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.SubmitEvent) {
     event.preventDefault()
     if (!form.userId) {
       toast.error("Choose the user this key acts as.")
@@ -82,12 +82,7 @@ export default function AdminApiKeysPage() {
     <div className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <Button
-            asChild
-            variant="ghost"
-            size="sm"
-            className="mb-2 w-fit rounded-full px-2"
-          >
+          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit px-2">
             <Link href="/">
               <ArrowLeftIcon data-icon="inline-start" />
               Administration

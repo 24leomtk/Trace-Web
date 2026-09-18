@@ -256,7 +256,7 @@ export default function NewRecordPage() {
     })
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.SubmitEvent) {
     event.preventDefault()
 
     if (needsBranchPicker && !branchId) {
@@ -365,7 +365,7 @@ export default function NewRecordPage() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon-sm" className="rounded-full">
+        <Button asChild variant="ghost" size="icon-sm" className="rounded-none">
           <Link href="/" aria-label="Back home">
             <ArrowLeftIcon />
           </Link>
@@ -384,7 +384,7 @@ export default function NewRecordPage() {
               }}
               disabled={index > step}
               aria-current={index === step ? "step" : undefined}
-              className={`flex h-1.5 flex-1 rounded-full transition-colors ${
+              className={`flex h-1.5 flex-1 rounded-none transition-colors ${
                 index < step
                   ? "bg-primary"
                   : index === step
@@ -495,7 +495,7 @@ export default function NewRecordPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="rounded-full"
+                className="rounded-none"
                 onClick={() => setScanOpen(true)}
               >
                 <ScanLineIcon data-icon="inline-start" />

@@ -32,8 +32,7 @@ export function GeoCapture({
   onCleared: () => void
 }) {
   const [locating, setLocating] = useState(false)
-  const hasFix =
-    typeof latitude === "number" && typeof longitude === "number"
+  const hasFix = typeof latitude === "number" && typeof longitude === "number"
 
   function capture() {
     if (!("geolocation" in navigator)) {
@@ -69,7 +68,7 @@ export function GeoCapture({
           href={openStreetMapUrl(latitude as number, longitude as number)}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          className="inline-flex items-center gap-1.5 rounded-none border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
         >
           <MapPinIcon className="size-4" />
           {formatCoords(latitude as number, longitude as number)}
@@ -78,7 +77,7 @@ export function GeoCapture({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="rounded-full"
+          className="rounded-none"
           aria-label="Remove GPS fix"
           onClick={onCleared}
         >
@@ -93,7 +92,7 @@ export function GeoCapture({
       type="button"
       variant="outline"
       size="sm"
-      className="w-fit rounded-full"
+      className="w-fit rounded-none"
       disabled={locating}
       onClick={capture}
     >

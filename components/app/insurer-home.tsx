@@ -37,7 +37,7 @@ export function InsurerHome() {
     failed: { row: number; plate: string; error: string }[]
   } | null>(null)
 
-  async function checkFlag(event: React.FormEvent) {
+  async function checkFlag(event: React.SubmitEvent) {
     event.preventDefault()
     if (!plate.trim()) return
     setChecking(true)

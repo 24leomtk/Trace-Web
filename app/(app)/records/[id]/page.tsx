@@ -195,7 +195,7 @@ export default function RecordDetailPage({
     }
   }
 
-  async function submitEdit(event: React.FormEvent) {
+  async function submitEdit(event: React.SubmitEvent) {
     event.preventDefault()
     const payload: Record<string, unknown> = {}
     for (const [path, raw] of Object.entries(editValues)) {
@@ -296,7 +296,7 @@ export default function RecordDetailPage({
             <Button
               size="sm"
               onClick={() => setStatusDialogOpen(true)}
-              className="shrink-0 rounded-full print:hidden"
+              className="shrink-0 rounded-none print:hidden"
             >
               Update status · {record.status}
             </Button>
@@ -343,7 +343,7 @@ export default function RecordDetailPage({
       <div
         role="tablist"
         aria-label="Case sections"
-        className="flex gap-1 overflow-x-auto rounded-full border bg-muted/40 p-1 print:hidden"
+        className="flex gap-1 overflow-x-auto rounded-none border bg-muted/40 p-1 print:hidden"
       >
         {tabs.map((option) => (
           <button
@@ -353,7 +353,7 @@ export default function RecordDetailPage({
             aria-selected={tab === option.value}
             onClick={() => setTab(option.value)}
             className={cn(
-              "flex-1 rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+              "flex-1 rounded-none px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
               tab === option.value
                 ? "bg-background shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
@@ -374,7 +374,7 @@ export default function RecordDetailPage({
       {record.attachments.length > 0 && (
         <Button
           variant="outline"
-          className="w-fit rounded-full print:hidden"
+          className="w-fit rounded-none print:hidden"
           onClick={() => setShowAttachments(true)}
         >
           View {record.attachments.length} attachment
@@ -1094,7 +1094,7 @@ function LiaisonOutcomeForm({
 
 function BackLink() {
   return (
-    <Button asChild variant="ghost" size="sm" className="w-fit rounded-full">
+    <Button asChild variant="ghost" size="sm" className="w-fit rounded-none">
       <Link href="/">
         <ArrowLeftIcon data-icon="inline-start" />
         Back

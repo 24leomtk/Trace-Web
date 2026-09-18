@@ -52,7 +52,7 @@ export default function VehicleDetailPage({
 
   const { vehicle, caseCount, linkedCases } = data
 
-  async function handleVerify(event: React.FormEvent) {
+  async function handleVerify(event: React.SubmitEvent) {
     event.preventDefault()
     setSaving(true)
     try {
@@ -178,7 +178,7 @@ export default function VehicleDetailPage({
 
 function BackLink() {
   return (
-    <Button asChild variant="ghost" size="sm" className="w-fit rounded-full">
+    <Button asChild variant="ghost" size="sm" className="w-fit rounded-none">
       <Link href="/">
         <ArrowLeftIcon data-icon="inline-start" />
         Back

@@ -5,7 +5,11 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { useIsLargeScreen } from "@/hooks/use-media-query"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface NavButtonProps {
   label: string
@@ -31,7 +35,7 @@ export function NavButton({
         variant="ghost"
         size="icon-lg"
         className={cn(
-          "size-10 rounded-full text-muted-foreground hover:text-foreground",
+          "size-10 text-muted-foreground hover:text-foreground",
           active && "bg-secondary text-secondary-foreground"
         )}
       >
@@ -46,7 +50,7 @@ export function NavButton({
         aria-label={label}
         onClick={onClick}
         className={cn(
-          "size-10 rounded-full text-muted-foreground hover:text-foreground",
+          "size-10 text-muted-foreground hover:text-foreground",
           active && "bg-secondary text-secondary-foreground"
         )}
       >

@@ -112,7 +112,7 @@ export default function SignInPage() {
     demoSafePage * DEMO_PAGE_SIZE + DEMO_PAGE_SIZE
   )
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.SubmitEvent) {
     event.preventDefault()
     if (!phone || !isValidPhoneNumber(phone)) {
       toast.error("Enter a valid Malawian phone number.")
