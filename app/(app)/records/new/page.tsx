@@ -7,10 +7,7 @@ import { ArrowLeftIcon, LoaderCircleIcon, ScanLineIcon } from "lucide-react"
 import { toast } from "sonner"
 import type { ZodType } from "zod"
 
-import {
-  createRecord,
-  type UploadedAttachment,
-} from "@/lib/actions/records"
+import { createRecord, type UploadedAttachment } from "@/lib/actions/records"
 import { getUploadCredentials } from "@/lib/actions/uploads"
 import { normalizePlate } from "@/lib/format"
 import { uploadFileToCloudinary } from "@/lib/upload"
@@ -171,7 +168,10 @@ export default function NewRecordPage() {
     try {
       const raw = localStorage.getItem(draftKey(recordType))
       if (!raw) return
-      const parsed = JSON.parse(raw) as { values?: FormValues; savedAt?: string }
+      const parsed = JSON.parse(raw) as {
+        values?: FormValues
+        savedAt?: string
+      }
       if (parsed.values && !isPristine(parsed.values)) {
         setDraftSavedAt(parsed.savedAt ?? null)
       }
@@ -189,7 +189,12 @@ export default function NewRecordPage() {
       try {
         localStorage.setItem(
           draftKey(recordType),
-          JSON.stringify({ values, accessLevel, branchId, savedAt: new Date().toISOString() })
+          JSON.stringify({
+            values,
+            accessLevel,
+            branchId,
+            savedAt: new Date().toISOString(),
+          })
         )
       } catch {
         // Storage full or unavailable — filing still works, just no draft.
@@ -392,14 +397,14 @@ export default function NewRecordPage() {
           </li>
         ))}
       </ol>
-      <p className=" -mt-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      <p className="-mt-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         Step {step + 1} of {STEPS.length} · {STEPS[step]}
       </p>
 
       {!online && (
         <p
           role="alert"
-          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300"
+          className="rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300"
         >
           You&apos;re offline — keep editing, the draft autosaves on this
           device. Filing needs a connection.
@@ -407,7 +412,7 @@ export default function NewRecordPage() {
       )}
 
       {draftSavedAt && (
-        <div className="flex flex-col gap-2 rounded-3xl border border-dashed px-4 py-3">
+        <div className="flex flex-col gap-2 rounded-none border border-dashed px-4 py-3">
           <p className="text-sm">
             <span className="font-medium">Unfinished draft</span>
             <span className="text-muted-foreground">
@@ -420,7 +425,12 @@ export default function NewRecordPage() {
             <Button type="button" size="sm" onClick={resumeDraft}>
               Resume draft
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={discardDraft}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={discardDraft}
+            >
               Discard
             </Button>
           </div>
@@ -430,7 +440,8 @@ export default function NewRecordPage() {
       {step === 0 && (
         <section className="flex flex-col gap-3">
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Case type · {user.domain === "traffic" ? "Traffic" : "Regular"} domain
+            Case type · {user.domain === "traffic" ? "Traffic" : "Regular"}{" "}
+            domain
           </span>
           <RecordTypeSelector value={recordType} onChange={chooseType} />
           <div className="flex justify-end">
@@ -447,11 +458,12 @@ export default function NewRecordPage() {
             <div
               id="filing-errors"
               role="alert"
-              className="flex scroll-mt-28 flex-col gap-2 rounded-3xl border border-destructive/40 bg-destructive/5 px-4 py-3"
+              className="flex scroll-mt-28 flex-col gap-2 rounded-none border border-destructive/40 bg-destructive/5 px-4 py-3"
             >
               <p className="text-sm font-medium">
-                {errorEntries.length} field{errorEntries.length === 1 ? "" : "s"}{" "}
-                need{errorEntries.length === 1 ? "s" : ""} attention:
+                {errorEntries.length} field
+                {errorEntries.length === 1 ? "" : "s"} need
+                {errorEntries.length === 1 ? "s" : ""} attention:
               </p>
               <ul className="flex flex-col gap-1">
                 {errorEntries.map(([path, message]) => (
@@ -487,7 +499,9 @@ export default function NewRecordPage() {
                 onClick={() => setScanOpen(true)}
               >
                 <ScanLineIcon data-icon="inline-start" />
-                {scannablePath === "plate_number" ? "Scan plate code" : "Scan ID barcode"}
+                {scannablePath === "plate_number"
+                  ? "Scan plate code"
+                  : "Scan ID barcode"}
               </Button>
               <ScanSheet
                 open={scanOpen}
@@ -495,11 +509,19 @@ export default function NewRecordPage() {
                 onScanned={(raw) => {
                   setValue(
                     scannablePath,
-                    scannablePath === "plate_number" ? normalizePlate(raw) : raw.trim()
+                    scannablePath === "plate_number"
+                      ? normalizePlate(raw)
+                      : raw.trim()
                   )
-                  toast.success("Field filled from scan — verify before filing.")
+                  toast.success(
+                    "Field filled from scan — verify before filing."
+                  )
                 }}
-                title={scannablePath === "plate_number" ? "Scan plate code" : "Scan ID barcode"}
+                title={
+                  scannablePath === "plate_number"
+                    ? "Scan plate code"
+                    : "Scan ID barcode"
+                }
               />
             </div>
           )}
@@ -559,24 +581,27 @@ export default function NewRecordPage() {
               Visibility
             </span>
             <div className="flex gap-2">
-              {(["branch", "district", "country"] as AccessLevel[]).map((level) => (
-                <Button
-                  key={level}
-                  type="button"
-                  variant={accessLevel === level ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAccessLevel(level)}
-                >
-                  {level === "branch"
-                    ? "Branch only"
-                    : level === "district"
-                      ? "District-wide"
-                      : "Country-wide"}
-                </Button>
-              ))}
+              {(["branch", "district", "country"] as AccessLevel[]).map(
+                (level) => (
+                  <Button
+                    key={level}
+                    type="button"
+                    variant={accessLevel === level ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setAccessLevel(level)}
+                  >
+                    {level === "branch"
+                      ? "Branch only"
+                      : level === "district"
+                        ? "District-wide"
+                        : "Country-wide"}
+                  </Button>
+                )
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Escalation is deliberate and logged. Branch-only stays at your station.
+              Escalation is deliberate and logged. Branch-only stays at your
+              station.
             </p>
           </section>
 
@@ -595,14 +620,17 @@ export default function NewRecordPage() {
 
       {step === 3 && (
         <section className="flex flex-col gap-4">
-          <div className="rounded-3xl border bg-card px-4 py-3">
+          <div className="rounded-none border bg-card px-4 py-3">
             <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-              {typeMeta.label} · {user.domain === "traffic" ? "Traffic" : "Regular"}
+              {typeMeta.label} ·{" "}
+              {user.domain === "traffic" ? "Traffic" : "Regular"}
             </p>
             <dl className="mt-2 flex flex-col gap-1 text-sm">
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Fields filled</dt>
-                <dd className="font-medium">{filledCount} of {fields.length}</dd>
+                <dd className="font-medium">
+                  {filledCount} of {fields.length}
+                </dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Photos</dt>
@@ -620,10 +648,20 @@ export default function NewRecordPage() {
               </div>
             </dl>
             <div className="mt-3 flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setStep(1)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setStep(1)}
+              >
                 Edit details
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setStep(2)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setStep(2)}
+              >
                 Edit visibility
               </Button>
             </div>

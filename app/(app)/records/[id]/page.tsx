@@ -234,7 +234,7 @@ export default function RecordDetailPage({
     return (
       <div className="flex flex-col gap-4">
         <BackLink />
-        <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           {recordQuery.error instanceof Error
             ? recordQuery.error.message
             : "Record not found."}
@@ -310,7 +310,7 @@ export default function RecordDetailPage({
             <span
               key={badge.label}
               className={cn(
-                "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+                "inline-flex items-center rounded-none border px-1.5 py-0.5 text-xs font-medium",
                 TONE_BADGE_CLASS[badge.tone]
               )}
             >
@@ -387,7 +387,7 @@ export default function RecordDetailPage({
           {editing ? (
             <form
               onSubmit={submitEdit}
-              className="flex flex-col gap-4 rounded-3xl border bg-card p-4 print:hidden"
+              className="flex flex-col gap-4 rounded-none border bg-card p-4 print:hidden"
             >
               <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Edit case (active records only)
@@ -435,7 +435,7 @@ export default function RecordDetailPage({
           {record.recordType === "vehicle_impoundment" &&
             isMonitor &&
             record.status === "active" && (
-              <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+              <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
                 <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                   Release
                 </h2>
@@ -467,7 +467,7 @@ export default function RecordDetailPage({
       )}
 
       {tab === "reviews" && (
-        <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
+        <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Reviews & follow-up notes
           </h2>
@@ -476,7 +476,7 @@ export default function RecordDetailPage({
               {reviewsQuery.data.map((review) => (
                 <li
                   key={review.id}
-                  className="rounded-2xl border px-3 py-2 text-sm"
+                  className="rounded-none border px-3 py-2 text-sm"
                 >
                   <p>{review.note}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -527,12 +527,12 @@ export default function RecordDetailPage({
         <>
           {tab === "manage" && (
             <>
-              <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+              <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
                 <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                   Status
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-md border px-2 py-1 text-sm font-medium">
+                  <span className="inline-flex items-center rounded-none border px-2 py-1 text-sm font-medium">
                     {record.status}
                   </span>
                   <Button
@@ -544,11 +544,12 @@ export default function RecordDetailPage({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Status changes are logged with a reason and notify the filing officer.
+                  Status changes are logged with a reason and notify the filing
+                  officer.
                 </p>
               </section>
 
-              <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+              <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
                 <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                   Visibility
                 </h2>
@@ -579,7 +580,7 @@ export default function RecordDetailPage({
               </section>
 
               {user.role === "DISTRICT_MONITOR" && (
-                <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+                <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
                   <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     Reassign branch
                   </h2>
@@ -633,7 +634,7 @@ export default function RecordDetailPage({
           )}
 
           {tab === "reviews" && (
-            <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+            <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
               <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Tasking
               </h2>
@@ -644,13 +645,13 @@ export default function RecordDetailPage({
                     return (
                       <li
                         key={task.id}
-                        className="rounded-2xl border px-3 py-2 text-sm"
+                        className="rounded-none border px-3 py-2 text-sm"
                       >
                         <p className="flex flex-wrap items-center gap-1.5 font-medium">
                           <span>{task.assigneeName}</span>
                           <span
                             className={cn(
-                              "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs",
+                              "inline-flex items-center rounded-none border px-1.5 py-0.5 text-xs",
                               task.state === "open"
                                 ? due.overdue
                                   ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
@@ -796,7 +797,7 @@ export default function RecordDetailPage({
           )}
 
           {tab === "justice" && (
-            <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4 print:hidden">
+            <section className="flex flex-col gap-3 rounded-none border bg-card p-4 print:hidden">
               <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Court referrals
               </h2>
@@ -811,7 +812,7 @@ export default function RecordDetailPage({
                     return (
                       <li
                         key={referral.id}
-                        className="flex flex-col gap-2 rounded-2xl border px-3 py-2 text-sm"
+                        className="flex flex-col gap-2 rounded-none border px-3 py-2 text-sm"
                       >
                         <p className="font-medium">{referral.liaisonName}</p>
                         <p className="text-xs text-muted-foreground">
@@ -822,12 +823,12 @@ export default function RecordDetailPage({
                           · outcome: {referral.outcome}
                         </p>
                         <p className="flex flex-wrap gap-1.5 text-xs">
-                          <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
+                          <span className="inline-flex items-center rounded-none border px-1.5 py-0.5 font-medium text-muted-foreground">
                             Referred {sla.daysSinceReferral}d ago
                           </span>
                           <span
                             className={cn(
-                              "inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium",
+                              "inline-flex items-center rounded-none border px-1.5 py-0.5 font-medium",
                               sla.viewOverdue
                                 ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
                                 : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
@@ -839,7 +840,7 @@ export default function RecordDetailPage({
                                 : "Unviewed"
                               : `Viewed in ${sla.daysToView}d`}
                           </span>
-                          <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-muted-foreground">
+                          <span className="inline-flex items-center rounded-none border px-1.5 py-0.5 font-medium text-muted-foreground">
                             {referral.documentsCount} brief doc
                             {referral.documentsCount === 1 ? "" : "s"}
                           </span>
@@ -940,7 +941,7 @@ export default function RecordDetailPage({
       {user.role === "OFFICER" &&
         record.reportedBy === user.id &&
         tab === "manage" && (
-          <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+          <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               Visibility
             </h2>
@@ -1034,7 +1035,7 @@ function LiaisonOutcomeForm({
         canUpload={false}
         caseAttachmentCount={attachmentCount}
       />
-      <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+      <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Case outcome
         </h2>

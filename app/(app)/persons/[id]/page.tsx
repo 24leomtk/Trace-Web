@@ -13,12 +13,18 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useUser } from "@/providers/user-context"
 
-export default function PersonDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function PersonDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   const { id } = use(params)
   const { user } = useUser()
   const queryClient = useQueryClient()
   const [mergeQuery, setMergeQuery] = useState("")
-  const [candidates, setCandidates] = useState<Awaited<ReturnType<typeof searchPersons>>>([])
+  const [candidates, setCandidates] = useState<
+    Awaited<ReturnType<typeof searchPersons>>
+  >([])
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
 
@@ -32,7 +38,7 @@ export default function PersonDetailPage({ params }: { params: Promise<{ id: str
     return (
       <div className="flex flex-col gap-4">
         <BackLink />
-        <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           Person not found.
         </p>
       </div>
@@ -64,12 +70,17 @@ export default function PersonDetailPage({ params }: { params: Promise<{ id: str
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">{data.person.fullName}</h1>
         <p className="text-sm text-muted-foreground">
-          {[data.person.nationalId, data.person.homeDistrict?.replace(/_/g, " ")]
+          {[
+            data.person.nationalId,
+            data.person.homeDistrict?.replace(/_/g, " "),
+          ]
             .filter(Boolean)
             .join(" · ") || "No identifiers on file"}
         </p>
         {data.person.distinguishingFeatures && (
-          <p className="text-sm text-muted-foreground">{data.person.distinguishingFeatures}</p>
+          <p className="text-sm text-muted-foreground">
+            {data.person.distinguishingFeatures}
+          </p>
         )}
       </header>
 
@@ -85,11 +96,14 @@ export default function PersonDetailPage({ params }: { params: Promise<{ id: str
               <li key={entry.id}>
                 <Link
                   href={`/records/${entry.id}`}
-                  className="block rounded-2xl border px-3 py-2 text-sm hover:bg-accent"
+                  className="block rounded-none border px-3 py-2 text-sm hover:bg-accent"
                 >
-                  <span className="font-medium">{entry.recordType.replace(/_/g, " ")}</span>
+                  <span className="font-medium">
+                    {entry.recordType.replace(/_/g, " ")}
+                  </span>
                   <span className="text-muted-foreground">
-                    {" "}· {entry.status} · {formatDateTime(entry.createdAt)}
+                    {" "}
+                    · {entry.status} · {formatDateTime(entry.createdAt)}
                   </span>
                 </Link>
               </li>
@@ -99,7 +113,7 @@ export default function PersonDetailPage({ params }: { params: Promise<{ id: str
       </section>
 
       {isMonitor && (
-        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+        <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Merge duplicate
           </h2>
@@ -113,17 +127,29 @@ export default function PersonDetailPage({ params }: { params: Promise<{ id: str
               onChange={(event) => setMergeQuery(event.target.value)}
               placeholder="Name or national ID…"
             />
-            <Button type="submit" size="sm">Find</Button>
+            <Button type="submit" size="sm">
+              Find
+            </Button>
           </form>
           {candidates.map((candidate) => (
-            <div key={candidate.id} className="flex items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-sm">
+            <div
+              key={candidate.id}
+              className="flex items-center justify-between gap-2 rounded-none border px-3 py-2 text-sm"
+            >
               <span>
                 <span className="font-medium">{candidate.fullName}</span>
                 {candidate.nationalId && (
-                  <span className="text-muted-foreground"> · {candidate.nationalId}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {candidate.nationalId}
+                  </span>
                 )}
               </span>
-              <Button size="sm" variant="outline" onClick={() => merge(candidate.id)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => merge(candidate.id)}
+              >
                 Merge into this profile
               </Button>
             </div>

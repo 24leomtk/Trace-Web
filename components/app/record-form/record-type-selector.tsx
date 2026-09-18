@@ -76,7 +76,7 @@ export function RecordTypeSelector({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-auto w-full justify-between rounded-2xl px-3 py-2.5"
+          className="h-auto w-full justify-between rounded-none px-3 py-2.5"
         >
           <span className="flex min-w-0 items-center gap-2">
             <selectedMeta.icon className="size-4 shrink-0 text-muted-foreground" />

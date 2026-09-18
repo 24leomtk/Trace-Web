@@ -48,7 +48,7 @@ export default function NotificationsPage() {
       {isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !data || data.length === 0 ? (
-        <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           Nothing yet.
         </p>
       ) : (
@@ -56,13 +56,14 @@ export default function NotificationsPage() {
           {data.map((item) => (
             <li
               key={item.id}
-              className={`rounded-3xl border bg-card px-4 py-3 ${item.isRead ? "opacity-70" : ""}`}
+              className={`rounded-none border bg-card px-4 py-3 ${item.isRead ? "opacity-70" : ""}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm">{item.message}</p>
                   <p className="mt-0.5 text-[11px] tracking-wide text-muted-foreground uppercase">
-                    {item.type.replace(/_/g, " ")} · {formatDateTime(item.createdAt)}
+                    {item.type.replace(/_/g, " ")} ·{" "}
+                    {formatDateTime(item.createdAt)}
                   </p>
                 </div>
                 {!item.isRead && (

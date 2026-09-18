@@ -48,12 +48,12 @@ export function GlobalLoader({
     >
       {/* Background ambient glow */}
       <div className="pointer-events-none absolute -z-10 flex items-center justify-center">
-        <div className="size-64 rounded-full bg-primary/5 blur-3xl dark:bg-primary/10 animate-pulse" />
+        <div className="size-64 animate-pulse rounded-full bg-primary/5 blur-3xl dark:bg-primary/10" />
         <div className="size-40 rounded-full bg-emerald-500/5 blur-2xl dark:bg-emerald-400/10" />
       </div>
 
       {/* Main emblem / radar ring */}
-      <div className="relative flex items-center justify-center mb-6">
+      <div className="relative mb-6 flex items-center justify-center">
         {/* Outer pulsing sonar ring */}
         <motion.div
           animate={{
@@ -84,7 +84,7 @@ export function GlobalLoader({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          className="relative z-10 flex size-16 items-center justify-center rounded-2xl border border-border/80 bg-background/80 shadow-lg shadow-primary/5 backdrop-blur-md dark:border-border/60 dark:bg-card/70"
+          className="relative z-10 flex size-16 items-center justify-center rounded-none border border-border/80 bg-background/80 shadow-lg shadow-primary/5 backdrop-blur-md dark:border-border/60 dark:bg-card/70"
         >
           {/* Subtle pulse overlay inside icon */}
           <motion.img
@@ -92,7 +92,7 @@ export function GlobalLoader({
             alt="TRACE"
             width={34}
             height={34}
-            className="dark:invert object-contain drop-shadow-xs"
+            className="object-contain drop-shadow-xs dark:invert"
             animate={{
               scale: [1, 1.06, 1],
             }}
@@ -112,13 +112,13 @@ export function GlobalLoader({
       </div>
 
       {/* Brand headers */}
-      <div className="flex flex-col items-center gap-1.5 max-w-xs">
-        <div className="flex items-center gap-1.5 font-bold tracking-tight text-foreground text-lg sm:text-xl">
+      <div className="flex max-w-xs flex-col items-center gap-1.5">
+        <div className="flex items-center gap-1.5 text-lg font-bold tracking-tight text-foreground sm:text-xl">
           <span>TRACE</span>
         </div>
 
         {showBadge && (
-          <div className="flex items-center gap-1 text-[11px] font-medium tracking-wide uppercase text-muted-foreground">
+          <div className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
             <ShieldCheckIcon className="size-3 text-emerald-600 dark:text-emerald-400" />
             <span>Tracking · Records · Case Evidence</span>
           </div>
@@ -126,7 +126,7 @@ export function GlobalLoader({
       </div>
 
       {/* Dynamic status pill */}
-      <div className="mt-5 h-7 flex items-center justify-center">
+      <div className="mt-5 flex h-7 items-center justify-center">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentMessage}
@@ -136,7 +136,7 @@ export function GlobalLoader({
             transition={{ duration: 0.28, ease: "easeInOut" }}
             className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground shadow-2xs backdrop-blur-xs"
           >
-            <ActivityIcon className="size-3 text-primary animate-pulse" />
+            <ActivityIcon className="size-3 animate-pulse text-primary" />
             <span>{currentMessage}</span>
           </motion.div>
         </AnimatePresence>

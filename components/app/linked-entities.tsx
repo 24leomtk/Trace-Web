@@ -22,7 +22,7 @@ export function LinkedEntities({
 }) {
   if (!personId && !vehicleId) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
         No linked person or vehicle on this case.
       </p>
     )
@@ -43,7 +43,7 @@ function PersonCard({ id }: { id: string }) {
   if (isLoading) return <Skeleton className="h-20 w-full" />
   if (isError || !data) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
         Person profile unavailable.
       </p>
     )
@@ -52,11 +52,12 @@ function PersonCard({ id }: { id: string }) {
   return (
     <Link
       href={`/persons/${id}`}
-      className="block rounded-3xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
+      className="block rounded-none border bg-card px-4 py-3 transition-colors hover:bg-accent"
     >
       <p className="flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
         <UserRoundIcon className="size-3.5" />
-        Person of interest · {data.linkedCases.length} linked case{data.linkedCases.length === 1 ? "" : "s"}
+        Person of interest · {data.linkedCases.length} linked case
+        {data.linkedCases.length === 1 ? "" : "s"}
       </p>
       <p className="mt-0.5 text-[15px] font-medium">{person.fullName}</p>
       <p className="text-sm text-muted-foreground">
@@ -76,7 +77,7 @@ function VehicleCard({ id }: { id: string }) {
   if (isLoading) return <Skeleton className="h-20 w-full" />
   if (isError || !data) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
         Vehicle profile unavailable.
       </p>
     )
@@ -85,7 +86,7 @@ function VehicleCard({ id }: { id: string }) {
   return (
     <Link
       href={`/vehicles/${id}`}
-      className="block rounded-3xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
+      className="block rounded-none border bg-card px-4 py-3 transition-colors hover:bg-accent"
     >
       <p className="flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
         <CarFrontIcon className="size-3.5" />
@@ -96,8 +97,9 @@ function VehicleCard({ id }: { id: string }) {
       </p>
       <p className="mt-0.5 text-[15px] font-medium">{vehicle.plateNumber}</p>
       <p className="text-sm text-muted-foreground">
-        {[vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(" ") ||
-          "No details yet"}
+        {[vehicle.make, vehicle.model, vehicle.color]
+          .filter(Boolean)
+          .join(" ") || "No details yet"}
         {vehicle.isVerified ? " · verified" : " · unverified"}
       </p>
     </Link>

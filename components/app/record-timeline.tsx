@@ -35,8 +35,9 @@ import {
 /** The case feed: records visible to the current police user, newest first. */
 export function RecordTimeline() {
   const { caseFilters, feedScope } = useHomeView()
-  const [attachmentRecord, setAttachmentRecord] =
-    useState<TraceRecord | null>(null)
+  const [attachmentRecord, setAttachmentRecord] = useState<TraceRecord | null>(
+    null
+  )
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const filterType: RecordType | undefined = caseFilters.type ?? undefined
@@ -105,7 +106,10 @@ export function RecordTimeline() {
                   </span>
                 </TimelineHeader>
                 <TimelineTitle className="text-[15px] leading-snug">
-                  <Link href={`/records/${record.id}`} className="hover:underline">
+                  <Link
+                    href={`/records/${record.id}`}
+                    className="hover:underline"
+                  >
                     {record.title}
                   </Link>
                 </TimelineTitle>
@@ -139,7 +143,7 @@ export function RecordTimeline() {
                     <span
                       key={`${record.id}-${badge.label}`}
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium",
+                        "inline-flex items-center gap-1 rounded-none border px-1.5 py-0.5 text-xs font-medium",
                         TONE_BADGE_CLASS[badge.tone]
                       )}
                     >

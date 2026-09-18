@@ -63,7 +63,9 @@ export function CitationLedger({
   const [scheduling, setScheduling] = useState(false)
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ["citation-ledger", recordId] })
+    await queryClient.invalidateQueries({
+      queryKey: ["citation-ledger", recordId],
+    })
   }
 
   async function submitPayment(event: React.FormEvent) {
@@ -122,7 +124,7 @@ export function CitationLedger({
   if (ledgerQuery.isLoading) return <Skeleton className="h-40 w-full" />
   if (ledgerQuery.isError || !ledgerQuery.data) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
         Could not load the fine ledger.
       </p>
     )
@@ -131,13 +133,18 @@ export function CitationLedger({
   const ledger = ledgerQuery.data
   const ticketNo = `TRACE-${recordId.slice(0, 8).toUpperCase()}`
   const ticketUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/records/${recordId}` : recordId
+    typeof window !== "undefined"
+      ? `${window.location.origin}/records/${recordId}`
+      : recordId
   const todayKey = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="flex flex-col gap-4">
       {/* Printable uniform ticket */}
-      <section aria-label="Uniform traffic ticket" className="rounded-3xl border bg-card px-4 py-3">
+      <section
+        aria-label="Uniform traffic ticket"
+        className="rounded-none border bg-card px-4 py-3"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -162,7 +169,9 @@ export function CitationLedger({
               {ledger.dateIssued && (
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Issued</dt>
-                  <dd className="font-medium">{formatDateKey(ledger.dateIssued)}</dd>
+                  <dd className="font-medium">
+                    {formatDateKey(ledger.dateIssued)}
+                  </dd>
                 </div>
               )}
               <div className="flex justify-between gap-4">
@@ -193,8 +202,14 @@ export function CitationLedger({
             </dl>
           </div>
           <div className="flex shrink-0 flex-col items-center gap-1">
-            <QRCodeSVG value={ticketUrl} size={88} aria-label={`Ticket ${ticketNo} code`} />
-            <span className="text-[10px] text-muted-foreground">{ticketNo}</span>
+            <QRCodeSVG
+              value={ticketUrl}
+              size={88}
+              aria-label={`Ticket ${ticketNo} code`}
+            />
+            <span className="text-[10px] text-muted-foreground">
+              {ticketNo}
+            </span>
           </div>
         </div>
         <Button
@@ -210,21 +225,28 @@ export function CitationLedger({
       </section>
 
       {/* Payments */}
-      <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+      <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Payments ({ledger.payments.length})
         </h2>
         {ledger.payments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No payments recorded yet.
+          </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {ledger.payments.map((payment) => (
-              <li key={payment.id} className="rounded-2xl border px-3 py-2 text-sm">
+              <li
+                key={payment.id}
+                className="rounded-none border px-3 py-2 text-sm"
+              >
                 <p className="font-medium">
                   {mwk(payment.amount)} · {payment.receiptNo}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {[payment.receivedByName, payment.note].filter(Boolean).join(" · ")}
+                  {[payment.receivedByName, payment.note]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
               </li>
             ))}
@@ -269,7 +291,7 @@ export function CitationLedger({
 
       {/* Court scheduling (monitors) */}
       {isMonitor && (
-        <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4 print:hidden">
+        <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Court appearance
           </h2>
@@ -297,8 +319,17 @@ export function CitationLedger({
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" size="sm" className="w-fit" disabled={scheduling}>
-              {scheduling ? "Scheduling…" : ledger.courtDate ? "Reschedule" : "Schedule"}
+            <Button
+              type="submit"
+              size="sm"
+              className="w-fit"
+              disabled={scheduling}
+            >
+              {scheduling
+                ? "Scheduling…"
+                : ledger.courtDate
+                  ? "Reschedule"
+                  : "Schedule"}
             </Button>
           </form>
         </section>

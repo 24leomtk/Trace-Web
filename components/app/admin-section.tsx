@@ -1,7 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, TriangleAlertIcon } from "lucide-react"
+import {
+  CalendarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  TriangleAlertIcon,
+} from "lucide-react"
 
 import { formatDateKey, fromDateKey, toDateKey } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -28,7 +33,11 @@ import {
   ComboboxTrigger,
 } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 export function AdminSection({
   title,
@@ -122,13 +131,15 @@ export function AdminField({
         {label}
       </span>
       {children}
-      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+      {hint && (
+        <span className="text-[11px] text-muted-foreground">{hint}</span>
+      )}
     </label>
   )
 }
 
 const adminTriggerClassName =
-  "flex h-8 w-full items-center justify-between gap-2 rounded-2xl border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+  "flex h-8 w-full items-center justify-between gap-2 rounded-none border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
 
 export interface AdminComboboxOption {
   value: string
@@ -156,7 +167,9 @@ export function AdminCombobox({
   // Portal the popup into the surrounding dialog (when there is one) so the
   // dialog's focus trap and dismiss handling treat it as inside. Falls back
   // to <body> when the combobox is used on a plain page.
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
+    null
+  )
   return (
     <span
       ref={(element) => {
@@ -166,39 +179,48 @@ export function AdminCombobox({
       }}
       className="contents"
     >
-    <Combobox
-      items={options}
-      value={selected}
-      onValueChange={(next) => onChange(next?.value ?? "")}
-      itemToStringLabel={(item) => item.label}
-      isItemEqualToValue={(a, b) => a.value === b.value}
-    >
-      <ComboboxTrigger
-        type="button"
-        aria-label={label}
-        disabled={disabled}
-        className={cn(adminTriggerClassName, !selected && "text-muted-foreground")}
+      <Combobox
+        items={options}
+        value={selected}
+        onValueChange={(next) => onChange(next?.value ?? "")}
+        itemToStringLabel={(item) => item.label}
+        isItemEqualToValue={(a, b) => a.value === b.value}
       >
-        <span className="truncate">{selected?.label ?? placeholder}</span>
-      </ComboboxTrigger>
-      <ComboboxContent container={portalContainer ?? undefined} className="w-[var(--anchor-width)]">
-        <ComboboxInput placeholder={`Search ${label.toLowerCase()}…`} showTrigger={false} />
-        <ComboboxSeparator />
-        <ComboboxEmpty>No match found.</ComboboxEmpty>
-        <ComboboxList>
-          {options.map((option) => (
-            <ComboboxItem key={option.value || "empty"} value={option}>
-              <span className="flex-1 truncate">{option.label}</span>
-              {option.detail && (
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {option.detail}
-                </span>
-              )}
-            </ComboboxItem>
-          ))}
-        </ComboboxList>
-      </ComboboxContent>
-    </Combobox>
+        <ComboboxTrigger
+          type="button"
+          aria-label={label}
+          disabled={disabled}
+          className={cn(
+            adminTriggerClassName,
+            !selected && "text-muted-foreground"
+          )}
+        >
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+        </ComboboxTrigger>
+        <ComboboxContent
+          container={portalContainer ?? undefined}
+          className="w-[var(--anchor-width)]"
+        >
+          <ComboboxInput
+            placeholder={`Search ${label.toLowerCase()}…`}
+            showTrigger={false}
+          />
+          <ComboboxSeparator />
+          <ComboboxEmpty>No match found.</ComboboxEmpty>
+          <ComboboxList>
+            {options.map((option) => (
+              <ComboboxItem key={option.value || "empty"} value={option}>
+                <span className="flex-1 truncate">{option.label}</span>
+                {option.detail && (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {option.detail}
+                  </span>
+                )}
+              </ComboboxItem>
+            ))}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
     </span>
   )
 }
@@ -228,7 +250,10 @@ export function AdminDateField({
       <PopoverTrigger
         type="button"
         aria-label={label}
-        className={cn(adminTriggerClassName, !selected && "text-muted-foreground")}
+        className={cn(
+          adminTriggerClassName,
+          !selected && "text-muted-foreground"
+        )}
       >
         <span className="truncate">
           {selected ? formatDateKey(value) : placeholder}
@@ -304,7 +329,7 @@ export function AdminToggle({
  * Two-step destructive confirmation. Step one spells out what else goes away
  * with the item; step two requires typing the item's full name. Mount keyed
  * by the target id so step/input state resets for every target.
- */export function AdminDeleteDialog({
+ */ export function AdminDeleteDialog({
   title,
   intro,
   consequences,
@@ -327,7 +352,8 @@ export function AdminToggle({
 }) {
   const [step, setStep] = useState<"warn" | "confirm">("warn")
   const [typed, setTyped] = useState("")
-  const matches = typed.trim() === requireText.trim() && requireText.trim() !== ""
+  const matches =
+    typed.trim() === requireText.trim() && requireText.trim() !== ""
 
   return (
     <AlertDialog
@@ -346,10 +372,13 @@ export function AdminToggle({
               <AlertDialogTitle>{title}</AlertDialogTitle>
               <AlertDialogDescription>{intro}</AlertDialogDescription>
             </AlertDialogHeader>
-            <ul className="flex flex-col gap-1.5 rounded-2xl bg-muted/50 px-3 py-2.5 text-left text-sm">
+            <ul className="flex flex-col gap-1.5 rounded-none bg-muted/50 px-3 py-2.5 text-left text-sm">
               {consequences.map((line) => (
                 <li key={line} className="flex items-start gap-2">
-                  <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground" />
+                  <span
+                    aria-hidden="true"
+                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground"
+                  />
                   <span>{line}</span>
                 </li>
               ))}
@@ -371,8 +400,11 @@ export function AdminToggle({
               </AlertDialogMedia>
               <AlertDialogTitle>{title}</AlertDialogTitle>
               <AlertDialogDescription>
-                {requireLabel} <span className="font-medium text-foreground">“{requireText}”</span> to
-                confirm. This cannot be undone.
+                {requireLabel}{" "}
+                <span className="font-medium text-foreground">
+                  “{requireText}”
+                </span>{" "}
+                to confirm. This cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <Input
@@ -405,6 +437,10 @@ export function AdminToggle({
 }
 
 /** "3 case records" / "1 case record" for delete-preview bullets. */
-export function pluralCount(count: number, singular: string, plural?: string): string {
+export function pluralCount(
+  count: number,
+  singular: string,
+  plural?: string
+): string {
   return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
 }

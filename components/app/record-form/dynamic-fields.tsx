@@ -27,7 +27,11 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -124,7 +128,10 @@ function FieldRenderer({
 
   if (field.kind === "ref") {
     return (
-      <div id={fieldAnchorId(field.path)} className="flex scroll-mt-28 flex-col gap-1.5">
+      <div
+        id={fieldAnchorId(field.path)}
+        className="flex scroll-mt-28 flex-col gap-1.5"
+      >
         <span className="text-xs font-medium tracking-wide text-muted-foreground">
           {field.label}
           {!field.required && (
@@ -146,7 +153,10 @@ function FieldRenderer({
 
   if (field.options) {
     return (
-      <div id={fieldAnchorId(field.path)} className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}>
+      <div
+        id={fieldAnchorId(field.path)}
+        className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}
+      >
         <FieldLabel field={field} />
         <MiniSelect
           options={field.options}
@@ -161,7 +171,10 @@ function FieldRenderer({
   }
 
   return (
-    <div id={fieldAnchorId(field.path)} className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}>
+    <div
+      id={fieldAnchorId(field.path)}
+      className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}
+    >
       <FieldLabel field={field} />
       {field.type === "textarea" ? (
         <TextareaStyled
@@ -205,7 +218,9 @@ function FieldLabel({ field }: { field: PlainFieldDef }) {
     <label className="text-xs font-medium tracking-wide text-muted-foreground">
       {field.label}
       {!field.required && (
-        <span className="ml-1 font-normal normal-case opacity-60">optional</span>
+        <span className="ml-1 font-normal normal-case opacity-60">
+          optional
+        </span>
       )}
     </label>
   )
@@ -217,7 +232,7 @@ function FieldError({ message }: { message?: string }) {
 }
 
 const FIELD_TRIGGER_CLASS =
-  "flex h-8 w-full items-center justify-between rounded-2xl border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/20"
+  "flex h-8 w-full items-center justify-between rounded-none border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/20"
 
 interface BranchOption {
   value: string
@@ -300,7 +315,10 @@ function CatalogField({
         </span>
         <ChevronsUpDownIcon className="size-4 shrink-0 opacity-40" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+      <PopoverContent
+        align="start"
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+      >
         <Command shouldFilter={false}>
           <CommandInput
             value={search}
@@ -342,7 +360,7 @@ function CatalogField({
                 <ChevronLeftIcon data-icon="inline-start" />
                 Prev
               </Button>
-              <span className="text-xs font-medium tabular-nums text-muted-foreground">
+              <span className="text-xs font-medium text-muted-foreground tabular-nums">
                 {currentPage + 1} / {pageCount}
               </span>
               <Button
@@ -417,10 +435,7 @@ function CalendarField({
         type="button"
         aria-label={label}
         aria-invalid={invalid || undefined}
-        className={cn(
-          FIELD_TRIGGER_CLASS,
-          !display && "text-muted-foreground"
-        )}
+        className={cn(FIELD_TRIGGER_CLASS, !display && "text-muted-foreground")}
       >
         {display || placeholder}
         <CalendarIcon className="size-4 shrink-0 opacity-40" />
@@ -446,7 +461,10 @@ function CalendarField({
                   selectTime(`${hour}:${minute}`)
                 }}
               >
-                <SelectTrigger aria-label={`${label} hour`} className="h-8 flex-1">
+                <SelectTrigger
+                  aria-label={`${label} hour`}
+                  className="h-8 flex-1"
+                >
                   <SelectValue placeholder="HH" />
                 </SelectTrigger>
                 <SelectContent>
@@ -460,7 +478,10 @@ function CalendarField({
                   })}
                 </SelectContent>
               </Select>
-              <span aria-hidden="true" className="self-center text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="self-center text-sm text-muted-foreground"
+              >
                 :
               </span>
               <Select
@@ -470,7 +491,10 @@ function CalendarField({
                   selectTime(`${hour}:${minute}`)
                 }}
               >
-                <SelectTrigger aria-label={`${label} minute`} className="h-8 flex-1">
+                <SelectTrigger
+                  aria-label={`${label} minute`}
+                  className="h-8 flex-1"
+                >
                   <SelectValue placeholder="MM" />
                 </SelectTrigger>
                 <SelectContent>
@@ -538,7 +562,7 @@ export function MiniSelect({
       <PopoverTrigger
         aria-invalid={invalid || undefined}
         className={cn(
-          "flex h-8 w-full items-center justify-between rounded-2xl border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/20",
+          "flex h-8 w-full items-center justify-between rounded-none border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/20",
           !value && "text-muted-foreground"
         )}
       >
@@ -600,15 +624,18 @@ function StringListEditor({
   }
 
   return (
-    <div id={fieldAnchorId(field.path)} className="flex scroll-mt-28 flex-col gap-1.5 sm:col-span-2">
+    <div
+      id={fieldAnchorId(field.path)}
+      className="flex scroll-mt-28 flex-col gap-1.5 sm:col-span-2"
+    >
       <span className="text-xs font-medium tracking-wide text-muted-foreground">
         {field.label}
       </span>
-      <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-input/50 px-2 py-1.5 dark:bg-input/20">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-none bg-input/50 px-2 py-1.5 dark:bg-input/20">
         {items.map((item) => (
           <span
             key={item}
-            className="inline-flex items-center gap-1 rounded-lg bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
+            className="inline-flex items-center gap-1 rounded-none bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
           >
             {item}
             <button
@@ -657,15 +684,15 @@ function RowListEditor({
   }
 
   return (
-    <div id={fieldAnchorId(field.path)} className="flex scroll-mt-28 flex-col gap-2 sm:col-span-2">
+    <div
+      id={fieldAnchorId(field.path)}
+      className="flex scroll-mt-28 flex-col gap-2 sm:col-span-2"
+    >
       <span className="text-xs font-medium tracking-wide text-muted-foreground">
         {field.label}
       </span>
       {rows.map((row, index) => (
-        <div
-          key={index}
-          className="rounded-2xl border bg-muted/30 p-3"
-        >
+        <div key={index} className="rounded-none border bg-muted/30 p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-medium">
               {field.itemLabel} {index + 1}

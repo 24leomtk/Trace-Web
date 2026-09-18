@@ -1,7 +1,11 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { ArrowDownRightIcon, ArrowUpRightIcon, DownloadIcon } from "lucide-react"
+import {
+  ArrowDownRightIcon,
+  ArrowUpRightIcon,
+  DownloadIcon,
+} from "lucide-react"
 
 import { getAnalyticsFeed } from "@/lib/actions/analytics"
 import { formatFullDate, formatTimelineDate } from "@/lib/format"
@@ -80,21 +84,45 @@ function downloadFeedCsv(feed: AnalyticsEntry[]) {
   for (const entry of feed) {
     for (const metric of entry.metrics) {
       lines.push(
-        [entry.id, entry.title, entry.scopeLabel, entry.date, "metric", metric.label, metric.value]
+        [
+          entry.id,
+          entry.title,
+          entry.scopeLabel,
+          entry.date,
+          "metric",
+          metric.label,
+          metric.value,
+        ]
           .map(quote)
           .join(",")
       )
     }
     for (const row of entry.breakdown ?? []) {
       lines.push(
-        [entry.id, entry.title, entry.scopeLabel, entry.date, "breakdown", row.label, `${row.count} (${(row.share * 100).toFixed(1)}%)`]
+        [
+          entry.id,
+          entry.title,
+          entry.scopeLabel,
+          entry.date,
+          "breakdown",
+          row.label,
+          `${row.count} (${(row.share * 100).toFixed(1)}%)`,
+        ]
           .map(quote)
           .join(",")
       )
     }
     for (const point of entry.series ?? []) {
       lines.push(
-        [entry.id, entry.title, entry.scopeLabel, entry.date, "series", point.label, point.value]
+        [
+          entry.id,
+          entry.title,
+          entry.scopeLabel,
+          entry.date,
+          "series",
+          point.label,
+          point.value,
+        ]
           .map(quote)
           .join(",")
       )
@@ -119,7 +147,8 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
   function drillType(key?: string): RecordType | null {
     if (!key || !(key in RECORD_TYPE_META)) return null
     const type = key as RecordType
-    if (user.domain && RECORD_TYPE_META[type].domain !== user.domain) return null
+    if (user.domain && RECORD_TYPE_META[type].domain !== user.domain)
+      return null
     return type
   }
 
@@ -146,7 +175,7 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
         </span>
         <span
           className={cn(
-            "ml-auto inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+            "ml-auto inline-flex items-center rounded-none border px-1.5 py-0.5 text-xs font-medium",
             severity.chip
           )}
         >
@@ -165,7 +194,7 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
         {entry.metrics.map((metric) => (
           <div
             key={metric.label}
-            className="rounded-xl bg-muted/60 px-3 py-2.5"
+            className="rounded-none bg-muted/60 px-3 py-2.5"
           >
             <p className="flex items-baseline gap-1.5">
               <span className="text-base font-medium tracking-tight">
@@ -224,7 +253,7 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
                   setCaseFilters({ type, status: null })
                   setTab("feed")
                 }}
-                className="flex items-center gap-3 rounded-lg text-xs transition-colors hover:bg-accent"
+                className="flex items-center gap-3 rounded-none text-xs transition-colors hover:bg-accent"
               >
                 {bar}
               </button>
@@ -239,8 +268,8 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
 
       {entry.severity === "critical" && (
         <p className="text-xs text-muted-foreground">
-          Flagged {formatFullDate(entry.date)} · rapid response actions tracked in
-          the district log.
+          Flagged {formatFullDate(entry.date)} · rapid response actions tracked
+          in the district log.
         </p>
       )}
     </article>
@@ -280,7 +309,11 @@ function SeriesChart({
               width={barWidth}
               height={barHeight}
               rx={1.5}
-              className={tone === "red" ? "fill-red-400 dark:fill-red-500" : "fill-primary/60"}
+              className={
+                tone === "red"
+                  ? "fill-red-400 dark:fill-red-500"
+                  : "fill-primary/60"
+              }
             >
               <title>{`${point.label}: ${point.value}`}</title>
             </rect>
@@ -296,12 +329,13 @@ function SeriesChart({
   )
 }
 
-function DeltaBadge({ value }: { value: number }) {  const up = value > 0
+function DeltaBadge({ value }: { value: number }) {
+  const up = value > 0
   const flat = value === 0
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] font-semibold tabular-nums",
+        "inline-flex items-center gap-0.5 rounded-none px-1 py-0.5 text-[10px] font-semibold tabular-nums",
         flat
           ? "bg-muted text-muted-foreground"
           : up
@@ -324,13 +358,16 @@ function AnalyticsSkeleton() {
   return (
     <div className="flex flex-col gap-4">
       {[0, 1].map((row) => (
-        <div key={row} className="rounded-[min(var(--radius-3xl),20px)] border p-5">
+        <div
+          key={row}
+          className="rounded-[min(var(--radius-3xl),20px)] border p-5"
+        >
           <Skeleton className="h-3 w-40" />
           <Skeleton className="mt-3 h-4 w-3/4" />
           <Skeleton className="mt-2 h-3 w-full" />
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[0, 1, 2, 3].map((cell) => (
-              <Skeleton key={cell} className="h-14 rounded-xl" />
+              <Skeleton key={cell} className="h-14 rounded-none" />
             ))}
           </div>
         </div>

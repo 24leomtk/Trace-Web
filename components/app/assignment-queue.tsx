@@ -44,17 +44,18 @@ export function AssignmentQueue() {
         My queue
         <span
           className={cn(
-            "inline-flex items-center rounded-md border px-1.5 py-0.5",
+            "inline-flex items-center rounded-none border px-1.5 py-0.5",
             overdueCount > 0
               ? DUE_CHIP.red
               : "border-border bg-muted/40 text-muted-foreground"
           )}
         >
-          {open.length} open{overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
+          {open.length} open
+          {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
         </span>
       </h2>
       {open.length === 0 ? (
-        <p className="rounded-3xl border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
           Queue clear — no open tasks.
         </p>
       ) : (
@@ -64,7 +65,7 @@ export function AssignmentQueue() {
             return (
               <li
                 key={item.id}
-                className="flex items-center justify-between gap-2 rounded-3xl border bg-card px-4 py-3"
+                className="flex items-center justify-between gap-2 rounded-none border bg-card px-4 py-3"
               >
                 <div className="min-w-0">
                   <Link
@@ -79,7 +80,7 @@ export function AssignmentQueue() {
                     {due.daysLeft != null && (
                       <span
                         className={cn(
-                          "inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium",
+                          "inline-flex items-center rounded-none border px-1.5 py-0.5 font-medium",
                           DUE_CHIP[due.tone]
                         )}
                       >
@@ -106,7 +107,9 @@ export function AssignmentQueue() {
                         queryKey: ["my-assignments"],
                       })
                     } catch (error) {
-                      toast.error(error instanceof Error ? error.message : "Failed.")
+                      toast.error(
+                        error instanceof Error ? error.message : "Failed."
+                      )
                     }
                   }}
                 >

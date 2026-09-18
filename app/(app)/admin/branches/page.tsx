@@ -6,11 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  deleteBranch,
-  listBranches,
-  upsertBranch,
-} from "@/lib/actions/admin"
+import { deleteBranch, listBranches, upsertBranch } from "@/lib/actions/admin"
 import { DISTRICT_OPTIONS, formatDistrict } from "@/lib/roles"
 import {
   AdminCombobox,
@@ -63,7 +59,9 @@ export default function AdminBranchesPage() {
       setDialogOpen(false)
       await queryClient.invalidateQueries({ queryKey: ["admin-branches"] })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save branch.")
+      toast.error(
+        error instanceof Error ? error.message : "Could not save branch."
+      )
     } finally {
       setSaving(false)
     }
@@ -73,7 +71,12 @@ export default function AdminBranchesPage() {
     <div className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit rounded-full px-2">
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="mb-2 w-fit rounded-full px-2"
+          >
             <Link href="/">
               <ArrowLeftIcon data-icon="inline-start" />
               Administration
@@ -99,9 +102,17 @@ export default function AdminBranchesPage() {
         title="Add branch"
         description="A station/post belongs to one domain and one district."
       >
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <form
+          onSubmit={handleSubmit}
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        >
           <AdminField label="Name">
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required minLength={2} />
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              required
+              minLength={2}
+            />
           </AdminField>
           <AdminField label="Domain">
             <AdminCombobox
@@ -121,20 +132,39 @@ export default function AdminBranchesPage() {
               value={form.district}
               onChange={(district) => setForm({ ...form, district })}
               placeholder="Select district"
-              options={DISTRICT_OPTIONS.map((value) => ({ value, label: formatDistrict(value) }))}
+              options={DISTRICT_OPTIONS.map((value) => ({
+                value,
+                label: formatDistrict(value),
+              }))}
             />
           </AdminField>
           <AdminField label="Location">
-            <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Optional" />
+            <Input
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+              placeholder="Optional"
+            />
           </AdminField>
           <AdminField label="Contact phone">
-            <Input value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} placeholder="Optional" />
+            <Input
+              value={form.contactPhone}
+              onChange={(e) =>
+                setForm({ ...form, contactPhone: e.target.value })
+              }
+              placeholder="Optional"
+            />
           </AdminField>
           <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Add branch"}</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Add branch"}
+            </Button>
           </DialogFooter>
         </form>
       </ResponsiveModal>
@@ -143,13 +173,16 @@ export default function AdminBranchesPage() {
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !data || data.length === 0 ? (
-          <p className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+          <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             No branches yet.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {data.map((branch) => (
-              <li key={branch.id} className="flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5">
+              <li
+                key={branch.id}
+                className="flex items-center justify-between gap-3 rounded-none border px-3 py-2.5"
+              >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{branch.name}</p>
                   <p className="text-xs text-muted-foreground">
@@ -163,9 +196,15 @@ export default function AdminBranchesPage() {
                     try {
                       await deleteBranch(branch.id)
                       toast.success("Branch removed.")
-                      await queryClient.invalidateQueries({ queryKey: ["admin-branches"] })
+                      await queryClient.invalidateQueries({
+                        queryKey: ["admin-branches"],
+                      })
                     } catch (error) {
-                      toast.error(error instanceof Error ? error.message : "Could not remove.")
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not remove."
+                      )
                     }
                   }}
                 >

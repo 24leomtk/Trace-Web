@@ -7,7 +7,11 @@ import { formatDateKey, fromDateKey, toDateKey } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface DatePickerProps {
   value: string
@@ -59,7 +63,7 @@ export function DatePicker({
           type="button"
           aria-label={label}
           className={cn(
-            "flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30",
+            "flex h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-none border border-transparent bg-input/50 px-2.5 py-1 text-sm transition-[color,box-shadow] duration-200 outline-none hover:bg-input/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30",
             !selected && "text-muted-foreground"
           )}
         >

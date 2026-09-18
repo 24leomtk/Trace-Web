@@ -198,7 +198,7 @@ export default function SignInPage() {
                 {demoPageItems.map((entry) => (
                   <li
                     key={entry.phoneNumber}
-                    className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2"
+                    className="flex items-center justify-between gap-3 rounded-none border px-3 py-2"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">

@@ -6,11 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  createApiKey,
-  listApiKeys,
-  revokeApiKey,
-} from "@/lib/actions/apikeys"
+import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/actions/apikeys"
 import { listManagedUsers } from "@/lib/actions/admin"
 import {
   AdminCombobox,
@@ -74,7 +70,9 @@ export default function AdminApiKeysPage() {
       setDialogOpen(false)
       await refresh()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not issue key.")
+      toast.error(
+        error instanceof Error ? error.message : "Could not issue key."
+      )
     } finally {
       setSaving(false)
     }
@@ -84,7 +82,12 @@ export default function AdminApiKeysPage() {
     <div className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit rounded-full px-2">
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="mb-2 w-fit rounded-full px-2"
+          >
             <Link href="/">
               <ArrowLeftIcon data-icon="inline-start" />
               Administration
@@ -95,7 +98,8 @@ export default function AdminApiKeysPage() {
           </p>
           <h1 className="mt-1 text-xl font-medium">API keys</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Acts as one user with the plate:read scope (ANPR readers). Copy the key now — it never shows again.
+            Acts as one user with the plate:read scope (ANPR readers). Copy the
+            key now — it never shows again.
           </p>
         </div>
         <Button onClick={openDialog} className="shrink-0">
@@ -110,7 +114,10 @@ export default function AdminApiKeysPage() {
         title="Issue API key"
         description="Acts as one user with the plate:read scope (ANPR readers)."
       >
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <form
+          onSubmit={handleSubmit}
+          className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        >
           <AdminField label="Acting user">
             <AdminCombobox
               label="Acting user"
@@ -126,7 +133,9 @@ export default function AdminApiKeysPage() {
           <AdminField label="Key name" hint="e.g. Lilongwe ANPR camera 3.">
             <Input
               value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
               required
               minLength={2}
             />
@@ -141,7 +150,11 @@ export default function AdminApiKeysPage() {
             />
           </AdminField>
           <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
@@ -152,11 +165,13 @@ export default function AdminApiKeysPage() {
       </ResponsiveModal>
 
       {freshKey && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/10">
+        <div className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/10">
           <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
             Copy now — this is the only time it shows:
           </p>
-          <p className="mt-1 font-mono text-sm break-all select-all">{freshKey}</p>
+          <p className="mt-1 font-mono text-sm break-all select-all">
+            {freshKey}
+          </p>
           <Button
             type="button"
             size="sm"
@@ -176,7 +191,7 @@ export default function AdminApiKeysPage() {
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !keys || keys.length === 0 ? (
-          <p className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+          <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             No API keys issued.
           </p>
         ) : (
@@ -184,15 +199,18 @@ export default function AdminApiKeysPage() {
             {keys.map((key) => (
               <li
                 key={key.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5"
+                className="flex items-center justify-between gap-3 rounded-none border px-3 py-2.5"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
-                    {key.name} · <span className="font-mono">{key.keyPrefix}…</span>
+                    {key.name} ·{" "}
+                    <span className="font-mono">{key.keyPrefix}…</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {key.userName} · {key.scopes.join(", ")}
-                    {key.expiresAt ? ` · expires ${key.expiresAt.slice(0, 10)}` : " · no expiry"}
+                    {key.expiresAt
+                      ? ` · expires ${key.expiresAt.slice(0, 10)}`
+                      : " · no expiry"}
                     {!key.isActive && " · revoked"}
                   </p>
                 </div>
@@ -206,7 +224,9 @@ export default function AdminApiKeysPage() {
                         toast.success("Key revoked.")
                         await refresh()
                       } catch (error) {
-                        toast.error(error instanceof Error ? error.message : "Failed.")
+                        toast.error(
+                          error instanceof Error ? error.message : "Failed."
+                        )
                       }
                     }}
                   >

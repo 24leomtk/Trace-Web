@@ -25,7 +25,7 @@ export function AuditLog({ limit = 50 }: { limit?: number }) {
 
   if (isError) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
         Could not load the audit log.
       </p>
     )
@@ -33,7 +33,7 @@ export function AuditLog({ limit = 50 }: { limit?: number }) {
 
   if (!data || data.length === 0) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
         No audit entries yet.
       </p>
     )
@@ -42,7 +42,7 @@ export function AuditLog({ limit = 50 }: { limit?: number }) {
   return (
     <ul className="flex flex-col gap-2">
       {data.map((entry) => (
-        <li key={entry.id} className="rounded-3xl border bg-card px-4 py-3">
+        <li key={entry.id} className="rounded-none border bg-card px-4 py-3">
           <p className="text-sm font-medium">
             {entry.actorName} · {entry.action.replace(/_/g, " ")}
           </p>

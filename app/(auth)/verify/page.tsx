@@ -114,7 +114,7 @@ function VerifyForm() {
       </div>
 
       {/* DEMO-COMPETITION-ONLY — delete this box before production / after the competition. */}
-      <div className="w-full rounded-2xl border border-dashed border-amber-500/60 bg-amber-500/10 px-4 py-3 text-center">
+      <div className="w-full rounded-none border border-dashed border-amber-500/60 bg-amber-500/10 px-4 py-3 text-center">
         <p className="text-xs font-medium tracking-wide text-amber-700 uppercase dark:text-amber-400">
           Competition demo — no SMS needed
         </p>

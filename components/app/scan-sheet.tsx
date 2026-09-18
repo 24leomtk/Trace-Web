@@ -63,7 +63,7 @@ export function ScanSheet({
     >
       {error ? (
         <div className="flex flex-col gap-3">
-          <p className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <p className="rounded-none border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
             {error} Type the value instead — nothing is lost.
           </p>
           <ResponsiveModalFooter>
@@ -78,7 +78,7 @@ export function ScanSheet({
           </ResponsiveModalFooter>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border bg-black">
+        <div className="overflow-hidden rounded-none border bg-black">
           {open && (
             <Scanner
               onScan={handleScan}
@@ -87,7 +87,8 @@ export function ScanSheet({
                   typeof err === "string"
                     ? err
                     : "message" in (err as object) &&
-                        typeof (err as { message: unknown }).message === "string"
+                        typeof (err as { message: unknown }).message ===
+                          "string"
                       ? String((err as { message: unknown }).message)
                       : "Camera unavailable."
                 )

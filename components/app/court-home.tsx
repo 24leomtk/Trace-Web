@@ -4,7 +4,12 @@ import { useQuery } from "@tanstack/react-query"
 import Link from "next/link"
 
 import { getMyReferrals } from "@/lib/actions/records"
-import { daysUntil, expiryTone, formatCountdown, formatDateTime } from "@/lib/format"
+import {
+  daysUntil,
+  expiryTone,
+  formatCountdown,
+  formatDateTime,
+} from "@/lib/format"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -31,11 +36,11 @@ export function CourtHome() {
           ))}
         </div>
       ) : isError ? (
-        <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           Could not load referrals.
         </p>
       ) : !data || data.length === 0 ? (
-        <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           No active referrals. Access expires unless a monitor renews it.
         </p>
       ) : (
@@ -48,23 +53,24 @@ export function CourtHome() {
               <li key={entry.referralId}>
                 <Link
                   href={`/records/${entry.record.id}`}
-                  className="block rounded-3xl border bg-card px-4 py-3 transition-colors hover:bg-accent"
+                  className="block rounded-none border bg-card px-4 py-3 transition-colors hover:bg-accent"
                 >
                   <p className="flex flex-wrap items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                     <span>{meta.label}</span>
                     {entry.expiresAt && (
                       <span
                         className={cn(
-                          "inline-flex items-center rounded-md border px-1.5 py-0.5 normal-case",
+                          "inline-flex items-center rounded-none border px-1.5 py-0.5 normal-case",
                           TONE_BADGE_CLASS[tone]
                         )}
                       >
-                        {formatCountdown(left)} · until {formatDateTime(entry.expiresAt)}
+                        {formatCountdown(left)} · until{" "}
+                        {formatDateTime(entry.expiresAt)}
                       </span>
                     )}
                     <span
                       className={cn(
-                        "inline-flex items-center rounded-md border px-1.5 py-0.5 normal-case",
+                        "inline-flex items-center rounded-none border px-1.5 py-0.5 normal-case",
                         entry.outcome !== "pending"
                           ? TONE_BADGE_CLASS.emerald
                           : TONE_BADGE_CLASS.slate

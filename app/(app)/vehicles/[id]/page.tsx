@@ -12,7 +12,11 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useUser } from "@/providers/user-context"
 
-export default function VehicleDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function VehicleDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   const { id } = use(params)
   const { user } = useUser()
   const queryClient = useQueryClient()
@@ -39,7 +43,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
     return (
       <div className="flex flex-col gap-4">
         <BackLink />
-        <p className="rounded-3xl border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           Vehicle not found.
         </p>
       </div>
@@ -69,7 +73,9 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       await queryClient.invalidateQueries({ queryKey: ["vehicle", id] })
       await queryClient.invalidateQueries({ queryKey: ["unverified-vehicles"] })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Verification failed.")
+      toast.error(
+        error instanceof Error ? error.message : "Verification failed."
+      )
     } finally {
       setSaving(false)
     }
@@ -81,19 +87,25 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">{vehicle.plateNumber}</h1>
         <p className="text-sm text-muted-foreground">
-          {[vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(" · ") || "No details yet"}
+          {[vehicle.make, vehicle.model, vehicle.color]
+            .filter(Boolean)
+            .join(" · ") || "No details yet"}
         </p>
         <p className="text-xs text-muted-foreground">
-          {vehicle.isVerified ? `Verified${vehicle.registrarName ? ` by ${vehicle.registrarName}` : ""}` : "Unverified ad-hoc entry"}
+          {vehicle.isVerified
+            ? `Verified${vehicle.registrarName ? ` by ${vehicle.registrarName}` : ""}`
+            : "Unverified ad-hoc entry"}
           {vehicle.isFlagged && " · FLAGGED"}
         </p>
       </header>
 
       {vehicle.ownerName && (
-        <section className="rounded-3xl border bg-card p-4 text-sm">
+        <section className="rounded-none border bg-card p-4 text-sm">
           <p className="font-medium">{vehicle.ownerName}</p>
           <p className="text-muted-foreground">
-            {[vehicle.ownerNationalId, vehicle.ownerPhone].filter(Boolean).join(" · ")}
+            {[vehicle.ownerNationalId, vehicle.ownerPhone]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </section>
       )}
@@ -104,23 +116,34 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
             Linked cases ({caseCount})
           </h2>
           {linkedCases.map((entry) => (
-            <Link key={entry.id} href={`/records/${entry.recordId}`} className="rounded-2xl border px-3 py-2 text-sm hover:bg-accent">
-              <span className="font-medium">{entry.caseType.replace(/_/g, " ")}</span>
+            <Link
+              key={entry.id}
+              href={`/records/${entry.recordId}`}
+              className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
+            >
+              <span className="font-medium">
+                {entry.caseType.replace(/_/g, " ")}
+              </span>
               <span className="text-muted-foreground"> · {entry.status}</span>
             </Link>
           ))}
         </section>
       )}
       {!isRegistrar && linkedCases.length === 0 && (
-        <p className="text-sm text-muted-foreground">No linked cases ({caseCount} coded rows).</p>
+        <p className="text-sm text-muted-foreground">
+          No linked cases ({caseCount} coded rows).
+        </p>
       )}
 
       {isRegistrar && (
-        <section className="flex flex-col gap-3 rounded-3xl border bg-card p-4">
+        <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Verify / enrich
           </h2>
-          <form onSubmit={handleVerify} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <form
+            onSubmit={handleVerify}
+            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+          >
             {(
               [
                 ["make", "Make"],

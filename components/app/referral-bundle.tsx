@@ -29,7 +29,10 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
-const CHECKLIST: { label: (typeof referralDocumentLabels)[number]; title: string }[] = [
+const CHECKLIST: {
+  label: (typeof referralDocumentLabels)[number]
+  title: string
+}[] = [
   { label: "charge_sheet", title: "Charge sheet" },
   { label: "witness_statement", title: "Witness statement" },
   { label: "exhibit_photo", title: "Exhibit / photo" },
@@ -63,7 +66,9 @@ export function ReferralBundle({
   const [uploading, setUploading] = useState(false)
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ["referral-bundle", referralId] })
+    await queryClient.invalidateQueries({
+      queryKey: ["referral-bundle", referralId],
+    })
   }
 
   async function submitDocument(event: React.FormEvent) {
@@ -97,7 +102,7 @@ export function ReferralBundle({
   if (bundleQuery.isLoading) return <Skeleton className="h-40 w-full" />
   if (bundleQuery.isError || !bundleQuery.data) {
     return (
-      <p className="rounded-3xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+      <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
         Could not load the brief bundle.
       </p>
     )
@@ -108,7 +113,7 @@ export function ReferralBundle({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="rounded-3xl border bg-card px-4 py-3">
+      <section className="rounded-none border bg-card px-4 py-3">
         <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
           E-Brief · referred to {bundle.liaisonName}
         </p>
@@ -128,7 +133,7 @@ export function ReferralBundle({
         </p>
       </section>
 
-      <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+      <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Statement checklist
         </h2>
@@ -151,7 +156,8 @@ export function ReferralBundle({
                   !present.has(item.label) &&
                   caseAttachmentCount > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      · {caseAttachmentCount} case photo{caseAttachmentCount === 1 ? "" : "s"}
+                      · {caseAttachmentCount} case photo
+                      {caseAttachmentCount === 1 ? "" : "s"}
                     </span>
                   )}
               </li>
@@ -160,7 +166,7 @@ export function ReferralBundle({
         </ul>
       </section>
 
-      <section className="flex flex-col gap-2 rounded-3xl border bg-card p-4">
+      <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Brief documents ({bundle.documents.length})
         </h2>
@@ -173,7 +179,7 @@ export function ReferralBundle({
             {bundle.documents.map((doc) => (
               <li
                 key={doc.id}
-                className="flex items-center justify-between gap-2 rounded-2xl border px-3 py-2 text-sm"
+                className="flex items-center justify-between gap-2 rounded-none border px-3 py-2 text-sm"
               >
                 <a
                   href={doc.url}
@@ -195,7 +201,9 @@ export function ReferralBundle({
                         toast.success("Document removed.")
                         await refresh()
                       } catch (error) {
-                        toast.error(error instanceof Error ? error.message : "Failed.")
+                        toast.error(
+                          error instanceof Error ? error.message : "Failed."
+                        )
                       }
                     }}
                   >
@@ -215,7 +223,10 @@ export function ReferralBundle({
                   setLabel(value as (typeof referralDocumentLabels)[number])
                 }
               >
-                <SelectTrigger aria-label="Document type" className="h-9 flex-1">
+                <SelectTrigger
+                  aria-label="Document type"
+                  className="h-9 flex-1"
+                >
                   <SelectValue placeholder="Document type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -234,7 +245,12 @@ export function ReferralBundle({
                 className="flex-1"
               />
             </div>
-            <Button type="submit" size="sm" className="w-fit" disabled={uploading || !file}>
+            <Button
+              type="submit"
+              size="sm"
+              className="w-fit"
+              disabled={uploading || !file}
+            >
               <FilePlus2Icon data-icon="inline-start" />
               {uploading ? "Uploading…" : "Attach tranche"}
             </Button>

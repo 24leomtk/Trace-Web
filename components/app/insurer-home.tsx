@@ -7,7 +7,13 @@ import { toast } from "sonner"
 import { bulkCreatePolicies, listPolicies } from "@/lib/actions/insurance"
 import { insurerPlateLookup } from "@/lib/actions/access"
 import { isPolicyLive } from "@/lib/visibility"
-import { daysUntil, expiryTone, formatCountdown, parsePolicyCsv, POLICY_CSV_TEMPLATE } from "@/lib/format"
+import {
+  daysUntil,
+  expiryTone,
+  formatCountdown,
+  parsePolicyCsv,
+  POLICY_CSV_TEMPLATE,
+} from "@/lib/format"
 import { TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -47,7 +53,9 @@ export function InsurerHome() {
   }
 
   function downloadTemplate() {
-    const blob = new Blob([POLICY_CSV_TEMPLATE], { type: "text/csv;charset=utf-8" })
+    const blob = new Blob([POLICY_CSV_TEMPLATE], {
+      type: "text/csv;charset=utf-8",
+    })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement("a")
     anchor.href = url
@@ -73,9 +81,7 @@ export function InsurerHome() {
     if (!csvText) return
     const parsed = parsePolicyCsv(csvText)
     if (parsed.rows.length === 0) {
-      toast.error(
-        parsed.errors[0]?.message ?? "No valid rows found."
-      )
+      toast.error(parsed.errors[0]?.message ?? "No valid rows found.")
       return
     }
     if (parsed.rows.length > 500) {
@@ -113,7 +119,7 @@ export function InsurerHome() {
           value={plate}
           onChange={(event) => setPlate(event.target.value)}
           placeholder="Plate number, e.g. MH 1234"
-          className="rounded-2xl"
+          className="rounded-none"
         />
         <Button type="submit" disabled={checking}>
           {checking ? "Checking…" : "Flag check"}
@@ -121,7 +127,7 @@ export function InsurerHome() {
       </form>
       {flagResult !== null && (
         <p
-          className={`rounded-2xl border px-4 py-3 text-sm font-medium ${
+          className={`rounded-none border px-4 py-3 text-sm font-medium ${
             flagResult
               ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
               : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
@@ -138,13 +144,17 @@ export function InsurerHome() {
           Bulk import
         </h2>
         <p className="text-xs text-muted-foreground">
-          CSV with plate_number, policy_number, start_date, end_date
-          (optional coverage_type, is_active, external_reference). Vehicles
-          must already be on file — unknown plates come back as row errors.
-          500 rows max.
+          CSV with plate_number, policy_number, start_date, end_date (optional
+          coverage_type, is_active, external_reference). Vehicles must already
+          be on file — unknown plates come back as row errors. 500 rows max.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={downloadTemplate}
+          >
             Template
           </Button>
           <Input
@@ -163,20 +173,23 @@ export function InsurerHome() {
             {importing ? "Importing…" : `Import${csvName ? ` ${csvName}` : ""}`}
           </Button>
         </div>
-        {csvText != null && (() => {
-          const preview = parsePolicyCsv(csvText)
-          return (
-            <p className="text-xs text-muted-foreground">
-              {preview.rows.length} valid row(s)
-              {preview.errors.length > 0 && ` · ${preview.errors.length} skipped: ${preview.errors[0]?.message}`}
-            </p>
-          )
-        })()}
+        {csvText != null &&
+          (() => {
+            const preview = parsePolicyCsv(csvText)
+            return (
+              <p className="text-xs text-muted-foreground">
+                {preview.rows.length} valid row(s)
+                {preview.errors.length > 0 &&
+                  ` · ${preview.errors.length} skipped: ${preview.errors[0]?.message}`}
+              </p>
+            )
+          })()}
         {importResult && (
-          <div className="rounded-2xl border px-3 py-2 text-sm">
+          <div className="rounded-none border px-3 py-2 text-sm">
             <p className="font-medium">
               {importResult.created} created
-              {importResult.failed.length > 0 && ` · ${importResult.failed.length} failed`}
+              {importResult.failed.length > 0 &&
+                ` · ${importResult.failed.length} failed`}
             </p>
             {importResult.failed.length > 0 && (
               <ul className="mt-1 flex max-h-32 flex-col gap-0.5 overflow-y-auto text-xs text-muted-foreground">
@@ -198,11 +211,11 @@ export function InsurerHome() {
         {isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : isError ? (
-          <p className="rounded-3xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+          <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
             Could not load policies.
           </p>
         ) : !data || data.length === 0 ? (
-          <p className="rounded-3xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+          <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
             No policies yet.
           </p>
         ) : (
@@ -218,13 +231,15 @@ export function InsurerHome() {
               return (
                 <li
                   key={policy.id}
-                  className="rounded-3xl border bg-card px-4 py-3"
+                  className="rounded-none border bg-card px-4 py-3"
                 >
                   <p className="flex flex-wrap items-center gap-2 text-[15px] font-medium">
-                    <span>{policy.plateNumber} · {policy.policyNumber}</span>
+                    <span>
+                      {policy.plateNumber} · {policy.policyNumber}
+                    </span>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs",
+                        "inline-flex items-center rounded-none border px-1.5 py-0.5 text-xs",
                         TONE_BADGE_CLASS[tone]
                       )}
                     >
@@ -232,8 +247,8 @@ export function InsurerHome() {
                     </span>
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {policy.coverageType || "Standard cover"} · {policy.startDate} →{" "}
-                    {policy.endDate}
+                    {policy.coverageType || "Standard cover"} ·{" "}
+                    {policy.startDate} → {policy.endDate}
                   </p>
                 </li>
               )

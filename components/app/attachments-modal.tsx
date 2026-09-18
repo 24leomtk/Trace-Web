@@ -107,90 +107,90 @@ function AttachmentList({
   return (
     <>
       {galleryMode ? (
-          <div className="grid grid-cols-3 gap-2">
-            {visible.map((attachment) => (
-              <button
-                key={attachment.id}
-                type="button"
-                aria-label={`Open ${attachment.name}`}
-                onClick={() => onOpenFile(attachment)}
-                className="group relative aspect-square overflow-hidden rounded-xl border bg-muted outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-              >
-                {attachment.url ? (
-                  <img
-                    src={attachment.url}
-                    alt={attachment.name}
-                    loading="lazy"
-                    className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
-                  />
-                ) : (
-                  <span className="flex size-full items-center justify-center text-muted-foreground">
-                    <ImageIcon className="size-5" />
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {visible.map((attachment) => {
-              const Icon = KIND_ICON[attachment.kind]
-              const hash = shortFileHash(attachment.fileHash)
-              return (
-                <Attachment key={attachment.id} className="w-full">
-                  <AttachmentMedia>
-                    <Icon />
-                  </AttachmentMedia>
-                  <AttachmentContent>
-                    <AttachmentTitle>{attachment.name}</AttachmentTitle>
-                    <AttachmentDescription>
-                      {formatBytes(attachment.sizeBytes)} ·{" "}
-                      {attachment.kind.toUpperCase()}
-                      {hash ? ` · SHA ${hash}` : ""}
-                      {attachment.retentionUntil
-                        ? ` · kept until ${formatDateKey(attachment.retentionUntil.slice(0, 10))}`
-                        : ""}
-                    </AttachmentDescription>
-                  </AttachmentContent>
-                  <AttachmentAction
-                    aria-label={`Download ${attachment.name}`}
-                    onClick={() => onOpenFile(attachment)}
-                  >
-                    <DownloadIcon />
-                  </AttachmentAction>
-                </Attachment>
-              )
-            })}
-          </div>
-        )}
+        <div className="grid grid-cols-3 gap-2">
+          {visible.map((attachment) => (
+            <button
+              key={attachment.id}
+              type="button"
+              aria-label={`Open ${attachment.name}`}
+              onClick={() => onOpenFile(attachment)}
+              className="group relative aspect-square overflow-hidden rounded-none border bg-muted outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+            >
+              {attachment.url ? (
+                <img
+                  src={attachment.url}
+                  alt={attachment.name}
+                  loading="lazy"
+                  className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+                />
+              ) : (
+                <span className="flex size-full items-center justify-center text-muted-foreground">
+                  <ImageIcon className="size-5" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {visible.map((attachment) => {
+            const Icon = KIND_ICON[attachment.kind]
+            const hash = shortFileHash(attachment.fileHash)
+            return (
+              <Attachment key={attachment.id} className="w-full">
+                <AttachmentMedia>
+                  <Icon />
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{attachment.name}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {formatBytes(attachment.sizeBytes)} ·{" "}
+                    {attachment.kind.toUpperCase()}
+                    {hash ? ` · SHA ${hash}` : ""}
+                    {attachment.retentionUntil
+                      ? ` · kept until ${formatDateKey(attachment.retentionUntil.slice(0, 10))}`
+                      : ""}
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentAction
+                  aria-label={`Download ${attachment.name}`}
+                  onClick={() => onOpenFile(attachment)}
+                >
+                  <DownloadIcon />
+                </AttachmentAction>
+              </Attachment>
+            )
+          })}
+        </div>
+      )}
 
-        {pageCount > 1 && (
-          <div className="flex items-center justify-between pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 0}
-              onClick={() => setPage(currentPage - 1)}
-            >
-              <ChevronLeftIcon data-icon="inline-start" />
-              Prev
-            </Button>
-            <span className="text-xs font-medium tabular-nums text-muted-foreground">
-              {currentPage + 1} / {pageCount}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={currentPage >= pageCount - 1}
-              onClick={() => setPage(currentPage + 1)}
-            >
-              Next
-              <ChevronRightIcon data-icon="inline-end" />
-            </Button>
-          </div>
-        )}
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={currentPage === 0}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            <ChevronLeftIcon data-icon="inline-start" />
+            Prev
+          </Button>
+          <span className="text-xs font-medium text-muted-foreground tabular-nums">
+            {currentPage + 1} / {pageCount}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= pageCount - 1}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            Next
+            <ChevronRightIcon data-icon="inline-end" />
+          </Button>
+        </div>
+      )}
     </>
   )
 }
