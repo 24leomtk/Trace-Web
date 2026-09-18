@@ -6,10 +6,10 @@ export default function AppLoading() {
       {/* Top Header / Mode Switcher placeholder */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Skeleton className="size-10 rounded-2xl" />
+          <Skeleton className="size-10" />
           <div className="flex flex-col gap-1.5">
-            <Skeleton className="h-4 w-32 rounded-lg" />
-            <Skeleton className="h-3 w-20 rounded-lg" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-20" />
           </div>
         </div>
         <Skeleton className="h-9 w-28" />
@@ -17,8 +17,8 @@ export default function AppLoading() {
 
       {/* Filter / Action Bar placeholder */}
       <div className="flex items-center gap-2">
-        <Skeleton className="h-10 flex-1 rounded-2xl" />
-        <Skeleton className="size-10 shrink-0 rounded-2xl" />
+        <Skeleton className="h-10 flex-1" />
+        <Skeleton className="size-10 shrink-0" />
       </div>
 
       {/* Timeline / Record cards skeletons */}

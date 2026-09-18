@@ -13,7 +13,10 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -36,6 +39,23 @@ export default function AdminBranchesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["admin-branches"],
     queryFn: () => listBranches(),
+  })
+
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: data ?? [],
+    search: (branch, q) =>
+      `${branch.name} ${branch.domain} ${formatDistrict(branch.district)} ${branch.location ?? ""}`
+        .toLowerCase()
+        .includes(q),
   })
 
   function openDialog() {
@@ -69,33 +89,6 @@ export default function AdminBranchesPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <Button
-            asChild
-            variant="ghost"
-            size="sm"
-            className="mb-2 w-fit rounded-none px-2"
-          >
-            <Link href="/">
-              <ArrowLeftIcon data-icon="inline-start" />
-              Administration
-            </Link>
-          </Button>
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">
-            TRACE administration
-          </p>
-          <h1 className="mt-1 text-xl font-medium">Branches</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A station/post belongs to one domain and one district.
-          </p>
-        </div>
-        <Button onClick={openDialog} className="shrink-0">
-          <PlusIcon data-icon="inline-start" />
-          Add branch
-        </Button>
-      </header>
-
       <ResponsiveModal
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -169,50 +162,78 @@ export default function AdminBranchesPage() {
         </form>
       </ResponsiveModal>
 
-      <AdminSection title="Branches">
+      <AdminSection
+        title="Branches"
+        description=" A station/post belongs to one domain and one district."
+        action={
+          <Button onClick={openDialog} className="shrink-0">
+            <PlusIcon data-icon="inline-start" />
+            Add branch
+          </Button>
+        }
+      >
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search branches…"
+        />
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !data || data.length === 0 ? (
           <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             No branches yet.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No branches match “{debouncedQuery}”.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {data.map((branch) => (
-              <li
-                key={branch.id}
-                className="flex items-center justify-between gap-3 rounded-none border px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{branch.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {branch.domain} · {formatDistrict(branch.district)}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      await deleteBranch(branch.id)
-                      toast.success("Branch removed.")
-                      await queryClient.invalidateQueries({
-                        queryKey: ["admin-branches"],
-                      })
-                    } catch (error) {
-                      toast.error(
-                        error instanceof Error
-                          ? error.message
-                          : "Could not remove."
-                      )
-                    }
-                  }}
+          <>
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {visible.map((branch) => (
+                <li
+                  key={branch.id}
+                  className="flex items-center justify-between gap-3 rounded-none border px-3 py-2.5"
                 >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {branch.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {branch.domain} · {formatDistrict(branch.district)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await deleteBranch(branch.id)
+                        toast.success("Branch removed.")
+                        await queryClient.invalidateQueries({
+                          queryKey: ["admin-branches"],
+                        })
+                      } catch (error) {
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : "Could not remove."
+                        )
+                      }
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <ListPagination
+              page={page}
+              pageCount={pageCount}
+              onPage={setPage}
+              total={total}
+            />
+          </>
         )}
       </AdminSection>
     </div>

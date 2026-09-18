@@ -113,13 +113,13 @@ export function GlobalLoader({
       {/* Brand headers */}
       <div className="flex max-w-xs flex-col items-center gap-1.5">
         <div className="flex items-center gap-1.5 text-lg font-bold tracking-tight text-foreground sm:text-xl">
-          <span>Chipatala Registry</span>
+          <span>TRACE</span>
         </div>
 
         {showBadge && (
           <div className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
             <ShieldCheckIcon className="size-3 text-emerald-600 dark:text-emerald-400" />
-            <span>Malawi National Health Records</span>
+            <span>Tracking · Records · Case Evidence</span>
           </div>
         )}
       </div>

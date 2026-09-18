@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useDebounce } from "use-debounce"
 import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -37,7 +38,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
-const PAGE_SIZE = 15
+const PAGE_SIZE = 8
 
 const ROLE_HINT: Record<string, string> = {
   OFFICER: "Needs domain + branch.",
@@ -64,6 +65,7 @@ const EMPTY_FORM = {
 export default function AdminUsersPage() {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
+  const [debouncedQuery] = useDebounce(query.trim(), 350)
   const [role, setRole] = useState("all")
   const [page, setPage] = useState(0)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -71,8 +73,14 @@ export default function AdminUsersPage() {
   const [creating, setCreating] = useState(false)
 
   const { data, isLoading } = useQuery({
-    queryKey: ["managed-users", query, role, page],
-    queryFn: () => listManagedUsers({ query, role, page, pageSize: PAGE_SIZE }),
+    queryKey: ["managed-users", debouncedQuery, role, page],
+    queryFn: () =>
+      listManagedUsers({
+        query: debouncedQuery,
+        role,
+        page,
+        pageSize: PAGE_SIZE,
+      }),
   })
   const { data: branches } = useQuery({
     queryKey: ["all-branches"],
@@ -85,7 +93,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setPage(0)
-  }, [query, role])
+  }, [debouncedQuery, role])
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["managed-users"] })
@@ -129,34 +137,6 @@ export default function AdminUsersPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <Button
-            asChild
-            variant="ghost"
-            size="sm"
-            className="mb-2 w-fit rounded-none px-2"
-          >
-            <Link href="/">
-              <ArrowLeftIcon data-icon="inline-start" />
-              Administration
-            </Link>
-          </Button>
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">
-            TRACE administration
-          </p>
-          <h1 className="mt-1 text-xl font-medium">Users</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            No self-registration — every account is created here. Deactivation
-            revokes sessions immediately; history is kept.
-          </p>
-        </div>
-        <Button onClick={openDialog} className="shrink-0">
-          <PlusIcon data-icon="inline-start" />
-          Provision account
-        </Button>
-      </header>
-
       <ResponsiveModal
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -292,6 +272,12 @@ export default function AdminUsersPage() {
       <AdminSection
         title="Accounts"
         description="Deactivation revokes sessions immediately; history is kept."
+        action={
+          <Button onClick={openDialog} className="shrink-0">
+            <PlusIcon data-icon="inline-start" />
+            Provision account
+          </Button>
+        }
       >
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-2 sm:flex-row">

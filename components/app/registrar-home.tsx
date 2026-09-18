@@ -2,10 +2,14 @@
 
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useDebounce } from "use-debounce"
 import Link from "next/link"
 
 import { searchVehicles, unverifiedVehicles } from "@/lib/actions/vehicles"
 import { daysSince } from "@/lib/format"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 export function RegistrarHome() {
   const { data: queue, isLoading } = useQuery({
     queryKey: ["unverified-vehicles"],
-    queryFn: () => unverifiedVehicles(),
+    queryFn: () => unverifiedVehicles(100),
   })
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<
@@ -21,12 +25,31 @@ export function RegistrarHome() {
   >([])
   const [searching, setSearching] = useState(false)
 
+  const {
+    query: queueQuery,
+    setQuery: setQueueQuery,
+    debouncedQuery: debouncedQueueQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: queue ?? [],
+    search: (vehicle, q) =>
+      `${vehicle.plateNumber} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
+  const [debouncedLookup] = useDebounce(query.trim(), 350)
+
   async function search(event: React.SubmitEvent) {
     event.preventDefault()
-    if (!query.trim()) return
+    const term = debouncedLookup || query.trim()
+    if (!term) return
     setSearching(true)
     try {
-      setResults(await searchVehicles(query))
+      setResults(await searchVehicles(term, 12))
     } finally {
       setSearching(false)
     }
@@ -48,6 +71,7 @@ export function RegistrarHome() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search plate number…"
           className="rounded-none"
+          aria-label="Search plate number"
         />
         <Button type="submit" disabled={searching}>
           {searching ? "…" : "Search"}
@@ -55,7 +79,7 @@ export function RegistrarHome() {
       </form>
 
       {results.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
           {results.map((vehicle) => (
             <VehicleRow key={vehicle.id} vehicle={vehicle} />
           ))}
@@ -66,18 +90,35 @@ export function RegistrarHome() {
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Awaiting verification
         </h2>
+        <SearchInput
+          value={queueQuery}
+          onChange={setQueueQuery}
+          placeholder="Filter queue by plate, make, model…"
+        />
         {isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : !queue || queue.length === 0 ? (
           <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
             Queue clear — every plate is verified.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+            No queued plates match “{debouncedQueueQuery}”.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {queue.map((vehicle) => (
-              <VehicleRow key={vehicle.id} vehicle={vehicle} />
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {visible.map((vehicle) => (
+                <VehicleRow key={vehicle.id} vehicle={vehicle} />
+              ))}
+            </ul>
+            <ListPagination
+              page={page}
+              pageCount={pageCount}
+              onPage={setPage}
+              total={total}
+            />
+          </>
         )}
       </section>
     </div>

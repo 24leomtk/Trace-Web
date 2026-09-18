@@ -3,11 +3,15 @@
 import { use, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useDebounce } from "use-debounce"
 import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { getPerson, mergePersons, searchPersons } from "@/lib/actions/persons"
 import { formatDateTime } from "@/lib/format"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -33,23 +37,14 @@ export default function PersonDetailPage({
     queryFn: () => getPerson(id),
   })
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />
-  if (isError || !data) {
-    return (
-      <div className="flex flex-col gap-4">
-        <BackLink />
-        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          Person not found.
-        </p>
-      </div>
-    )
-  }
+  const [debouncedMergeQuery] = useDebounce(mergeQuery.trim(), 350)
 
   async function findDuplicates(event: React.SubmitEvent) {
     event.preventDefault()
-    if (!mergeQuery.trim()) return
+    const term = debouncedMergeQuery || mergeQuery.trim()
+    if (!term) return
     setCandidates(
-      (await searchPersons(mergeQuery)).filter((row) => row.id !== id)
+      (await searchPersons(term)).filter((row) => row.id !== id)
     )
   }
 
@@ -64,51 +59,134 @@ export default function PersonDetailPage({
     }
   }
 
+  if (isLoading) return <Skeleton className="h-32 w-full" />
+  if (isError || !data) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackLink />
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+          Person not found.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <PersonDetailView
+      person={data.person}
+      linkedCases={data.linkedCases}
+      isMonitor={isMonitor}
+      mergeQuery={mergeQuery}
+      setMergeQuery={setMergeQuery}
+      candidates={candidates}
+      onFindDuplicates={findDuplicates}
+      onMerge={merge}
+    />
+  )
+}
+
+function PersonDetailView({
+  person,
+  linkedCases,
+  isMonitor,
+  mergeQuery,
+  setMergeQuery,
+  candidates,
+  onFindDuplicates,
+  onMerge,
+}: {
+  person: {
+    fullName: string
+    nationalId?: string | null
+    homeDistrict?: string | null
+    distinguishingFeatures?: string | null
+  }
+  linkedCases: { id: string; recordType: string; status: string; createdAt: string }[]
+  isMonitor: boolean
+  mergeQuery: string
+  setMergeQuery: (value: string) => void
+  candidates: Awaited<ReturnType<typeof searchPersons>>
+  onFindDuplicates: (event: React.SubmitEvent) => void
+  onMerge: (dropId: string) => void
+}) {
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: linkedCases,
+    search: (entry, q) =>
+      `${entry.recordType.replace(/_/g, " ")} ${entry.status}`
+        .toLowerCase()
+        .includes(q),
+  })
+
   return (
     <div className="flex flex-col gap-5">
       <BackLink />
       <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">{data.person.fullName}</h1>
+        <h1 className="text-xl font-semibold">{person.fullName}</h1>
         <p className="text-sm text-muted-foreground">
-          {[
-            data.person.nationalId,
-            data.person.homeDistrict?.replace(/_/g, " "),
-          ]
+          {[person.nationalId, person.homeDistrict?.replace(/_/g, " ")]
             .filter(Boolean)
             .join(" · ") || "No identifiers on file"}
         </p>
-        {data.person.distinguishingFeatures && (
+        {person.distinguishingFeatures && (
           <p className="text-sm text-muted-foreground">
-            {data.person.distinguishingFeatures}
+            {person.distinguishingFeatures}
           </p>
         )}
       </header>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Linked cases ({data.linkedCases.length})
+          Linked cases ({linkedCases.length})
         </h2>
-        {data.linkedCases.length === 0 ? (
+        {linkedCases.length > 4 && (
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search linked cases…"
+          />
+        )}
+        {linkedCases.length === 0 ? (
           <p className="text-sm text-muted-foreground">No linked cases.</p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No linked cases match “{debouncedQuery}”.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {data.linkedCases.map((entry) => (
-              <li key={entry.id}>
-                <Link
-                  href={`/records/${entry.id}`}
-                  className="block rounded-none border px-3 py-2 text-sm hover:bg-accent"
-                >
-                  <span className="font-medium">
-                    {entry.recordType.replace(/_/g, " ")}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · {entry.status} · {formatDateTime(entry.createdAt)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {visible.map((entry) => (
+                <li key={entry.id}>
+                  <Link
+                    href={`/records/${entry.id}`}
+                    className="block rounded-none border px-3 py-2 text-sm hover:bg-accent"
+                  >
+                    <span className="font-medium">
+                      {entry.recordType.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {entry.status} · {formatDateTime(entry.createdAt)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <ListPagination
+              page={page}
+              pageCount={pageCount}
+              onPage={setPage}
+              total={total}
+            />
+          </>
         )}
       </section>
 
@@ -121,11 +199,12 @@ export default function PersonDetailPage({
             Find the duplicate profile — its cases, coded rows, and files move
             here, then it is removed.
           </p>
-          <form onSubmit={findDuplicates} className="flex gap-2">
+          <form onSubmit={onFindDuplicates} className="flex gap-2">
             <Input
               value={mergeQuery}
               onChange={(event) => setMergeQuery(event.target.value)}
               placeholder="Name or national ID…"
+              aria-label="Search duplicate profiles"
             />
             <Button type="submit" size="sm">
               Find
@@ -148,7 +227,7 @@ export default function PersonDetailPage({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => merge(candidate.id)}
+                onClick={() => onMerge(candidate.id)}
               >
                 Merge into this profile
               </Button>

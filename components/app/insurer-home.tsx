@@ -16,6 +16,9 @@ import {
 } from "@/lib/format"
 import { TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -204,10 +207,41 @@ export function InsurerHome() {
         )}
       </section>
 
+      <PoliciesSection data={data} isLoading={isLoading} isError={isError} />
+    </div>
+  )
+}
+
+function PoliciesSection({
+  data,
+  isLoading,
+  isError,
+}: {
+  data:
+    | Awaited<ReturnType<typeof listPolicies>>
+    | undefined
+  isLoading: boolean
+  isError: boolean
+}) {
+  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
+    usePaginatedSearch({
+      items: data ?? [],
+      search: (policy, q) =>
+        `${policy.plateNumber} ${policy.policyNumber} ${policy.coverageType ?? ""}`
+          .toLowerCase()
+          .includes(q),
+    })
+
+  return (
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Our policies
         </h2>
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search plate or policy number…"
+        />
         {isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : isError ? (
@@ -218,9 +252,14 @@ export function InsurerHome() {
           <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
             No policies yet.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+            No policies match “{debouncedQuery}”.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {data.map((policy) => {
+          <>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {visible.map((policy) => {
               const live = isPolicyLive(policy)
               const left = daysUntil(
                 typeof policy.endDate === "string"
@@ -254,8 +293,14 @@ export function InsurerHome() {
               )
             })}
           </ul>
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
+          </>
         )}
       </section>
-    </div>
   )
 }

@@ -11,6 +11,9 @@ import {
 } from "@/lib/actions/assignments"
 import { assignmentDue } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -32,8 +35,25 @@ export function AssignmentQueue() {
     queryFn: listMyAssignments,
   })
 
-  if (isLoading) return <Skeleton className="h-20 w-full" />
   const open = data?.open ?? []
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: open,
+    search: (item, q) =>
+      `${item.recordTitle} ${item.assignedByName} ${item.note ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
+
+  if (isLoading) return <Skeleton className="h-20 w-full" />
   const overdueCount = open.filter(
     (item) => assignmentDue(item.dueAt, item.state).overdue
   ).length
@@ -54,13 +74,25 @@ export function AssignmentQueue() {
           {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
         </span>
       </h2>
+      {open.length > 4 && (
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search tasks…"
+        />
+      )}
       {open.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
           Queue clear — no open tasks.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
+          No tasks match “{debouncedQuery}”.
+        </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {open.map((item) => {
+        <>
+        <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {visible.map((item) => {
             const due = assignmentDue(item.dueAt, item.state)
             return (
               <li
@@ -120,6 +152,13 @@ export function AssignmentQueue() {
             )
           })}
         </ul>
+        <ListPagination
+          page={page}
+          pageCount={pageCount}
+          onPage={setPage}
+          total={total}
+        />
+        </>
       )}
     </section>
   )

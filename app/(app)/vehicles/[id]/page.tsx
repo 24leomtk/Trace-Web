@@ -7,6 +7,9 @@ import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { getVehicle, verifyVehicle } from "@/lib/actions/vehicles"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -110,29 +113,8 @@ export default function VehicleDetailPage({
         </section>
       )}
 
-      {!isRegistrar && linkedCases.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Linked cases ({caseCount})
-          </h2>
-          {linkedCases.map((entry) => (
-            <Link
-              key={entry.id}
-              href={`/records/${entry.recordId}`}
-              className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
-            >
-              <span className="font-medium">
-                {entry.caseType.replace(/_/g, " ")}
-              </span>
-              <span className="text-muted-foreground"> · {entry.status}</span>
-            </Link>
-          ))}
-        </section>
-      )}
-      {!isRegistrar && linkedCases.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No linked cases ({caseCount} coded rows).
-        </p>
+      {!isRegistrar && (
+        <VehicleLinkedCases linkedCases={linkedCases} caseCount={caseCount} />
       )}
 
       {isRegistrar && (
@@ -173,6 +155,73 @@ export default function VehicleDetailPage({
         </section>
       )}
     </div>
+  )
+}
+
+function VehicleLinkedCases({
+  linkedCases,
+  caseCount,
+}: {
+  linkedCases: { id: string; recordId: string; caseType: string; status: string }[]
+  caseCount: number
+}) {
+  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
+    usePaginatedSearch({
+      items: linkedCases,
+      search: (entry, q) =>
+        `${entry.caseType.replace(/_/g, " ")} ${entry.status}`.toLowerCase().includes(q),
+    })
+
+  if (linkedCases.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No linked cases ({caseCount} coded rows).
+      </p>
+    )
+  }
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Linked cases ({caseCount})
+      </h2>
+      {linkedCases.length > 4 && (
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search linked cases…"
+        />
+      )}
+      {visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No linked cases match “{debouncedQuery}”.
+        </p>
+      ) : (
+        <>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {visible.map((entry) => (
+              <li key={entry.id}>
+                <Link
+                  href={`/records/${entry.recordId}`}
+                  className="block rounded-none border px-3 py-2 text-sm hover:bg-accent"
+                >
+                  <span className="font-medium">
+                    {entry.caseType.replace(/_/g, " ")}
+                  </span>
+                  <span className="text-muted-foreground"> · {entry.status}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
+        </>
+      )}
+    </section>
   )
 }
 

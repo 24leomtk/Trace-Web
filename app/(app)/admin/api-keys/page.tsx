@@ -13,7 +13,10 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { DialogFooter } from "@/components/ui/dialog"
@@ -36,6 +39,23 @@ export default function AdminApiKeysPage() {
   const { data: keys, isLoading } = useQuery({
     queryKey: ["admin-api-keys"],
     queryFn: listApiKeys,
+  })
+
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: keys ?? [],
+    search: (key, q) =>
+      `${key.name} ${key.keyPrefix} ${key.userName} ${key.scopes.join(" ")}`
+        .toLowerCase()
+        .includes(q),
   })
   const { data: users } = useQuery({
     queryKey: ["admin-user-options"],
@@ -80,29 +100,6 @@ export default function AdminApiKeysPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="mb-2 w-fit px-2">
-            <Link href="/">
-              <ArrowLeftIcon data-icon="inline-start" />
-              Administration
-            </Link>
-          </Button>
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">
-            TRACE administration
-          </p>
-          <h1 className="mt-1 text-xl font-medium">API keys</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Acts as one user with the plate:read scope (ANPR readers). Copy the
-            key now — it never shows again.
-          </p>
-        </div>
-        <Button onClick={openDialog} className="shrink-0">
-          <PlusIcon data-icon="inline-start" />
-          Issue key
-        </Button>
-      </header>
-
       <ResponsiveModal
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -182,55 +179,82 @@ export default function AdminApiKeysPage() {
         </div>
       )}
 
-      <AdminSection title="Active keys">
+      <AdminSection
+        title="Active keys"
+        description="Acts as one user with the plate:read scope (ANPR readers). Copy the
+            key now — it never shows again."
+        action={
+          <Button onClick={openDialog} className="shrink-0">
+            <PlusIcon data-icon="inline-start" />
+            Issue key
+          </Button>
+        }
+      >
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search keys by name, user, prefix…"
+        />
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !keys || keys.length === 0 ? (
           <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             No API keys issued.
           </p>
+        ) : visible.length === 0 ? (
+          <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No keys match “{debouncedQuery}”.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {keys.map((key) => (
-              <li
-                key={key.id}
-                className="flex items-center justify-between gap-3 rounded-none border px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {key.name} ·{" "}
-                    <span className="font-mono">{key.keyPrefix}…</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {key.userName} · {key.scopes.join(", ")}
-                    {key.expiresAt
-                      ? ` · expires ${key.expiresAt.slice(0, 10)}`
-                      : " · no expiry"}
-                    {!key.isActive && " · revoked"}
-                  </p>
-                </div>
-                {key.isActive && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      try {
-                        await revokeApiKey(key.id)
-                        toast.success("Key revoked.")
-                        await refresh()
-                      } catch (error) {
-                        toast.error(
-                          error instanceof Error ? error.message : "Failed."
-                        )
-                      }
-                    }}
-                  >
-                    Revoke
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {visible.map((key) => (
+                <li
+                  key={key.id}
+                  className="flex items-center justify-between gap-3 rounded-none border px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {key.name} ·{" "}
+                      <span className="font-mono">{key.keyPrefix}…</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {key.userName} · {key.scopes.join(", ")}
+                      {key.expiresAt
+                        ? ` · expires ${key.expiresAt.slice(0, 10)}`
+                        : " · no expiry"}
+                      {!key.isActive && " · revoked"}
+                    </p>
+                  </div>
+                  {key.isActive && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await revokeApiKey(key.id)
+                          toast.success("Key revoked.")
+                          await refresh()
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error ? error.message : "Failed."
+                          )
+                        }
+                      }}
+                    >
+                      Revoke
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <ListPagination
+              page={page}
+              pageCount={pageCount}
+              onPage={setPage}
+              total={total}
+            />
+          </>
         )}
       </AdminSection>
     </div>

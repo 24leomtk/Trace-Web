@@ -420,6 +420,8 @@ interface ListRecordsInput {
    *                     no district), country = all country-level.
    */
   scope?: "all" | "mine" | "district" | "country"
+  /** Free-text search over the derived title/summary/badges/type. */
+  query?: string
 }
 
 export async function listRecords({
@@ -428,6 +430,7 @@ export async function listRecords({
   type,
   status,
   scope: requestedScope = "all",
+  query = "",
 }: ListRecordsInput = {}): Promise<Page<TraceRecord>> {
   const scope = await getViewerScope()
   if (
@@ -495,6 +498,44 @@ export async function listRecords({
         filters.push(eq(records.accessLevel, "country"))
       }
       // Country monitors: country tab = whole feed — no extra filter needed.
+    }
+
+    const q = query.trim().toLowerCase()
+
+    // Free-text search runs over the derived title/summary (stored payload
+    // shapes differ per type, so filtering happens after `toTraceRecord`).
+    // The candidate window is capped to keep search bounded; pagination then
+    // slices the filtered array so cursors stay stable while searching.
+    if (q) {
+      const SEARCH_WINDOW = 300
+      const rows = await tx
+        .select()
+        .from(records)
+        .where(filters.length > 0 ? and(visibility, ...filters) : visibility)
+        .orderBy(desc(records.createdAt), desc(records.id))
+        .limit(SEARCH_WINDOW)
+      const all: TraceRecord[] = []
+      for (const row of rows) all.push(await toTraceRecord(tx, row))
+      const filtered = all.filter((item) =>
+        [
+          item.title,
+          item.summary,
+          item.recordType.replace(/_/g, " "),
+          item.status,
+          item.branchName ?? "",
+          item.author.name,
+          ...item.badges.map((badge) => badge.label),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      )
+      const page = filtered.slice(cursor, cursor + limit)
+      return {
+        items: page,
+        nextCursor:
+          cursor + limit < filtered.length ? cursor + limit : null,
+      }
     }
 
     const rows = await tx

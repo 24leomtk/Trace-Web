@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { PaperclipIcon, TriangleAlertIcon } from "lucide-react"
+import { useDebounce } from "use-debounce"
+import { ArrowRightIcon, PaperclipIcon, TriangleAlertIcon } from "lucide-react"
 
 import { listRecords } from "@/lib/actions/records"
 import { formatDateTime } from "@/lib/format"
@@ -17,20 +18,36 @@ import { useInfiniteList } from "@/hooks/use-infinite-list"
 import { useHomeView } from "@/providers/home-view-context"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
+import { SearchInput } from "@/components/app/search-input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import {
   Timeline,
-  TimelineContent,
   TimelineDate,
-  TimelineHeader,
   TimelineIndicator,
   TimelineItem,
   TimelineSeparator,
-  TimelineTitle,
 } from "@/components/reui/timeline"
+
+/** Case types where a single photo (missing/wanted person, vehicle) aids recognition. */
+const IMAGE_ELIGIBLE: RecordType[] = [
+  "missing_person",
+  "wanted_person",
+  "missing_vehicle",
+  "vehicle_offense",
+  "vehicle_impoundment",
+]
+
+function previewImage(record: TraceRecord): string | null {
+  if (!IMAGE_ELIGIBLE.includes(record.recordType)) return null
+  return (
+    record.attachments.find(
+      (attachment) => attachment.kind === "image" && attachment.url
+    )?.url ?? null
+  )
+}
 
 /** The case feed: records visible to the current police user, newest first. */
 export function RecordTimeline() {
@@ -39,11 +56,13 @@ export function RecordTimeline() {
     null
   )
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [query, setQuery] = useState("")
+  const [debouncedQuery] = useDebounce(query.trim(), 350)
 
   const filterType: RecordType | undefined = caseFilters.type ?? undefined
   const filterStatus: CaseStatus | undefined = caseFilters.status ?? undefined
-  const hasFilters = Boolean(filterType || filterStatus)
-  const filterKey = `${feedScope}|${filterType ?? ""}|${filterStatus ?? ""}`
+  const hasFilters = Boolean(filterType || filterStatus || debouncedQuery)
+  const filterKey = `${feedScope}|${filterType ?? ""}|${filterStatus ?? ""}|${debouncedQuery}`
 
   const { items, isLoading, isFetchingMore, hasMore, sentinelRef } =
     useInfiniteList<TraceRecord>({
@@ -55,6 +74,7 @@ export function RecordTimeline() {
             type: filterType,
             status: filterStatus,
             scope: feedScope === "all" ? undefined : feedScope,
+            query: debouncedQuery || undefined,
           })
           setLoadError(null)
           return page
@@ -70,96 +90,28 @@ export function RecordTimeline() {
   const showError = !isLoading && loadError !== null
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-4">
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Search cases by name, plate, place…"
+      />
+
       {isLoading ? (
         <TimelineSkeleton />
       ) : showError && items.length === 0 ? (
         <LoadErrorState message={loadError} />
       ) : items.length === 0 ? (
-        <EmptyTimeline filtered={hasFilters} />
+        <EmptyTimeline filtered={hasFilters} query={debouncedQuery} />
       ) : (
         <Timeline>
-          {items.map((record, index) => {
-            const meta = RECORD_TYPE_META[record.recordType]
-            return (
-              <TimelineItem
-                key={record.id}
-                step={1}
-                className={index === items.length - 1 ? "" : "pb-9"}
-              >
-                <TimelineSeparator className="bg-border" />
-                <TimelineIndicator
-                  className={cn(
-                    "size-2.5 translate-y-1.5 rounded-none border-0",
-                    TONE_DOT_CLASS[meta.tone]
-                  )}
-                />
-                <TimelineHeader>
-                  <TimelineDate
-                    dateTime={record.createdAt}
-                    className="text-[11px] font-medium tracking-widest"
-                  >
-                    {formatDateTime(record.createdAt)}
-                  </TimelineDate>
-                  <span className="mb-1 block text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
-                    {meta.label} · {record.accessLevel} · {record.status}
-                  </span>
-                </TimelineHeader>
-                <TimelineTitle className="text-[15px] leading-snug">
-                  <Link
-                    href={`/records/${record.id}`}
-                    className="hover:underline"
-                  >
-                    {record.title}
-                  </Link>
-                </TimelineTitle>
-                <TimelineContent className="mt-1 max-w-prose leading-relaxed">
-                  {record.summary}
-                </TimelineContent>
-
-                {record.attachments.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAttachmentRecord(record)}
-                    className="mt-3 w-fit gap-1.5 rounded-none"
-                  >
-                    <PaperclipIcon data-icon="inline-start" />
-                    Attachments
-                    <Badge
-                      variant="secondary"
-                      className="h-5 min-w-5 px-1.5 text-[11px] font-semibold tabular-nums"
-                    >
-                      {record.attachments.length}
-                    </Badge>
-                  </Button>
-                )}
-
-                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    {record.author.name}
-                  </span>
-                  {record.badges.map((badge) => (
-                    <span
-                      key={`${record.id}-${badge.label}`}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-none border px-1.5 py-0.5 text-xs font-medium",
-                        TONE_BADGE_CLASS[badge.tone]
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "size-1.5 rounded-none",
-                          TONE_DOT_CLASS[badge.tone]
-                        )}
-                      />
-                      {badge.label}
-                    </span>
-                  ))}
-                </div>
-              </TimelineItem>
-            )
-          })}
+          {items.map((record) => (
+            <CaseTimelineItem
+              key={record.id}
+              record={record}
+              onOpenAttachments={() => setAttachmentRecord(record)}
+            />
+          ))}
         </Timeline>
       )}
 
@@ -189,16 +141,179 @@ export function RecordTimeline() {
   )
 }
 
-function EmptyTimeline({ filtered }: { filtered?: boolean }) {
+function CaseTimelineItem({
+  record,
+  onOpenAttachments,
+}: {
+  record: TraceRecord
+  onOpenAttachments: () => void
+}) {
+  const meta = RECORD_TYPE_META[record.recordType]
+  const Icon = meta.icon
+  const imageUrl = previewImage(record)
+
+  return (
+    <TimelineItem step={1} className="pb-4">
+      <TimelineSeparator className="bg-border" />
+      <TimelineIndicator
+        className={cn(
+          "flex size-8 -translate-x-1 items-center justify-center rounded-none border",
+          TONE_BADGE_CLASS[meta.tone]
+        )}
+      >
+        <Icon className="size-4" />
+      </TimelineIndicator>
+
+      <article className="overflow-hidden rounded-none border bg-card transition-colors hover:border-foreground/20">
+        <div className="flex gap-0 sm:gap-0">
+          {imageUrl && (
+            <button
+              type="button"
+              onClick={onOpenAttachments}
+              aria-label={`View photo for ${record.title}`}
+              className="relative hidden w-36 shrink-0 self-stretch overflow-hidden bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:block lg:w-44"
+            >
+              <img
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                className="absolute inset-0 size-full object-cover"
+              />
+              <span className="absolute bottom-1.5 left-1.5 rounded-none bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                Photo
+              </span>
+            </button>
+          )}
+
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3.5 sm:p-4">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-none border px-1.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
+                  TONE_BADGE_CLASS[meta.tone]
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn("size-1.5 rounded-none", TONE_DOT_CLASS[meta.tone])}
+                />
+                {meta.label}
+              </span>
+              <TimelineDate
+                dateTime={record.createdAt}
+                className="text-[11px] font-medium tracking-widest"
+              >
+                {formatDateTime(record.createdAt)}
+              </TimelineDate>
+              <span className="ml-auto text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
+                {record.status} · {record.accessLevel}
+              </span>
+            </div>
+
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={onOpenAttachments}
+                aria-label={`View photo for ${record.title}`}
+                className="relative -mx-3.5 block aspect-[16/9] overflow-hidden bg-muted sm:hidden"
+              >
+                <img
+                  src={imageUrl}
+                  alt=""
+                  loading="lazy"
+                  className="absolute inset-0 size-full object-cover"
+                />
+              </button>
+            )}
+
+            <Link href={`/records/${record.id}`} className="group w-fit max-w-full">
+              <h3 className="text-base leading-snug font-semibold group-hover:underline">
+                {record.title}
+              </h3>
+            </Link>
+            <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+              {record.summary}
+            </p>
+
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {record.author.name}
+              </span>
+              {record.badges.slice(0, 3).map((badge) => (
+                <span
+                  key={`${record.id}-${badge.label}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-none border px-1.5 py-0.5 text-xs font-medium",
+                    TONE_BADGE_CLASS[badge.tone]
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-none",
+                      TONE_DOT_CLASS[badge.tone]
+                    )}
+                  />
+                  {badge.label}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {record.attachments.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenAttachments}
+                  className="h-7 w-fit gap-1.5 rounded-none text-xs"
+                >
+                  <PaperclipIcon data-icon="inline-start" className="size-3.5" />
+                  {record.attachments.length} file
+                  {record.attachments.length === 1 ? "" : "s"}
+                  <Badge
+                    variant="secondary"
+                    className="h-5 min-w-5 px-1.5 text-[11px] font-semibold tabular-nums"
+                  >
+                    {record.attachments.length}
+                  </Badge>
+                </Button>
+              )}
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-7 rounded-none px-2 text-xs"
+              >
+                <Link href={`/records/${record.id}`}>
+                  Open case
+                  <ArrowRightIcon data-icon="inline-end" className="size-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </article>
+    </TimelineItem>
+  )
+}
+
+function EmptyTimeline({
+  filtered,
+  query,
+}: {
+  filtered?: boolean
+  query?: string
+}) {
   return (
     <div className="rounded-none border border-dashed py-12 text-center">
       <p className="text-sm font-medium">
         {filtered ? "No matching cases" : "No cases yet"}
       </p>
       <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
-        {filtered
-          ? "Nothing falls inside the current type and status filters."
-          : "Filed cases appear here as soon as your branch logs them."}
+        {query
+          ? `Nothing matches “${query}” in this feed.`
+          : filtered
+            ? "Nothing falls inside the current type and status filters."
+            : "Filed cases appear here as soon as your branch logs them."}
       </p>
     </div>
   )
@@ -216,13 +331,18 @@ function LoadErrorState({ message }: { message: string }) {
 
 function TimelineSkeleton() {
   return (
-    <div className="ms-6 flex flex-col gap-9">
+    <div className="flex flex-col gap-4">
       {[0, 1, 2, 3].map((row) => (
-        <div key={row} className="flex flex-col gap-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-2/3" />
+        <div key={row} className="rounded-none border p-4">
+          <div className="flex gap-3">
+            <Skeleton className="hidden h-24 w-36 shrink-0 sm:block" />
+            <div className="flex flex-1 flex-col gap-2">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
         </div>
       ))}
     </div>

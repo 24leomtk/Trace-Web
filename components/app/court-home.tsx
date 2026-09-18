@@ -12,12 +12,32 @@ import {
 } from "@/lib/format"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function CourtHome() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["my-referrals"],
     queryFn: getMyReferrals,
+  })
+
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: data ?? [],
+    search: (entry, q) =>
+      `${entry.record.title} ${entry.record.summary} ${entry.record.recordType.replace(/_/g, " ")} ${entry.outcome}`
+        .toLowerCase()
+        .includes(q),
   })
 
   return (
@@ -28,6 +48,12 @@ export function CourtHome() {
           Only cases explicitly referred to you appear here.
         </p>
       </header>
+
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Search referred cases…"
+      />
 
       {isLoading ? (
         <div className="flex flex-col gap-2">
@@ -43,9 +69,14 @@ export function CourtHome() {
         <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           No active referrals. Access expires unless a monitor renews it.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+          No referrals match “{debouncedQuery}”.
+        </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {data.map((entry) => {
+        <>
+        <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {visible.map((entry) => {
             const meta = RECORD_TYPE_META[entry.record.recordType]
             const left = daysUntil(entry.expiresAt)
             const tone = expiryTone(left)
@@ -92,6 +123,13 @@ export function CourtHome() {
             )
           })}
         </ul>
+        <ListPagination
+          page={page}
+          pageCount={pageCount}
+          onPage={setPage}
+          total={total}
+        />
+        </>
       )}
     </div>
   )

@@ -19,7 +19,7 @@ export default async function AppLayout({
       <UserProvider user={user}>
         <HomeViewProvider>
           <div className="min-h-svh pb-28 lg:pb-12">
-            <main className="mx-auto w-full max-w-2xl px-4 pt-4 sm:px-6 lg:pt-5">
+            <main className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6 lg:pt-5">
               {children}
             </main>
           </div>

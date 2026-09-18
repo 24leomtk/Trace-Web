@@ -12,6 +12,9 @@ import { formatFullDate, formatTimelineDate } from "@/lib/format"
 import { RECORD_TYPE_META } from "@/lib/record-meta"
 import type { AnalyticsEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { useHomeView } from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
 import type { RecordType } from "@/validations/record"
@@ -42,6 +45,23 @@ export function AnalyticsFeed() {
     queryFn: getAnalyticsFeed,
   })
 
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: feed ?? [],
+    search: (entry, q) =>
+      `${entry.title} ${entry.description} ${entry.scopeLabel}`
+        .toLowerCase()
+        .includes(q),
+  })
+
   if (isError) {
     return (
       <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
@@ -54,21 +74,43 @@ export function AnalyticsFeed() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end print:hidden">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="rounded-none"
-          onClick={() => downloadFeedCsv(feed)}
-        >
-          <DownloadIcon data-icon="inline-start" />
-          Export CSV
-        </Button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search reports…"
+          className="flex-1"
+        />
+        <div className="flex justify-end print:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-none"
+            onClick={() => downloadFeedCsv(feed)}
+          >
+            <DownloadIcon data-icon="inline-start" />
+            Export CSV
+          </Button>
+        </div>
       </div>
-      {feed.map((entry) => (
-        <AnalyticsCard key={entry.id} entry={entry} />
-      ))}
+      {visible.length === 0 ? (
+        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+          No reports match “{debouncedQuery}”.
+        </p>
+      ) : (
+        <>
+          {visible.map((entry) => (
+            <AnalyticsCard key={entry.id} entry={entry} />
+          ))}
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
+        </>
+      )}
       <p className="pt-2 pb-1 text-center text-xs text-muted-foreground">
         Aggregated data · groups smaller than 5 are never shown
       </p>

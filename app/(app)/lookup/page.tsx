@@ -13,6 +13,9 @@ import {
 } from "@/lib/actions/access"
 import { unifiedSearch } from "@/lib/actions/search"
 import { daysSince, normalizePlate } from "@/lib/format"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScanSheet } from "@/components/app/scan-sheet"
@@ -235,39 +238,7 @@ export default function LookupPage() {
                   : "Load watchlist"}
             </Button>
           </div>
-          {watchlist && (
-            <div className="flex flex-col gap-2">
-              {watchlist.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Nothing flagged in scope.
-                </p>
-              ) : (
-                watchlist.map((entry) => {
-                  const age = daysSince(entry.since)
-                  return (
-                    <Link
-                      key={entry.vehicleId}
-                      href={`/vehicles/${entry.vehicleId}`}
-                      className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
-                    >
-                      <span className="font-medium">{entry.plateNumber}</span>
-                      <span className="text-muted-foreground">
-                        {" "}
-                        ·{" "}
-                        {entry.caseTypes
-                          .map((t) => t.replace(/_/g, " "))
-                          .join(", ")}
-                        {entry.district
-                          ? ` · ${entry.district.replace(/_/g, " ")}`
-                          : ""}
-                        {age != null && ` · flagged ${age}d ago`}
-                      </span>
-                    </Link>
-                  )
-                })
-              )}
-            </div>
-          )}
+          {watchlist && <WatchlistList entries={watchlist} />}
         </section>
       )}
 
@@ -287,49 +258,7 @@ export default function LookupPage() {
             </Button>
           </form>
           {results && (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs text-muted-foreground">
-                {results.vehicles.length} vehicle(s) · {results.persons.length}{" "}
-                person(s) — exact matches first, then partial.
-              </p>
-              {results.vehicles.map((vehicle) => (
-                <Link
-                  key={vehicle.id}
-                  href={`/vehicles/${vehicle.id}`}
-                  className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
-                >
-                  <span className="font-medium">{vehicle.plateNumber}</span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · {[vehicle.make, vehicle.model].filter(Boolean).join(" ")}
-                  </span>
-                  {vehicle.isFlagged && (
-                    <span className="ml-2 text-xs font-semibold text-red-600">
-                      FLAGGED
-                    </span>
-                  )}
-                </Link>
-              ))}
-              {results.persons.map((person) => (
-                <Link
-                  key={person.id}
-                  href={`/persons/${person.id}`}
-                  className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
-                >
-                  <span className="font-medium">{person.fullName}</span>
-                  {person.nationalId && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {person.nationalId}
-                    </span>
-                  )}
-                </Link>
-              ))}
-              {results.vehicles.length === 0 &&
-                results.persons.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No matches.</p>
-                )}
-            </div>
+            <UnifiedResultsView results={results} />
           )}
         </section>
       )}
@@ -343,6 +272,158 @@ export default function LookupPage() {
           scanTarget === "nationalId" ? "Scan ID barcode" : "Scan plate code"
         }
       />
+    </div>
+  )
+}
+
+function WatchlistList({
+  entries,
+}: {
+  entries: Awaited<ReturnType<typeof flaggedVehicleWatchlist>>
+}) {
+  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
+    usePaginatedSearch({
+      items: entries,
+      search: (entry, q) =>
+        `${entry.plateNumber} ${entry.caseTypes.join(" ").replace(/_/g, " ")} ${entry.district ?? ""}`
+          .toLowerCase()
+          .includes(q),
+    })
+
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">Nothing flagged in scope.</p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Filter watchlist by plate…"
+      />
+      {visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No flagged plates match “{debouncedQuery}”.
+        </p>
+      ) : (
+        <>
+          {visible.map((entry) => {
+            const age = daysSince(entry.since)
+            return (
+              <Link
+                key={entry.vehicleId}
+                href={`/vehicles/${entry.vehicleId}`}
+                className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
+              >
+                <span className="font-medium">{entry.plateNumber}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {entry.caseTypes.map((t) => t.replace(/_/g, " ")).join(", ")}
+                  {entry.district
+                    ? ` · ${entry.district.replace(/_/g, " ")}`
+                    : ""}
+                  {age != null && ` · flagged ${age}d ago`}
+                </span>
+              </Link>
+            )
+          })}
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+function UnifiedResultsView({
+  results,
+}: {
+  results: Awaited<ReturnType<typeof unifiedSearch>>
+}) {
+  const combined = [
+    ...results.vehicles.map((vehicle) => ({ kind: "vehicle" as const, vehicle })),
+    ...results.persons.map((person) => ({ kind: "person" as const, person })),
+  ]
+  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
+    usePaginatedSearch({
+      items: combined,
+      search: (item, q) =>
+        item.kind === "vehicle"
+          ? `${item.vehicle.plateNumber} ${item.vehicle.make ?? ""} ${item.vehicle.model ?? ""}`
+              .toLowerCase()
+              .includes(q)
+          : `${item.person.fullName} ${item.person.nationalId ?? ""}`
+              .toLowerCase()
+              .includes(q),
+    })
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-muted-foreground">
+        {results.vehicles.length} vehicle(s) · {results.persons.length} person(s)
+        — exact matches first, then partial.
+      </p>
+      {combined.length > 12 && (
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Filter these results…"
+        />
+      )}
+      {visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {debouncedQuery ? `No results match “${debouncedQuery}”.` : "No matches."}
+        </p>
+      ) : (
+        <>
+          {visible.map((item) =>
+            item.kind === "vehicle" ? (
+              <Link
+                key={item.vehicle.id}
+                href={`/vehicles/${item.vehicle.id}`}
+                className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
+              >
+                <span className="font-medium">{item.vehicle.plateNumber}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {[item.vehicle.make, item.vehicle.model].filter(Boolean).join(" ")}
+                </span>
+                {item.vehicle.isFlagged && (
+                  <span className="ml-2 text-xs font-semibold text-red-600">
+                    FLAGGED
+                  </span>
+                )}
+              </Link>
+            ) : (
+              <Link
+                key={item.person.id}
+                href={`/persons/${item.person.id}`}
+                className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
+              >
+                <span className="font-medium">{item.person.fullName}</span>
+                {item.person.nationalId && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {item.person.nationalId}
+                  </span>
+                )}
+              </Link>
+            )
+          )}
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
+        </>
+      )}
     </div>
   )
 }

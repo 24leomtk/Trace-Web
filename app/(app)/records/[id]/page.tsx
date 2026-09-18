@@ -39,8 +39,11 @@ import { AttachmentsModal } from "@/components/app/attachments-modal"
 import { CitationLedger } from "@/components/app/citation-ledger"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { ReferralBundle } from "@/components/app/referral-bundle"
 import { StatusUpdateDialog } from "@/components/app/status-update-dialog"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import {
   DynamicFields,
   type FormValues,
@@ -138,6 +141,18 @@ export default function RecordDetailPage({
     queryKey: ["assignable-users"],
     queryFn: listAssignableUsers,
     enabled: isMonitor,
+  })
+  const reviewsSearch = usePaginatedSearch({
+    items: reviewsQuery.data ?? [],
+    search: (review, q) =>
+      `${review.note} ${review.reviewerName}`.toLowerCase().includes(q),
+  })
+  const tasksSearch = usePaginatedSearch({
+    items: assignmentsQuery.data ?? [],
+    search: (task, q) =>
+      `${task.assigneeName} ${task.note ?? ""} ${task.state}`
+        .toLowerCase()
+        .includes(q),
   })
 
   const isLiaison = user.role === "COURT_LIAISON"
@@ -471,20 +486,41 @@ export default function RecordDetailPage({
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Reviews & follow-up notes
           </h2>
+          {(reviewsQuery.data ?? []).length > 4 && (
+            <SearchInput
+              value={reviewsSearch.query}
+              onChange={reviewsSearch.setQuery}
+              placeholder="Search reviews…"
+            />
+          )}
           {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {reviewsQuery.data.map((review) => (
-                <li
-                  key={review.id}
-                  className="rounded-none border px-3 py-2 text-sm"
-                >
-                  <p>{review.note}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {review.reviewerName} · {formatDateTime(review.createdAt)}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            reviewsSearch.visible.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No reviews match “{reviewsSearch.debouncedQuery}”.
+              </p>
+            ) : (
+              <>
+                <ul className="flex flex-col gap-2">
+                  {reviewsSearch.visible.map((review) => (
+                    <li
+                      key={review.id}
+                      className="rounded-none border px-3 py-2 text-sm"
+                    >
+                      <p>{review.note}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {review.reviewerName} · {formatDateTime(review.createdAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+                <ListPagination
+                  page={reviewsSearch.page}
+                  pageCount={reviewsSearch.pageCount}
+                  onPage={reviewsSearch.setPage}
+                  total={reviewsSearch.total}
+                />
+              </>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">No reviews yet.</p>
           )}
@@ -638,9 +674,22 @@ export default function RecordDetailPage({
               <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Tasking
               </h2>
+              {(assignmentsQuery.data ?? []).length > 4 && (
+                <SearchInput
+                  value={tasksSearch.query}
+                  onChange={tasksSearch.setQuery}
+                  placeholder="Search tasks…"
+                />
+              )}
               {(assignmentsQuery.data ?? []).length > 0 ? (
+                tasksSearch.visible.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No tasks match “{tasksSearch.debouncedQuery}”.
+                  </p>
+                ) : (
+                <>
                 <ul className="flex flex-col gap-2">
-                  {(assignmentsQuery.data ?? []).map((task) => {
+                  {tasksSearch.visible.map((task) => {
                     const due = assignmentDue(task.dueAt, task.state)
                     return (
                       <li
@@ -728,6 +777,14 @@ export default function RecordDetailPage({
                     )
                   })}
                 </ul>
+                <ListPagination
+                  page={tasksSearch.page}
+                  pageCount={tasksSearch.pageCount}
+                  onPage={tasksSearch.setPage}
+                  total={tasksSearch.total}
+                />
+                </>
+                )
               ) : (
                 <p className="text-sm text-muted-foreground">No tasks yet.</p>
               )}

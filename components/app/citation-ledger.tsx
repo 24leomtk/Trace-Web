@@ -13,6 +13,9 @@ import {
   scheduleCitationCourt,
 } from "@/lib/actions/citations"
 import { formatDateKey } from "@/lib/format"
+import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListPagination } from "@/components/app/list-pagination"
+import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
@@ -224,70 +227,19 @@ export function CitationLedger({
         </Button>
       </section>
 
-      {/* Payments */}
-      <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
-        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Payments ({ledger.payments.length})
-        </h2>
-        {ledger.payments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No payments recorded yet.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {ledger.payments.map((payment) => (
-              <li
-                key={payment.id}
-                className="rounded-none border px-3 py-2 text-sm"
-              >
-                <p className="font-medium">
-                  {mwk(payment.amount)} · {payment.receiptNo}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {[payment.receivedByName, payment.note]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-        {canManage && !ledger.isPaid && (
-          <form onSubmit={submitPayment} className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min="1"
-                step="0.01"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder="Amount (MWK)"
-                aria-label="Payment amount in kwacha"
-              />
-              <Input
-                value={receiptNo}
-                onChange={(event) => setReceiptNo(event.target.value)}
-                placeholder="Receipt no. (auto)"
-                aria-label="Receipt number, blank for auto"
-              />
-            </div>
-            <Input
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Note (optional)"
-              aria-label="Payment note"
-            />
-            <Button type="submit" size="sm" className="w-fit" disabled={paying}>
-              {paying ? "Recording…" : "Record payment"}
-            </Button>
-          </form>
-        )}
-        {ledger.isPaid && (
-          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            Fully paid — no further payments accepted.
-          </p>
-        )}
-      </section>
+      <PaymentsSection
+        payments={ledger.payments}
+        amount={amount}
+        setAmount={setAmount}
+        receiptNo={receiptNo}
+        setReceiptNo={setReceiptNo}
+        note={note}
+        setNote={setNote}
+        paying={paying}
+        canManage={canManage}
+        isPaid={ledger.isPaid}
+        onSubmit={submitPayment}
+      />
 
       {/* Court scheduling (monitors) */}
       {isMonitor && (
@@ -335,5 +287,125 @@ export function CitationLedger({
         </section>
       )}
     </div>
+  )
+}
+
+function PaymentsSection({
+  payments,
+  amount,
+  setAmount,
+  receiptNo,
+  setReceiptNo,
+  note,
+  setNote,
+  paying,
+  canManage,
+  isPaid,
+  onSubmit,
+}: {
+  payments: Awaited<ReturnType<typeof getCitationLedger>>["payments"]
+  amount: string
+  setAmount: (value: string) => void
+  receiptNo: string
+  setReceiptNo: (value: string) => void
+  note: string
+  setNote: (value: string) => void
+  paying: boolean
+  canManage: boolean
+  isPaid: boolean
+  onSubmit: (event: React.SubmitEvent) => void
+}) {
+  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
+    usePaginatedSearch({
+      items: payments,
+      search: (payment, q) =>
+        `${payment.receiptNo} ${payment.receivedByName ?? ""} ${payment.note ?? ""} ${payment.amount}`
+          .toLowerCase()
+          .includes(q),
+    })
+
+  return (
+    <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Payments ({payments.length})
+      </h2>
+      {payments.length > 4 && (
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search receipts…"
+        />
+      )}
+      {payments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No payments recorded yet.
+        </p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No payments match “{debouncedQuery}”.
+        </p>
+      ) : (
+        <>
+          <ul className="flex flex-col gap-2">
+            {visible.map((payment) => (
+              <li
+                key={payment.id}
+                className="rounded-none border px-3 py-2 text-sm"
+              >
+                <p className="font-medium">
+                  {mwk(payment.amount)} · {payment.receiptNo}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {[payment.receivedByName, payment.note]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
+        </>
+      )}
+      {canManage && !isPaid && (
+        <form onSubmit={onSubmit} className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min="1"
+              step="0.01"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="Amount (MWK)"
+              aria-label="Payment amount in kwacha"
+            />
+            <Input
+              value={receiptNo}
+              onChange={(event) => setReceiptNo(event.target.value)}
+              placeholder="Receipt no. (auto)"
+              aria-label="Receipt number, blank for auto"
+            />
+          </div>
+          <Input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Note (optional)"
+            aria-label="Payment note"
+          />
+          <Button type="submit" size="sm" className="w-fit" disabled={paying}>
+            {paying ? "Recording…" : "Record payment"}
+          </Button>
+        </form>
+      )}
+      {isPaid && (
+        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+          Fully paid — no further payments accepted.
+        </p>
+      )}
+    </section>
   )
 }

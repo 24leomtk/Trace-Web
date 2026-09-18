@@ -53,16 +53,18 @@ export function AdminSection({
   children: React.ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-4 rounded-none border bg-card p-5">
+    <section className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-none bg-secondary text-secondary-foreground [&_svg]:size-4">
-            {icon}
-          </div>
+          {icon && (
+            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-none bg-secondary text-secondary-foreground [&_svg]:size-4">
+              {icon}
+            </div>
+          )}
           <div>
-            <h3 className="text-[15px] font-medium">{title}</h3>
+            <h3 className="text-xl font-medium">{title}</h3>
             {description && (
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
                 {description}
               </p>
             )}
