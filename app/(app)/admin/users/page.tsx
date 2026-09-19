@@ -25,6 +25,7 @@ import {
   AdminSearchInput,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { EntityPicker } from "@/components/app/entity-picker"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
@@ -306,6 +307,7 @@ export default function AdminUsersPage() {
                   placeholder="Search name or phone…"
                 />
               </div>
+              <ListRefreshButton onRefresh={refresh} />
               <ListFilter
                 title="Filter accounts"
                 description="Narrow the list by role."

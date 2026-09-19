@@ -16,6 +16,7 @@ import { unifiedSearch } from "@/lib/actions/search"
 import { daysSince, normalizePlate } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -298,7 +299,13 @@ export default function LookupPage() {
                   : "Load watchlist"}
             </Button>
           </div>
-          {watchlist && <WatchlistList entries={watchlist} />}
+          {watchlist && (
+            <WatchlistList
+              entries={watchlist}
+              onRefresh={loadWatchlist}
+              refreshing={watchBusy}
+            />
+          )}
         </section>
       )}
 
@@ -338,8 +345,12 @@ export default function LookupPage() {
 
 function WatchlistList({
   entries,
+  onRefresh,
+  refreshing,
 }: {
   entries: Awaited<ReturnType<typeof flaggedVehicleWatchlist>>
+  onRefresh: () => void
+  refreshing?: boolean
 }) {
   const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
     usePaginatedSearch({
@@ -358,11 +369,15 @@ function WatchlistList({
 
   return (
     <div className="flex flex-col gap-2">
-      <SearchInput
-        value={query}
-        onChange={setQuery}
-        placeholder="Filter watchlist by plate…"
-      />
+      <div className="flex items-start gap-2">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Filter watchlist by plate…"
+          className="flex-1"
+        />
+        <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
+      </div>
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No flagged plates match “{debouncedQuery}”.

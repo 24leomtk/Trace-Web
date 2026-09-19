@@ -43,6 +43,7 @@ import { EntityPicker } from "@/components/app/entity-picker"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { ArrestDetail } from "@/components/app/arrest-detail"
 import { ImpoundCustody } from "@/components/app/impound-custody"
 import { LocateCard } from "@/components/app/locate-card"
@@ -502,11 +503,15 @@ export default function RecordDetailPage({
             Reviews & follow-up notes
           </h2>
           {(reviewsQuery.data ?? []).length > 4 && (
-            <SearchInput
-              value={reviewsSearch.query}
-              onChange={reviewsSearch.setQuery}
-              placeholder="Search reviews…"
-            />
+            <div className="flex items-start gap-2">
+              <SearchInput
+                value={reviewsSearch.query}
+                onChange={reviewsSearch.setQuery}
+                placeholder="Search reviews…"
+                className="flex-1"
+              />
+              <ListRefreshButton onRefresh={refresh} loading={reviewsQuery.isFetching} />
+            </div>
           )}
           {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
             reviewsSearch.visible.length === 0 ? (
@@ -697,11 +702,15 @@ export default function RecordDetailPage({
                   </p>
                 )}
               {(assignmentsQuery.data ?? []).length > 4 && (
-                <SearchInput
-                  value={tasksSearch.query}
-                  onChange={tasksSearch.setQuery}
-                  placeholder="Search tasks…"
-                />
+                <div className="flex items-start gap-2">
+                  <SearchInput
+                    value={tasksSearch.query}
+                    onChange={tasksSearch.setQuery}
+                    placeholder="Search tasks…"
+                    className="flex-1"
+                  />
+                  <ListRefreshButton onRefresh={refresh} loading={assignmentsQuery.isFetching} />
+                </div>
               )}
               {(assignmentsQuery.data ?? []).length > 0 ? (
                 tasksSearch.visible.length === 0 ? (

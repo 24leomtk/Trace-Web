@@ -11,6 +11,7 @@ import { getPerson, mergePersons, searchPersons } from "@/lib/actions/persons"
 import { formatDateTime } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,7 +33,7 @@ export default function PersonDetailPage({
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ["person", id],
     queryFn: () => getPerson(id),
   })
@@ -81,6 +82,10 @@ export default function PersonDetailPage({
       candidates={candidates}
       onFindDuplicates={findDuplicates}
       onMerge={merge}
+      refreshing={isFetching}
+      onRefresh={() =>
+        queryClient.invalidateQueries({ queryKey: ["person", id] })
+      }
     />
   )
 }
@@ -94,6 +99,8 @@ function PersonDetailView({
   candidates,
   onFindDuplicates,
   onMerge,
+  refreshing,
+  onRefresh,
 }: {
   person: {
     fullName: string
@@ -108,6 +115,8 @@ function PersonDetailView({
   candidates: Awaited<ReturnType<typeof searchPersons>>
   onFindDuplicates: (event: React.SubmitEvent) => void
   onMerge: (dropId: string) => void
+  refreshing?: boolean
+  onRefresh?: () => Promise<void>
 }) {
   const {
     query,
@@ -148,11 +157,18 @@ function PersonDetailView({
           Linked cases ({linkedCases.length})
         </h2>
         {linkedCases.length > 4 && (
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search linked cases…"
-          />
+          <div className="flex items-start gap-2">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search linked cases…"
+              className="flex-1"
+            />
+            <ListRefreshButton
+              onRefresh={onRefresh ?? (() => Promise.resolve())}
+              loading={refreshing}
+            />
+          </div>
         )}
         {linkedCases.length === 0 ? (
           <p className="text-sm text-muted-foreground">No linked cases.</p>

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.POLICY_CSV_TEMPLATE = exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = exports.PAYMENT_CHANNELS = exports.PAYMENT_METHODS = void 0;
+exports.VEHICLE_CSV_TEMPLATE = exports.POLICY_CSV_TEMPLATE = exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = exports.PAYMENT_CHANNELS = exports.PAYMENT_METHODS = void 0;
 exports.formatTimelineDate = formatTimelineDate;
 exports.formatFullDate = formatFullDate;
 exports.formatDateTime = formatDateTime;
@@ -30,6 +30,7 @@ exports.fileKindFromMime = fileKindFromMime;
 exports.defaultRetentionUntil = defaultRetentionUntil;
 exports.shortFileHash = shortFileHash;
 exports.parsePolicyCsv = parsePolicyCsv;
+exports.parseVehicleCsv = parseVehicleCsv;
 const DATE_FORMATTER_MONTH = new Intl.DateTimeFormat("en-US", {
     month: "short",
     timeZone: "UTC",
@@ -411,3 +412,72 @@ function parsePolicyCsv(csv) {
 }
 /** CSV template for the bulk policy importer. */
 exports.POLICY_CSV_TEMPLATE = "plate_number,policy_number,coverage_type,start_date,end_date,is_active,external_reference\nMH 1234,POL-0001,comprehensive,2026-01-01,2026-12-31,true,REF-1\n";
+function parseVerifiedFlag(raw) {
+    const value = raw.trim().toLowerCase();
+    if (["false", "0", "no", "unverified", "pending"].includes(value))
+        return false;
+    return true;
+}
+/**
+ * Registrar CSV → vehicle rows. Header must name plate_number (plus optional
+ * make, model, year, color, chassis_number, engine_number, owner_name,
+ * owner_national_id, owner_phone, owner_district, is_verified). Opens cleanly
+ * in Excel; rows are validated lightly here and strictly server-side.
+ */
+function parseVehicleCsv(csv) {
+    const rows = [];
+    const errors = [];
+    const lines = csv
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    if (lines.length === 0) {
+        return { rows, errors: [{ line: 0, message: "The file is empty." }] };
+    }
+    const header = splitCsvLine(lines[0]).map((cell) => cell.toLowerCase().replace(/[\s-]+/g, "_"));
+    if (!header.includes("plate_number")) {
+        return {
+            rows,
+            errors: [{ line: 1, message: "Missing column(s): plate_number." }],
+        };
+    }
+    const indexOf = (column) => header.indexOf(column);
+    for (let i = 1; i < lines.length; i++) {
+        const cells = splitCsvLine(lines[i]);
+        const get = (column) => { var _a, _b; return (_b = (_a = cells[indexOf(column)]) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : ""; };
+        const plateNumber = get("plate_number");
+        if (!plateNumber) {
+            errors.push({ line: i + 1, message: "Missing plate_number." });
+            continue;
+        }
+        const yearRaw = indexOf("year") === -1 ? "" : get("year");
+        let year;
+        if (yearRaw) {
+            const parsed = Number(yearRaw);
+            if (!Number.isInteger(parsed) || parsed < 1900 || parsed > 2100) {
+                errors.push({ line: i + 1, message: "Year must be 1900–2100." });
+                continue;
+            }
+            year = parsed;
+        }
+        rows.push({
+            plateNumber,
+            make: get("make") || undefined,
+            model: get("model") || undefined,
+            year,
+            color: get("color") || undefined,
+            chassisNumber: get("chassis_number") || undefined,
+            engineNumber: get("engine_number") || undefined,
+            ownerName: get("owner_name") || undefined,
+            ownerNationalId: get("owner_national_id") || undefined,
+            ownerPhone: get("owner_phone") || undefined,
+            ownerDistrict: get("owner_district") || undefined,
+            isVerified: indexOf("is_verified") === -1
+                ? true
+                : parseVerifiedFlag(get("is_verified")),
+        });
+    }
+    return { rows, errors };
+}
+/** CSV template for the registrar bulk vehicle importer (Excel-compatible). */
+exports.VEHICLE_CSV_TEMPLATE = "plate_number,make,model,year,color,chassis_number,engine_number,owner_name,owner_national_id,owner_phone,owner_district,is_verified\nMH 1234,Toyota,Corolla,2019,White,CHS-001,ENG-001,John Banda,NID-001,+265991234567,lilongwe,true\n";

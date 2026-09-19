@@ -469,3 +469,101 @@ export function parsePolicyCsv(csv: string): {
 /** CSV template for the bulk policy importer. */
 export const POLICY_CSV_TEMPLATE =
   "plate_number,policy_number,coverage_type,start_date,end_date,is_active,external_reference\nMH 1234,POL-0001,comprehensive,2026-01-01,2026-12-31,true,REF-1\n"
+
+export interface BulkVehicleCsvRow {
+  plateNumber: string
+  make?: string
+  model?: string
+  year?: number
+  color?: string
+  chassisNumber?: string
+  engineNumber?: string
+  ownerName?: string
+  ownerNationalId?: string
+  ownerPhone?: string
+  ownerDistrict?: string
+  isVerified: boolean
+}
+
+export interface BulkVehicleCsvError {
+  line: number
+  message: string
+}
+
+function parseVerifiedFlag(raw: string): boolean {
+  const value = raw.trim().toLowerCase()
+  if (["false", "0", "no", "unverified", "pending"].includes(value)) return false
+  return true
+}
+
+/**
+ * Registrar CSV → vehicle rows. Header must name plate_number (plus optional
+ * make, model, year, color, chassis_number, engine_number, owner_name,
+ * owner_national_id, owner_phone, owner_district, is_verified). Opens cleanly
+ * in Excel; rows are validated lightly here and strictly server-side.
+ */
+export function parseVehicleCsv(csv: string): {
+  rows: BulkVehicleCsvRow[]
+  errors: BulkVehicleCsvError[]
+} {
+  const rows: BulkVehicleCsvRow[] = []
+  const errors: BulkVehicleCsvError[] = []
+  const lines = csv
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  if (lines.length === 0) {
+    return { rows, errors: [{ line: 0, message: "The file is empty." }] }
+  }
+  const header = splitCsvLine(lines[0]!).map((cell) =>
+    cell.toLowerCase().replace(/[\s-]+/g, "_")
+  )
+  if (!header.includes("plate_number")) {
+    return {
+      rows,
+      errors: [{ line: 1, message: "Missing column(s): plate_number." }],
+    }
+  }
+  const indexOf = (column: string) => header.indexOf(column)
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCsvLine(lines[i]!)
+    const get = (column: string) => cells[indexOf(column)]?.trim() ?? ""
+    const plateNumber = get("plate_number")
+    if (!plateNumber) {
+      errors.push({ line: i + 1, message: "Missing plate_number." })
+      continue
+    }
+    const yearRaw = indexOf("year") === -1 ? "" : get("year")
+    let year: number | undefined
+    if (yearRaw) {
+      const parsed = Number(yearRaw)
+      if (!Number.isInteger(parsed) || parsed < 1900 || parsed > 2100) {
+        errors.push({ line: i + 1, message: "Year must be 1900–2100." })
+        continue
+      }
+      year = parsed
+    }
+    rows.push({
+      plateNumber,
+      make: get("make") || undefined,
+      model: get("model") || undefined,
+      year,
+      color: get("color") || undefined,
+      chassisNumber: get("chassis_number") || undefined,
+      engineNumber: get("engine_number") || undefined,
+      ownerName: get("owner_name") || undefined,
+      ownerNationalId: get("owner_national_id") || undefined,
+      ownerPhone: get("owner_phone") || undefined,
+      ownerDistrict: get("owner_district") || undefined,
+      isVerified:
+        indexOf("is_verified") === -1
+          ? true
+          : parseVerifiedFlag(get("is_verified")),
+    })
+  }
+  return { rows, errors }
+}
+
+/** CSV template for the registrar bulk vehicle importer (Excel-compatible). */
+export const VEHICLE_CSV_TEMPLATE =
+  "plate_number,make,model,year,color,chassis_number,engine_number,owner_name,owner_national_id,owner_phone,owner_district,is_verified\nMH 1234,Toyota,Corolla,2019,White,CHS-001,ENG-001,John Banda,NID-001,+265991234567,lilongwe,true\n"

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDownRightIcon,
   ArrowUpRightIcon,
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { EMPTY_CASE_FILTERS, useHomeView } from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
@@ -51,7 +52,8 @@ const SEVERITY_OPTIONS = [
 ]
 
 export function AnalyticsFeed() {
-  const { data: feed, isError } = useQuery({
+  const queryClient = useQueryClient()
+  const { data: feed, isError, isFetching } = useQuery({
     queryKey: ["analytics-feed"],
     queryFn: getAnalyticsFeed,
   })
@@ -103,6 +105,12 @@ export function AnalyticsFeed() {
             onChange={setQuery}
             placeholder="Search reports…"
             className="flex-1"
+          />
+          <ListRefreshButton
+            onRefresh={() =>
+              queryClient.invalidateQueries({ queryKey: ["analytics-feed"] })
+            }
+            loading={isFetching}
           />
           <div className="flex items-center gap-2">
             <ListFilter
@@ -227,16 +235,6 @@ function downloadFeedCsv(feed: AnalyticsEntry[]) {
 
 function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
   const severity = SEVERITY_STYLE[entry.severity]
-  const { user } = useUser()
-  const { setTab, setCaseFilters } = useHomeView()
-
-  function drillType(key?: string): RecordType | null {
-    if (!key || !(key in RECORD_TYPE_META)) return null
-    const type = key as RecordType
-    if (user.domain && RECORD_TYPE_META[type].domain !== user.domain)
-      return null
-    return type
-  }
 
   return (
     <article
@@ -302,54 +300,12 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
           points={entry.series}
           label={`${entry.title} weekly trend`}
           tone={entry.severity === "critical" ? "red" : "primary"}
+          unit={seriesUnit(entry.id)}
         />
       )}
 
       {entry.breakdown && (
-        <div className="flex flex-col gap-1.5">
-          {entry.breakdown.map((row) => {
-            const type = drillType(row.key)
-            const bar = (
-              <>
-                <span className="w-32 shrink-0 truncate text-muted-foreground sm:w-40">
-                  {row.label}
-                </span>
-                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-none bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-none",
-                      entry.severity === "critical"
-                        ? "bg-red-400 dark:bg-red-500"
-                        : "bg-primary/60"
-                    )}
-                    style={{ width: `${row.share}%` }}
-                  />
-                </div>
-                <span className="w-14 shrink-0 text-right font-medium tabular-nums">
-                  {row.count.toLocaleString()}
-                </span>
-              </>
-            )
-            return type ? (
-              <button
-                key={row.label}
-                type="button"
-                title={`View ${row.label} cases`}
-                onClick={() => {
-                  setCaseFilters({ ...EMPTY_CASE_FILTERS, type })
-                  setTab("feed")
-                }}
-                className="flex items-center gap-3 rounded-none text-xs transition-colors hover:bg-accent"
-              >
-                {bar}
-              </button>
-            ) : (
-              <div key={row.label} className="flex items-center gap-3 text-xs">
-                {bar}
-              </div>
-            )
-          })}
-        </div>
+        <BreakdownBars entryId={entry.id} rows={entry.breakdown} severity={entry.severity} />
       )}
 
       {entry.severity === "critical" && (
@@ -362,17 +318,128 @@ function AnalyticsCard({ entry }: { entry: AnalyticsEntry }) {
   )
 }
 
-/** U6 dependency-free weekly trend bars (oldest → newest). */
+/** Per-entry series unit — the raw points carry no unit, so the caption
+ *  names what one bar means (filings, casualties, kwacha). */
+function seriesUnit(entryId: string): string {
+  if (entryId === "citations") return "MWK collected per week"
+  if (entryId === "accidents") return "casualties per week"
+  return "filings per week"
+}
+
+/**
+ * Share-of-total bars. `share` arrives as a 0–1 fraction — the bar width
+ * must be share×100, and every row names its denominator so the fill
+ * reads as "count of total (pct%)" instead of a mystery bar.
+ */
+function BreakdownBars({
+  entryId,
+  rows,
+  severity,
+}: {
+  entryId: string
+  rows: NonNullable<AnalyticsEntry["breakdown"]>
+  severity: AnalyticsEntry["severity"]
+}) {
+  const { setTab, setCaseFilters } = useHomeView()
+  const { user } = useUser()
+
+  function drillType(key?: string): RecordType | null {
+    if (!key || !(key in RECORD_TYPE_META)) return null
+    const type = key as RecordType
+    if (user.domain && RECORD_TYPE_META[type].domain !== user.domain)
+      return null
+    return type
+  }
+
+  // True denominator: the server divides by the in-scope total (which can
+  // exceed the visible rows when small groups are privacy-suppressed), so
+  // recover it from count/share instead of summing visible rows.
+  const total = Math.max(
+    1,
+    ...rows.map((row) =>
+      row.share > 0 ? Math.round(row.count / row.share) : row.count
+    )
+  )
+  const unit = entryId === "districts" ? "cases in scope" : "cases in scope"
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        Share of {total.toLocaleString()} {unit}
+      </p>
+      {rows.map((row) => {
+        const type = drillType(row.key)
+        const pct = Math.round(row.share * 1000) / 10
+        const pctLabel = `${pct.toFixed(1)}%`
+        const hint = `${row.label}: ${row.count.toLocaleString()} of ${total.toLocaleString()} (${pctLabel})`
+        const bar = (
+          <>
+            <span className="w-32 shrink-0 truncate text-muted-foreground sm:w-40">
+              {row.label}
+            </span>
+            <div
+              className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-none bg-muted"
+              role="img"
+              aria-label={hint}
+            >
+              <div
+                className={cn(
+                  "h-full rounded-none",
+                  severity === "critical"
+                    ? "bg-red-400 dark:bg-red-500"
+                    : "bg-primary/60"
+                )}
+                style={{ width: `${Math.min(100, Math.max(0, row.share * 100))}%` }}
+              />
+            </div>
+            <span className="w-28 shrink-0 text-right font-medium tabular-nums">
+              {row.count.toLocaleString()} · {pctLabel}
+            </span>
+          </>
+        )
+        return type ? (
+          <button
+            key={row.label}
+            type="button"
+            title={`${hint} — view ${row.label} cases`}
+            onClick={() => {
+              setCaseFilters({ ...EMPTY_CASE_FILTERS, type })
+              setTab("feed")
+            }}
+            className="flex items-center gap-3 rounded-none text-xs transition-colors hover:bg-accent"
+          >
+            {bar}
+          </button>
+        ) : (
+          <div
+            key={row.label}
+            title={hint}
+            className="flex items-center gap-3 text-xs"
+          >
+            {bar}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** U6 dependency-free weekly trend bars (oldest → newest). Each bar is
+ *  scaled to the busiest week; the caption names the unit + 12-week total
+ *  so the fill reads as "this week vs peak". */
 function SeriesChart({
   points,
   label,
   tone,
+  unit,
 }: {
   points: { label: string; value: number }[]
   label: string
   tone: "primary" | "red"
+  unit: string
 }) {
   const max = Math.max(1, ...points.map((point) => point.value))
+  const total = points.reduce((sum, point) => sum + point.value, 0)
   const width = 240
   const height = 56
   const gap = 3
@@ -406,9 +473,11 @@ function SeriesChart({
           )
         })}
       </svg>
-      <figcaption className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">
+      <figcaption className="mt-0.5 flex justify-between gap-2 text-[10px] text-muted-foreground">
         <span>{points[0]?.label}</span>
-        <span>per week · max {max.toLocaleString()}</span>
+        <span className="text-center">
+          {unit} · peak {max.toLocaleString()} · 12-wk {total.toLocaleString()}
+        </span>
         <span>{points[points.length - 1]?.label}</span>
       </figcaption>
     </figure>

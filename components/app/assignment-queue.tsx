@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -43,7 +44,7 @@ const DUE_OPTIONS = [
  */
 export function AssignmentQueue() {
   const queryClient = useQueryClient()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["my-assignments"],
     queryFn: listMyAssignments,
   })
@@ -109,6 +110,12 @@ export function AssignmentQueue() {
               onChange={setQuery}
               placeholder="Search tasks…"
               className="flex-1"
+            />
+            <ListRefreshButton
+              onRefresh={() =>
+                queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
+              }
+              loading={isFetching}
             />
             <ListFilter
               title="Filter tasks"

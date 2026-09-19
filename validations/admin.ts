@@ -96,6 +96,8 @@ export const organizationSchema = z.object({
 
 export type OrganizationInput = z.output<typeof organizationSchema>
 
+export const vehicleStatusOptions = ["active", "out_of_service"] as const
+
 export const vehicleSchema = z.object({
   plateNumber: z.string().trim().min(1).max(32),
   make: z.string().trim().max(80).optional().or(z.literal("")),

@@ -11,6 +11,7 @@ import { AdminField, AdminSection } from "@/components/app/admin-section"
 import { EntityPicker } from "@/components/app/entity-picker"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
@@ -38,7 +39,7 @@ export default function AdminApiKeysPage() {
   const [saving, setSaving] = useState(false)
   const [freshKey, setFreshKey] = useState<string | null>(null)
 
-  const { data: keys, isLoading } = useQuery({
+  const { data: keys, isLoading, isFetching } = useQuery({
     queryKey: ["admin-api-keys"],
     queryFn: listApiKeys,
   })
@@ -223,6 +224,12 @@ export default function AdminApiKeysPage() {
               onChange={setQuery}
               placeholder="Search keys by name, user, prefix…"
               className="flex-1"
+            />
+            <ListRefreshButton
+              onRefresh={() =>
+                queryClient.invalidateQueries({ queryKey: ["admin-api-keys"] })
+              }
+              loading={isFetching}
             />
             <ListFilter
               title="Filter keys"

@@ -23,6 +23,7 @@ import {
   CaseFiltersCommand,
 } from "@/components/app/case-filters-command"
 import { SearchInput } from "@/components/app/search-input"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -72,7 +73,7 @@ export function RecordTimeline() {
   )
   const filterKey = `${feedScope}|${filterType ?? ""}|${filterStatus ?? ""}|${filterFrom ?? ""}|${filterTo ?? ""}|${debouncedQuery}`
 
-  const { items, isLoading, isFetchingMore, hasMore, sentinelRef } =
+  const { items, isLoading, isFetchingMore, hasMore, sentinelRef, retry } =
     useInfiniteList<TraceRecord>({
       key: `cases|${filterKey}`,
       fetchPage: async (cursor) => {
@@ -109,6 +110,7 @@ export function RecordTimeline() {
             placeholder="Search cases by name, plate, place…"
             className="flex-1"
           />
+          <ListRefreshButton onRefresh={() => void retry()} loading={isLoading} />
           <CaseFiltersCommand showBadges={false} />
         </div>
         <CaseFilterBadges />

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.ownerNoticeSchema = exports.custodyReleaseSchema = exports.custodyHoldSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
+exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.ownerNoticeSchema = exports.custodyReleaseSchema = exports.custodyHoldSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.vehicleStatusOptions = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
 const z = __importStar(require("zod"));
 exports.managedRoleOptions = [
     "OFFICER",
@@ -111,6 +111,7 @@ exports.organizationSchema = z.object({
         .or(z.literal("")),
     contactEmail: z.string().trim().email().max(200).optional().or(z.literal("")),
 });
+exports.vehicleStatusOptions = ["active", "out_of_service"];
 exports.vehicleSchema = z.object({
     plateNumber: z.string().trim().min(1).max(32),
     make: z.string().trim().max(80).optional().or(z.literal("")),

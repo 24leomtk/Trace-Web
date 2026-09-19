@@ -16,6 +16,7 @@ import { formatDateKey } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { EntityPicker } from "@/components/app/entity-picker"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -262,6 +263,8 @@ export function CitationLedger({
 
       <PaymentsSection
         payments={ledger.payments}
+        refreshing={ledgerQuery.isFetching}
+        onRefresh={refresh}
         amount={amount}
         setAmount={setAmount}
         receiptNo={receiptNo}
@@ -334,6 +337,8 @@ export function CitationLedger({
 
 function PaymentsSection({
   payments,
+  refreshing,
+  onRefresh,
   amount,
   setAmount,
   receiptNo,
@@ -369,6 +374,8 @@ function PaymentsSection({
   canManage: boolean
   isPaid: boolean
   isVoid: boolean
+  refreshing?: boolean
+  onRefresh?: () => Promise<void>
   onSubmit: (event: React.SubmitEvent) => void
 }) {
   const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
@@ -386,11 +393,17 @@ function PaymentsSection({
         Payments ({payments.length})
       </h2>
       {payments.length > 4 && (
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search receipts…"
-        />
+        <div className="flex items-start gap-2">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search receipts…"
+            className="flex-1"
+          />
+          {onRefresh && (
+            <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
+          )}
+        </div>
       )}
       {payments.length === 0 ? (
         <p className="text-sm text-muted-foreground">

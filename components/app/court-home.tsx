@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
 import { GavelIcon, HourglassIcon } from "lucide-react"
 
@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -26,7 +27,8 @@ const OUTCOME_OPTIONS = [
 ]
 
 export function CourtHome() {
-  const { data, isLoading, isError } = useQuery({
+  const queryClient = useQueryClient()
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ["my-referrals"],
     queryFn: getMyReferrals,
   })
@@ -77,6 +79,12 @@ export function CourtHome() {
             onChange={setQuery}
             placeholder="Search referred cases…"
             className="flex-1"
+          />
+          <ListRefreshButton
+            onRefresh={() =>
+              queryClient.invalidateQueries({ queryKey: ["my-referrals"] })
+            }
+            loading={isFetching}
           />
           <ListFilter
             title="Filter referrals"

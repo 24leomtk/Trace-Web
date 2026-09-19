@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -230,6 +231,8 @@ function PoliciesSection({
   isLoading: boolean
   isError: boolean
 }) {
+  const queryClient = useQueryClient()
+  const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState("all")
 
   const preFiltered = useMemo(
@@ -266,6 +269,17 @@ function PoliciesSection({
               onChange={setQuery}
               placeholder="Search plate or policy number…"
               className="flex-1"
+            />
+            <ListRefreshButton
+              onRefresh={async () => {
+                setRefreshing(true)
+                try {
+                  await queryClient.invalidateQueries({ queryKey: ["my-policies"] })
+                } finally {
+                  setRefreshing(false)
+                }
+              }}
+              loading={refreshing}
             />
             <ListFilter
               title="Filter policies"

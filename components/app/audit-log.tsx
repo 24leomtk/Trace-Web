@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { getAuditLog } from "@/lib/actions/access"
 import { formatDateTime } from "@/lib/format"
@@ -13,12 +13,14 @@ import {
   matchesAuditFilters,
 } from "@/components/app/audit-filters"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /** Scoped audit viewer. Auditors see this only — no case drill-down. */
 export function AuditLog({ limit = 100 }: { limit?: number }) {
-  const { data, isLoading, isError } = useQuery({
+  const queryClient = useQueryClient()
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ["audit-log", limit],
     queryFn: () => getAuditLog(limit),
   })
@@ -92,6 +94,12 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
             onChange={setQuery}
             placeholder="Search actor, action, detail…"
             className="flex-1"
+          />
+          <ListRefreshButton
+            onRefresh={() =>
+              queryClient.invalidateQueries({ queryKey: ["audit-log", limit] })
+            }
+            loading={isFetching}
           />
           <AuditFilters
             value={filters}

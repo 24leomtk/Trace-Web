@@ -17,9 +17,10 @@
 --   psql "$DATABASE_URL" -f "db/sql/seeds/07_collaboration.sql"
 --   psql "$DATABASE_URL" -f "db/sql/seeds/08_notifications_audit.sql"
 --   psql "$DATABASE_URL" -f "db/sql/seeds/09_case_images.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/10_queues.sql"
 --   psql "$DATABASE_URL" -f "db/sql/seeds/00_runner.sql"   (this file: summary)
 --
--- In the Neon SQL editor: paste-run 01, then 02 … 09, then this file.
+-- In the Neon SQL editor: paste-run 01, then 02 … 10, then this file.
 -- FIRST run this opt-in once per session (01 refuses to wipe without it):
 --   select set_config('app.allow_seed', '1', false);
 -- NEVER seed a production database.
@@ -34,6 +35,7 @@
 --   07_collaboration   reviews (120) + assignments (50) + media + sessions + key
 --   08_notifications_audit  inbox (all 9 types) + audit (every enum value)
 --   09_case_images        portraits (missing persons) + photos (missing vehicles)
+--   10_queues             tasks per anchor/branch + locate rows per monitor scope
 --
 -- Files 01–07 mute notification triggers via their own app.seed_load flag;
 -- 08 unmutes first, then inserts deterministic inbox rows directly.

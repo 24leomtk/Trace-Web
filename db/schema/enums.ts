@@ -134,6 +134,14 @@ export const courtCaseOutcomeEnum = pgEnum("court_case_outcome", [
   "other",
 ])
 
+// Vehicle registry lifecycle — soft-delete is an out-of-service mark so
+// case links never break; out-of-service plates stay queryable but hidden
+// from active queues.
+export const vehicleStatusEnum = pgEnum("vehicle_status", [
+  "active",
+  "out_of_service",
+])
+
 // ---------------------------------------------------------------------------
 // Audit log
 // ---------------------------------------------------------------------------

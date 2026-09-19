@@ -7,7 +7,7 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core"
-import { districtEnum } from "./enums"
+import { districtEnum, vehicleStatusEnum } from "./enums"
 import { users } from "./auth"
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,10 @@ export const vehicles = pgTable(
     }),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
 
+    // Registrar-managed lifecycle. Soft-delete = out_of_service: the row
+    // stays for case links + audit, but drops out of active queues.
+    status: vehicleStatusEnum("status").default("active").notNull(),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -62,5 +66,6 @@ export const vehicles = pgTable(
     index("vehicles_owner_national_id_idx").on(table.ownerNationalId),
     index("vehicles_is_flagged_idx").on(table.isFlagged),
     index("vehicles_is_verified_idx").on(table.isVerified),
+    index("vehicles_status_idx").on(table.status),
   ]
 )

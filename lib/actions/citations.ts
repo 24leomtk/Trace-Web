@@ -630,9 +630,31 @@ export interface ReconciliationVoid {
   voidAt: string | null
 }
 
+export interface ReconciliationPaid {
+  recordId: string
+  ticketNumber: string | null
+  plateNumber: string | null
+  issuedAt: string
+  fineAmount: number | null
+  totalPaid: number
+  balance: number | null
+}
+
+export interface ReconciliationUnpaid {
+  recordId: string
+  ticketNumber: string | null
+  plateNumber: string | null
+  issuedAt: string
+  daysWaiting: number
+  balance: number | null
+  overdue: boolean
+}
+
 export interface ReconciliationSummary {
   totals: ReconciliationDayTotal[]
   undeposited: ReconciliationException[]
+  unpaid: ReconciliationUnpaid[]
+  paid: ReconciliationPaid[]
   voids: ReconciliationVoid[]
 }
 
@@ -735,29 +757,75 @@ export async function getReconciliationSummary(): Promise<ReconciliationSummary>
     ).slice(0, 60)
 
     const paidIds = new Set(scopedPayments.map((p) => p.recordId))
+    const paidTotalByRecord = new Map<string, number>()
+    for (const p of scopedPayments) {
+      paidTotalByRecord.set(
+        p.recordId,
+        Math.round(
+          ((paidTotalByRecord.get(p.recordId) ?? 0) + Number(p.amount)) * 100
+        ) / 100
+      )
+    }
     const now = Date.now()
     const FIVE_DAYS = 5 * 86_400_000
     const undeposited: ReconciliationException[] = []
+    const unpaid: ReconciliationUnpaid[] = []
+    const paid: ReconciliationPaid[] = []
+    // Plate lookup in bulk to keep the board fast.
+    const vehicleIds = [...new Set(inScopeRows.map((r) => r.vehicleId).filter(Boolean))] as string[]
+    const plateByVehicle = new Map<string, string>()
+    for (const vid of vehicleIds.slice(0, 500)) {
+      const [vehicle] = await tx
+        .select({ id: vehicles.id, plateNumber: vehicles.plateNumber })
+        .from(vehicles)
+        .where(eq(vehicles.id, vid))
+        .limit(1)
+      if (vehicle) plateByVehicle.set(vehicle.id, vehicle.plateNumber)
+    }
     for (const row of inScopeRows) {
-      if (row.isPaid || row.voidedAt || paidIds.has(row.recordId)) continue
+      const plate = row.vehicleId ? (plateByVehicle.get(row.vehicleId) ?? null) : null
+      const totalPaid = paidTotalByRecord.get(row.recordId) ?? 0
+      const fine = row.fineAmount != null ? Number(row.fineAmount) : null
       const age = now - row.createdAt.getTime()
-      if (age < FIVE_DAYS) continue
-      const [vehicle] = row.vehicleId
-        ? await tx
-            .select({ plateNumber: vehicles.plateNumber })
-            .from(vehicles)
-            .where(eq(vehicles.id, row.vehicleId))
-            .limit(1)
-        : []
-      undeposited.push({
+      const daysWaiting = Math.floor(age / 86_400_000)
+      if (row.voidedAt) continue
+      if (row.isPaid || (fine != null && totalPaid >= fine && totalPaid > 0)) {
+        paid.push({
+          recordId: row.recordId,
+          ticketNumber: row.ticketNumber ?? null,
+          plateNumber: plate,
+          issuedAt: row.createdAt.toISOString(),
+          fineAmount: fine,
+          totalPaid,
+          balance: fine != null ? Math.max(0, Math.round((fine - totalPaid) * 100) / 100) : null,
+        })
+        if (paid.length >= 200) {
+          // keep scanning for unpaid below? no — both lists share the loop,
+          // so only cap paid here and continue filling unpaid.
+        }
+        continue
+      }
+      if (paidIds.has(row.recordId)) continue
+      unpaid.push({
         recordId: row.recordId,
         ticketNumber: row.ticketNumber ?? null,
-        plateNumber: vehicle?.plateNumber ?? null,
+        plateNumber: plate,
         issuedAt: row.createdAt.toISOString(),
-        daysWaiting: Math.floor(age / 86_400_000),
-        balance: row.fineAmount != null ? Number(row.fineAmount) : null,
+        daysWaiting,
+        balance: fine,
+        overdue: age >= FIVE_DAYS,
       })
-      if (undeposited.length >= 100) break
+      if (!row.isPaid && !paidIds.has(row.recordId) && age >= FIVE_DAYS && undeposited.length < 100) {
+        undeposited.push({
+          recordId: row.recordId,
+          ticketNumber: row.ticketNumber ?? null,
+          plateNumber: plate,
+          issuedAt: row.createdAt.toISOString(),
+          daysWaiting,
+          balance: fine,
+        })
+      }
+      if (unpaid.length >= 200 && undeposited.length >= 100) break
     }
 
     const voids: ReconciliationVoid[] = inScopeRows
@@ -770,6 +838,12 @@ export async function getReconciliationSummary(): Promise<ReconciliationSummary>
         voidAt: row.voidedAt ? row.voidedAt.toISOString() : null,
       }))
 
-    return { totals, undeposited, voids }
+    return {
+      totals,
+      undeposited,
+      unpaid: unpaid.slice(0, 200),
+      paid: paid.slice(0, 200),
+      voids,
+    }
   })
 }

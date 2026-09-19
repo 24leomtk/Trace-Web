@@ -19,6 +19,7 @@ import {
   EMPTY_BRANCH_FILTERS,
 } from "@/components/app/branch-filters"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
@@ -41,7 +42,7 @@ export default function AdminBranchesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["admin-branches"],
     queryFn: () => listBranches(),
   })
@@ -200,6 +201,12 @@ export default function AdminBranchesPage() {
               onChange={setQuery}
               placeholder="Search branches…"
               className="flex-1"
+            />
+            <ListRefreshButton
+              onRefresh={() =>
+                queryClient.invalidateQueries({ queryKey: ["admin-branches"] })
+              }
+              loading={isFetching}
             />
             <BranchFilters
               value={filters}

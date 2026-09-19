@@ -25,6 +25,7 @@ import {
 } from "@/components/app/admin-section"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
@@ -53,7 +54,7 @@ export default function AdminOrganizationsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: () => listOrganizations(),
   })
@@ -215,6 +216,12 @@ export default function AdminOrganizationsPage() {
               onChange={setQuery}
               placeholder="Search organizations…"
               className="flex-1"
+            />
+            <ListRefreshButton
+              onRefresh={() =>
+                queryClient.invalidateQueries({ queryKey: ["admin-organizations"] })
+              }
+              loading={isFetching}
             />
             <ListFilter
               title="Filter organizations"
