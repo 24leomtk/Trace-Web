@@ -14,9 +14,12 @@ import { isTaxDueSoon, isTaxOverdue, isTaxSettled } from "@/lib/visibility"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 
 /**
  * Tax compliance home — read-only oversight plus the one power this role
@@ -86,56 +89,123 @@ export function TaxComplianceHome() {
 }
 
 function WaiverRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
-  const [reason, setReason] = useState("")
-  const [busy, setBusy] = useState(false)
-
-  async function decide(decision: "approved" | "rejected") {
-    setBusy(true)
-    try {
-      await decideTaxWaiver({ taxId: row.id, decision, reason })
-      toast.success(`Waiver ${decision}.`)
-      await onDone()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
-    } finally {
-      setBusy(false)
-    }
-  }
+  const [decideOpen, setDecideOpen] = useState(false)
 
   return (
     <li className="rounded-none border border-amber-200 bg-card px-4 py-3">
       <p className="text-[15px] font-medium">
         {row.plateNumber} · {row.taxType.replace(/_/g, " ")} · MWK {row.amountDue}
       </p>
-      <p className="mt-0.5 text-sm text-muted-foreground">
+      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
         Proposed justification: {row.waiverReason || "—"}
       </p>
-      <div className="mt-2 flex gap-2">
-        <Input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="Decision note (optional)…"
-          className="h-8 rounded-none"
-        />
-        <Button
-          type="button"
-          size="sm"
-          disabled={busy}
-          onClick={() => void decide("approved")}
-        >
-          Approve
-        </Button>
+      <div className="mt-2">
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy}
-          onClick={() => void decide("rejected")}
+          onClick={() => setDecideOpen(true)}
         >
-          Reject
+          Decide waiver
         </Button>
       </div>
+      <DecideWaiverDialog
+        row={row}
+        open={decideOpen}
+        onOpenChange={setDecideOpen}
+        onDone={onDone}
+      />
     </li>
+  )
+}
+
+function DecideWaiverDialog({
+  row,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  row: TaxLedgerRow
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDone: () => void
+}) {
+  const [reason, setReason] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  async function decide(decision: "approved" | "rejected") {
+    setBusy(true)
+    setServerError(null)
+    try {
+      await decideTaxWaiver({ taxId: row.id, decision, reason })
+      toast.success(`Waiver ${decision}.`)
+      setReason("")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setReason("")
+          setServerError(null)
+        }
+        onOpenChange(next)
+      }}
+      title="Decide waiver"
+      description={`${row.plateNumber} · ${row.taxType.replace(/_/g, " ")} · MWK ${row.amountDue}. Approval waives the debt — this is logged against your name.`}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="rounded-none border bg-muted/40 px-3 py-2 text-sm">
+          <span className="font-medium">Proposed justification: </span>
+          {row.waiverReason || "—"}
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Decision note <span className="font-normal normal-case opacity-60">optional</span>
+          </span>
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Why this decision…"
+            rows={3}
+          />
+        </div>
+        {serverError && (
+          <p role="alert" className="text-sm font-medium text-red-600">
+            {serverError}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void decide("rejected")}
+          >
+            Reject
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => void decide("approved")}>
+            {busy ? "Deciding…" : "Approve waiver"}
+          </Button>
+        </DialogFooter>
+      </div>
+    </ResponsiveModal>
   )
 }
 

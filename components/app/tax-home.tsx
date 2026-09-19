@@ -24,9 +24,20 @@ import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
 const STATUS_OPTIONS = [
@@ -57,6 +68,7 @@ export function TaxHome() {
     queryFn: listMyTaxes,
   })
   const [status, setStatus] = useState("all")
+  const [assessOpen, setAssessOpen] = useState(false)
 
   const preFiltered = useMemo(
     () => (data ?? []).filter((row) => status === "all" || statusOf(row) === status),
@@ -95,7 +107,16 @@ export function TaxHome() {
         </p>
       </header>
 
-      <AssessForm onDone={refresh} />
+      <div>
+        <Button type="button" onClick={() => setAssessOpen(true)}>
+          New assessment
+        </Button>
+      </div>
+      <AssessDialog
+        open={assessOpen}
+        onOpenChange={setAssessOpen}
+        onDone={refresh}
+      />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -161,7 +182,15 @@ export function TaxHome() {
   )
 }
 
-function AssessForm({ onDone }: { onDone: () => void }) {
+function AssessDialog({
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDone: () => void
+}) {
   const [plate, setPlate] = useState("")
   const [vehicle, setVehicle] = useState<{ id: string; plateNumber: string } | null>(null)
   const [looking, setLooking] = useState(false)
@@ -170,6 +199,17 @@ function AssessForm({ onDone }: { onDone: () => void }) {
   const [dueDate, setDueDate] = useState("")
   const [referenceNo, setReferenceNo] = useState("")
   const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  function reset() {
+    setPlate("")
+    setVehicle(null)
+    setTaxType("license_fee")
+    setAmount("")
+    setDueDate("")
+    setReferenceNo("")
+    setServerError(null)
+  }
 
   async function lookup() {
     if (!plate.trim()) return
@@ -196,7 +236,12 @@ function AssessForm({ onDone }: { onDone: () => void }) {
       toast.error("Enter a positive amount.")
       return
     }
+    if (!dueDate) {
+      toast.error("Choose a due date.")
+      return
+    }
     setSaving(true)
+    setServerError(null)
     try {
       await createTaxAssessment({
         vehicleId: vehicle.id,
@@ -208,134 +253,132 @@ function AssessForm({ onDone }: { onDone: () => void }) {
         referenceNo,
       })
       toast.success("Assessment recorded.")
-      setAmount("")
-      setDueDate("")
-      setReferenceNo("")
+      reset()
+      onOpenChange(false)
       await onDone()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
+      setServerError(error instanceof Error ? error.message : "Failed.")
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        New assessment
-      </h2>
-      <div className="flex gap-2">
-        <Input
-          value={plate}
-          onChange={(event) => {
-            setPlate(event.target.value)
-            setVehicle(null)
-          }}
-          placeholder="Plate number, e.g. LL 4242"
-          className="rounded-none"
-        />
-        <Button type="button" variant="outline" disabled={looking} onClick={lookup}>
-          {looking ? "…" : "Find"}
-        </Button>
-      </div>
-      {vehicle && (
-        <p className="text-xs text-emerald-700">On file: {vehicle.plateNumber}</p>
-      )}
-      <form onSubmit={submit} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Tax type
-          <select
-            value={taxType}
-            onChange={(event) => setTaxType(event.target.value)}
-            className="h-9 rounded-none border bg-background px-2 text-sm text-foreground"
-          >
-            {taxTypeOptions.map((value) => (
-              <option key={value} value={value}>
-                {value.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Amount due (MWK)
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset()
+        onOpenChange(next)
+      }}
+      title="New assessment"
+      description="The bill lands on the vehicle immediately — overdue unpaid taxes flag the plate."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Vehicle
+          </span>
+          <div className="flex gap-2">
+            <Input
+              value={plate}
+              onChange={(event) => {
+                setPlate(event.target.value)
+                setVehicle(null)
+              }}
+              placeholder="Plate number, e.g. LL 4242"
+              aria-label="Plate number"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={looking}
+              onClick={lookup}
+            >
+              {looking ? "…" : "Find"}
+            </Button>
+          </div>
+          {vehicle && (
+            <p className="text-xs text-emerald-700">
+              On file: {vehicle.plateNumber}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Tax type
+          </span>
+          <Select value={taxType} onValueChange={setTaxType}>
+            <SelectTrigger aria-label="Tax type">
+              <SelectValue placeholder="Select tax type…" />
+            </SelectTrigger>
+            <SelectContent>
+              {taxTypeOptions.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Amount due (MWK)
+          </span>
           <Input
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             inputMode="decimal"
             placeholder="e.g. 40000"
-            className="rounded-none"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Due date
-          <Input
-            type="date"
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Due date
+          </span>
+          <DatePicker
             value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
-            className="rounded-none"
+            onChange={setDueDate}
+            label="Due date"
+            placeholder="Due date"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Reference (assessment / TIP no.)
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Reference <span className="font-normal normal-case opacity-60">optional</span>
+          </span>
           <Input
             value={referenceNo}
             onChange={(event) => setReferenceNo(event.target.value)}
-            placeholder="Optional"
-            className="rounded-none"
+            placeholder="Assessment / TIP no."
           />
-        </label>
-        <div className="sm:col-span-2">
+        </div>
+        {serverError && (
+          <p role="alert" className="text-sm font-medium text-red-600">
+            {serverError}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
           <Button type="submit" disabled={saving || !vehicle}>
             {saving ? "Recording…" : "Record assessment"}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
-    </section>
+    </ResponsiveModal>
   )
 }
 
 function TaxRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
-  const [receipt, setReceipt] = useState("")
-  const [waiveReason, setWaiveReason] = useState("")
-  const [busy, setBusy] = useState(false)
+  const [payOpen, setPayOpen] = useState(false)
+  const [waiveOpen, setWaiveOpen] = useState(false)
   const state = statusOf(row)
   const collectable = !isTaxSettled(row)
-
-  async function pay() {
-    if (!receipt.trim()) {
-      toast.error("A receipt number is required.")
-      return
-    }
-    setBusy(true)
-    try {
-      await recordTaxPayment({ taxId: row.id, receiptNo: receipt })
-      toast.success("Payment recorded.")
-      setReceipt("")
-      await onDone()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function propose() {
-    if (waiveReason.trim().length < 10) {
-      toast.error("Give a justification (min 10 characters).")
-      return
-    }
-    setBusy(true)
-    try {
-      await proposeTaxWaiver({ taxId: row.id, reason: waiveReason })
-      toast.success("Waiver sent for decision.")
-      setWaiveReason("")
-      await onDone()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <li className="rounded-none border bg-card px-4 py-3">
@@ -364,40 +407,205 @@ function TaxRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
         {row.periodStart ? ` · ${row.periodStart} → ${row.periodEnd ?? ""}` : ""}
       </p>
       {collectable && row.waiverStatus === "none" && (
-        <div className="mt-2 flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Input
-              value={receipt}
-              onChange={(event) => setReceipt(event.target.value)}
-              placeholder="Receipt no."
-              className="h-8 rounded-none"
-            />
-            <Button type="button" size="sm" disabled={busy} onClick={pay}>
-              Record payment
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={waiveReason}
-              onChange={(event) => setWaiveReason(event.target.value)}
-              placeholder="Waiver justification…"
-              className="h-8 rounded-none"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={propose}
-            >
-              Propose waiver
-            </Button>
-          </div>
+        <div className="mt-2 flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setPayOpen(true)}
+          >
+            Record payment
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setWaiveOpen(true)}
+          >
+            Propose waiver
+          </Button>
         </div>
       )}
       {row.waiverStatus === "pending" && (
         <p className="mt-2 text-xs text-amber-700">Waiver awaiting decision.</p>
       )}
+      <RecordPaymentDialog
+        row={row}
+        open={payOpen}
+        onOpenChange={setPayOpen}
+        onDone={onDone}
+      />
+      <ProposeWaiverDialog
+        row={row}
+        open={waiveOpen}
+        onOpenChange={setWaiveOpen}
+        onDone={onDone}
+      />
     </li>
+  )
+}
+
+function RecordPaymentDialog({
+  row,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  row: TaxLedgerRow
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDone: () => void
+}) {
+  const [receipt, setReceipt] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (!receipt.trim()) {
+      toast.error("A receipt number is required.")
+      return
+    }
+    setSaving(true)
+    setServerError(null)
+    try {
+      await recordTaxPayment({ taxId: row.id, receiptNo: receipt })
+      toast.success("Payment recorded.")
+      setReceipt("")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setReceipt("")
+          setServerError(null)
+        }
+        onOpenChange(next)
+      }}
+      title="Record payment"
+      description={`${row.plateNumber} · ${row.taxType.replace(/_/g, " ")} · MWK ${row.amountDue}. The plate clears on save.`}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Receipt no.
+          </span>
+          <Input
+            value={receipt}
+            onChange={(event) => setReceipt(event.target.value)}
+            placeholder="e.g. TAX-R-80123"
+          />
+        </div>
+        {serverError && (
+          <p role="alert" className="text-sm font-medium text-red-600">
+            {serverError}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Recording…" : "Record payment"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
+  )
+}
+
+function ProposeWaiverDialog({
+  row,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  row: TaxLedgerRow
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDone: () => void
+}) {
+  const [reason, setReason] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (reason.trim().length < 10) {
+      toast.error("Give a justification (min 10 characters).")
+      return
+    }
+    setSaving(true)
+    setServerError(null)
+    try {
+      await proposeTaxWaiver({ taxId: row.id, reason })
+      toast.success("Waiver sent for decision.")
+      setReason("")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setReason("")
+          setServerError(null)
+        }
+        onOpenChange(next)
+      }}
+      title="Propose waiver"
+      description={`${row.plateNumber} · MWK ${row.amountDue}. A compliance officer decides — proposing never waives.`}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Justification <span className="font-normal normal-case opacity-60">required</span>
+          </span>
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="e.g. Duplicate assessment issued at the border post…"
+            rows={3}
+          />
+        </div>
+        {serverError && (
+          <p role="alert" className="text-sm font-medium text-red-600">
+            {serverError}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Sending…" : "Send for decision"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
   )
 }

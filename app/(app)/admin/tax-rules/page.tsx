@@ -13,9 +13,12 @@ import {
 import { taxPeriodOptions, taxTypeOptions } from "@/validations/admin"
 import { EntityPicker } from "@/components/app/entity-picker"
 import { AdminCombobox, AdminField } from "@/components/app/admin-section"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 
 const EMPTY_FORM = {
   ownerOrgId: "",
@@ -35,6 +38,8 @@ export default function AdminTaxRulesPage() {
   })
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["admin-tax-rules"] })
@@ -58,16 +63,17 @@ export default function AdminTaxRulesPage() {
         }
         bands = parsed as Record<string, number>
       } catch {
-        toast.error("Engine bands must be valid JSON, e.g. {\"2000\":40000}.")
+        setServerError("Engine bands must be valid JSON, e.g. {\"2000\":40000}.")
         return
       }
     }
     const amount = input.amount.trim() === "" ? null : Number(input.amount)
     if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
-      toast.error("Amount must be zero or positive.")
+      setServerError("Amount must be zero or positive.")
       return
     }
     setSaving(true)
+    setServerError(null)
     try {
       await upsertTaxRule({
         ownerOrgId: input.ownerOrgId,
@@ -80,9 +86,10 @@ export default function AdminTaxRulesPage() {
       })
       toast.success("Rule saved.")
       setForm(EMPTY_FORM)
+      setCreateOpen(false)
       await refresh()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
+      setServerError(error instanceof Error ? error.message : "Failed.")
     } finally {
       setSaving(false)
     }
@@ -98,11 +105,24 @@ export default function AdminTaxRulesPage() {
         </p>
       </header>
 
-      <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
-        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      <div>
+        <Button type="button" onClick={() => setCreateOpen(true)}>
           New rule
-        </h2>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        </Button>
+      </div>
+      <ResponsiveModal
+        open={createOpen}
+        onOpenChange={(next) => {
+          if (!next) {
+            setForm(EMPTY_FORM)
+            setServerError(null)
+          }
+          setCreateOpen(next)
+        }}
+        title="New automation rule"
+        description="Rules generate assessments on schedule. Amounts and bands are management-set policy."
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <AdminField label="Revenue organization">
             <EntityPicker
               label="Organization"
@@ -174,23 +194,28 @@ export default function AdminTaxRulesPage() {
             />
           </AdminField>
           <AdminField label="Engine bands JSON (optional)">
-            <Input
+            <Textarea
               value={form.engineBands}
               onChange={(event) =>
                 setForm({ ...form, engineBands: event.target.value })
               }
               placeholder='{"2000":40000,"3000":60000,"above":90000}'
-              className="rounded-none"
+              rows={3}
             />
           </AdminField>
         </div>
-        <div className="flex items-center gap-2">
+        {serverError && (
+          <p role="alert" className="mt-3 text-sm font-medium text-red-600">
+            {serverError}
+          </p>
+        )}
+        <DialogFooter className="mt-3 sm:col-span-2">
           <Button
             type="button"
-            disabled={saving || !form.ownerOrgId}
-            onClick={() => void save({ ...form, isEnabled: true })}
+            variant="outline"
+            onClick={() => setCreateOpen(false)}
           >
-            {saving ? "Saving…" : "Create enabled"}
+            Cancel
           </Button>
           <Button
             type="button"
@@ -200,8 +225,15 @@ export default function AdminTaxRulesPage() {
           >
             Create disabled
           </Button>
-        </div>
-      </section>
+          <Button
+            type="button"
+            disabled={saving || !form.ownerOrgId}
+            onClick={() => void save({ ...form, isEnabled: true })}
+          >
+            {saving ? "Saving…" : "Create enabled"}
+          </Button>
+        </DialogFooter>
+      </ResponsiveModal>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -230,22 +262,22 @@ export default function AdminTaxRulesPage() {
 }
 
 function RuleCard({ rule, onDone }: { rule: TaxRuleRow; onDone: () => void }) {
-  const [amount, setAmount] = useState(rule.amount ?? "")
-  const [dueDayOffset, setDueDayOffset] = useState(String(rule.dueDayOffset))
+  const [editOpen, setEditOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  async function persist(isEnabled: boolean) {
+  async function toggle() {
     setBusy(true)
     try {
       await upsertTaxRule({
         ownerOrgId: rule.ownerOrgId,
         taxType: rule.taxType as (typeof taxTypeOptions)[number],
         period: rule.period as (typeof taxPeriodOptions)[number],
-        isEnabled,
-        amount: amount === "" ? null : Number(amount),
+        isEnabled: !rule.isEnabled,
+        amount: rule.amount == null ? null : Number(rule.amount),
         engineBands: rule.engineBands,
-        dueDayOffset: Number(dueDayOffset) || 30,
+        dueDayOffset: rule.dueDayOffset,
       })
+      toast.success(rule.isEnabled ? "Rule disabled." : "Rule enabled.")
       await onDone()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed.")
@@ -276,31 +308,13 @@ function RuleCard({ rule, onDone }: { rule: TaxRuleRow; onDone: () => void }) {
         {rule.engineBands ? ` · bands ${Object.keys(rule.engineBands).length}` : ""}
         {` · due +${rule.dueDayOffset}d`}
       </p>
-      <div className="mt-2 flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Amount
-          <Input
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            inputMode="decimal"
-            className="h-8 w-32 rounded-none"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Due offset (days)
-          <Input
-            value={dueDayOffset}
-            onChange={(event) => setDueDayOffset(event.target.value)}
-            inputMode="numeric"
-            className="h-8 w-24 rounded-none"
-          />
-        </label>
+      <div className="mt-2 flex gap-2">
         <Button
           type="button"
           size="sm"
           variant={rule.isEnabled ? "outline" : "default"}
           disabled={busy}
-          onClick={() => void persist(!rule.isEnabled)}
+          onClick={() => void toggle()}
         >
           {rule.isEnabled ? "Disable" : "Enable"}
         </Button>
@@ -308,12 +322,116 @@ function RuleCard({ rule, onDone }: { rule: TaxRuleRow; onDone: () => void }) {
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy}
-          onClick={() => void persist(rule.isEnabled)}
+          onClick={() => setEditOpen(true)}
         >
-          Save
+          Edit
         </Button>
       </div>
+      <EditRuleDialog
+        rule={rule}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onDone={onDone}
+      />
     </li>
+  )
+}
+
+function EditRuleDialog({
+  rule,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  rule: TaxRuleRow
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDone: () => void
+}) {
+  const [amount, setAmount] = useState(rule.amount ?? "")
+  const [dueDayOffset, setDueDayOffset] = useState(String(rule.dueDayOffset))
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    const parsedAmount = amount === "" ? null : Number(amount)
+    if (parsedAmount !== null && (!Number.isFinite(parsedAmount) || parsedAmount < 0)) {
+      setServerError("Amount must be zero or positive.")
+      return
+    }
+    setSaving(true)
+    setServerError(null)
+    try {
+      await upsertTaxRule({
+        ownerOrgId: rule.ownerOrgId,
+        taxType: rule.taxType as (typeof taxTypeOptions)[number],
+        period: rule.period as (typeof taxPeriodOptions)[number],
+        isEnabled: rule.isEnabled,
+        amount: parsedAmount,
+        engineBands: rule.engineBands,
+        dueDayOffset: Number(dueDayOffset) || 30,
+      })
+      toast.success("Rule saved.")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setAmount(rule.amount ?? "")
+          setDueDayOffset(String(rule.dueDayOffset))
+          setServerError(null)
+        }
+        onOpenChange(next)
+      }}
+      title="Edit rule"
+      description={`${rule.taxType.replace(/_/g, " ")} · ${rule.period} · ${rule.ownerOrgName ?? ""}. Band changes go through the create form.`}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <AdminField label="Flat amount (MWK, empty = bands only)">
+          <Input
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            inputMode="decimal"
+            placeholder="e.g. 15000"
+            className="rounded-none"
+          />
+        </AdminField>
+        <AdminField label="Due day offset">
+          <Input
+            value={dueDayOffset}
+            onChange={(event) => setDueDayOffset(event.target.value)}
+            inputMode="numeric"
+            className="rounded-none"
+          />
+        </AdminField>
+        {serverError && (
+          <p role="alert" className="text-sm font-medium text-red-600">
+            {serverError}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save rule"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
   )
 }
