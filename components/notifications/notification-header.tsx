@@ -44,6 +44,9 @@ const TYPE_OPTIONS = [
   { value: "outcome_recorded", label: "Outcome recorded", icon: GavelIcon },
   { value: "status_changed", label: "Status changed", icon: ActivityIcon },
   { value: "review_added", label: "Review added", icon: MessageSquareIcon },
+  { value: "task_assigned", label: "Task assigned", icon: InboxIcon },
+  { value: "task_updated", label: "Task updated", icon: ActivityIcon },
+  { value: "payment_received", label: "Payment received", icon: RefreshCwIcon },
 ]
 
 export function NotificationHeader({

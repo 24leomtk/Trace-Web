@@ -1,9 +1,17 @@
 -- ============================================================================
 -- TRACE — ACCESS REFRESH + DEMO DATA (re-runnable)
 -- ----------------------------------------------------------------------------
--- Run AFTER db/sql/Functions&Policies.sql, as the schema owner:
+-- Run AFTER db/sql/00..60 (or the legacy Functions&Policies.sql), as the
+-- schema owner:
 --
 --   psql "$DATABASE_URL" -f "db/sql/Seed-refresh.sql"
+--
+-- NOTE: this script writes directly (referral renewals, flag/paid recompute).
+-- Notification triggers in db/sql/50_notification_triggers.sql fire on these
+-- writes unless muted — wrap manual runs in a muted transaction when you do
+-- NOT want inbox rows:
+--   begin; select set_config('app.seed_load', 'on', true);
+--   \include Seed-refresh.sql  (or paste the body)  commit;
 --
 -- What it does (safe to run repeatedly):
 --   0. Grants the connection role membership in `app_user` so lib/db-context's

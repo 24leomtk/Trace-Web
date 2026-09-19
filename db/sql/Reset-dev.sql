@@ -10,18 +10,27 @@
 --
 --   psql "$DATABASE_URL" -v TRACE_RESET_OK=1 -f "db/sql/Reset-dev.sql"
 --   <run the Drizzle migration(s): pnpm exec drizzle-kit migrate>
---   psql "$DATABASE_URL" -f "db/sql/Functions&Policies.sql"
---   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/Seed.sql"
+--   psql "$DATABASE_URL" -f "db/sql/00_prerequisites.sql"
+--   psql "$DATABASE_URL" -f "db/sql/10_helpers.sql"
+--   psql "$DATABASE_URL" -f "db/sql/20_constraints.sql"
+--   psql "$DATABASE_URL" -f "db/sql/30_policies_core.sql"
+--   psql "$DATABASE_URL" -f "db/sql/31_policies_cases.sql"
+--   psql "$DATABASE_URL" -f "db/sql/32_policies_court_audit.sql"
+--   psql "$DATABASE_URL" -f "db/sql/33_append_only.sql"
+--   psql "$DATABASE_URL" -f "db/sql/40_audit_chain.sql"
+--   psql "$DATABASE_URL" -f "db/sql/50_notification_triggers.sql"
+--   psql "$DATABASE_URL" -f "db/sql/60_scheduled_jobs.sql"
+--   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/seeds/00_runner.sql"
 --
 -- What it destroys:
 --   * every TRACE table (incl. better-auth sessions/accounts/verifications,
 --     the four Phase 2/3 tables, and legacy medical tables on dirty DBs)
---   * every TRACE enum type and helper function/trigger
+--   * every TRACE enum type, helper function, notification trigger function
 --   * drizzle's __drizzle_migrations journal rows, so `drizzle-kit migrate`
 --     replays all migrations from scratch afterwards
 -- What it keeps (deliberately):
 --   * the database itself, installed extensions, and roles (incl. app_user —
---     Functions&Policies.sql recreates/re-grants idempotently)
+--     00_prerequisites.sql recreates/re-grants idempotently)
 --   * pg_cron jobs, if any (they re-attach to the recreated tables)
 -- ============================================================================
 
@@ -48,6 +57,24 @@ drop function if exists public.app_is_police() cascade;
 drop function if exists public.app_is_monitor() cascade;
 drop function if exists public.app_is_system_admin() cascade;
 drop function if exists public.app_is_auditor() cascade;
+
+-- Notification trigger helpers + trigger functions (50_notification_triggers.sql).
+drop function if exists public.trace_seed_muted() cascade;
+drop function if exists public.trace_actor_uid() cascade;
+drop function if exists public.trace_actor_name(text) cascade;
+drop function if exists public.trace_record_title(uuid) cascade;
+drop function if exists public.trace_notify(text, text, uuid, text) cascade;
+drop function if exists public.trace_cca_insert() cascade;
+drop function if exists public.trace_cca_update() cascade;
+drop function if exists public.trace_referral_doc_insert() cascade;
+drop function if exists public.trace_review_insert() cascade;
+drop function if exists public.trace_assignment_insert() cascade;
+drop function if exists public.trace_assignment_update() cascade;
+drop function if exists public.trace_records_update() cascade;
+drop function if exists public.trace_payment_insert() cascade;
+drop function if exists public.trace_citation_update() cascade;
+drop function if exists public.trace_custody_insert() cascade;
+drop function if exists public.trace_custody_update() cascade;
 
 -- Legacy functions from the previous (medical records) app.
 drop function if exists public.redeem_access_code(text, text, text, text, text) cascade;

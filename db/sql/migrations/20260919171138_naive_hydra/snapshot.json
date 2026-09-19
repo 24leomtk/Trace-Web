@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "b5989f69-7db8-4086-8de3-5b979dbb655d",
+  "id": "5a02b623-005e-48a0-ad24-829aeb1b45ae",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -32,6 +32,14 @@
         "court_access_expired",
         "policy_entered",
         "policy_updated",
+        "payment_received",
+        "citation_voided",
+        "status_rejected",
+        "locate_reported",
+        "locate_confirmed",
+        "hold_placed",
+        "hold_released",
+        "owner_notified",
         "review_added",
         "insurer_flag_lookup",
         "vehicle_registered",
@@ -284,6 +292,12 @@
     {
       "isRlsEnabled": false,
       "name": "wanted_person_cases",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "impound_custody",
       "entityType": "tables",
       "schema": "public"
     },
@@ -2007,6 +2021,84 @@
       "table": "records"
     },
     {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'none'",
+      "generated": null,
+      "identity": null,
+      "name": "locate_state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "records"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "locate_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "records"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "locate_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "records"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "locate_place",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "records"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "locate_note",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "records"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "disposition",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "records"
+    },
+    {
       "type": "jsonb",
       "typeSchema": null,
       "notNull": true,
@@ -2287,6 +2379,58 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "payer_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "citation_payments"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_method",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "citation_payments"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "channel",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "citation_payments"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "receiving_branch_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "citation_payments"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "received_by",
       "entityType": "columns",
       "schema": "public",
@@ -2509,6 +2653,84 @@
       "generated": null,
       "identity": null,
       "name": "is_paid",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ticket_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "statute_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "due_date",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "voided_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "void_reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "void_by",
       "entityType": "columns",
       "schema": "public",
       "table": "traffic_citations"
@@ -2785,6 +3007,227 @@
       "entityType": "columns",
       "schema": "public",
       "table": "wanted_person_cases"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "record_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "tow_company",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "lot_location",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "bay",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "hold_authority_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "hold_basis",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "hold_placed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "owner_notified_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "owner_notified_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "release_auth_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "release_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "recipient_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "recipient_id_checked",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fees_snapshot",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "impound_custody"
     },
     {
       "type": "uuid",
@@ -4670,6 +5113,27 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "ticket_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "traffic_citations_ticket_number_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "record_id",
           "isExpression": false,
           "asc": true,
@@ -4854,6 +5318,27 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "wanted_person_cases"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "record_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "impound_custody_record_id_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "impound_custody"
     },
     {
       "nameExplicit": true,
@@ -5504,6 +5989,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "locate_by"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "records_locate_by_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "records"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "accident_id"
       ],
       "schemaTo": "public",
@@ -5565,6 +6067,23 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "citation_payments_record_id_records_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "citation_payments"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "receiving_branch_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "branches",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "citation_payments_receiving_branch_id_branches_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "citation_payments"
@@ -5657,6 +6176,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "void_by"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "traffic_citations_void_by_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "traffic_citations"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "court_id"
       ],
       "schemaTo": "public",
@@ -5738,6 +6274,74 @@
       "entityType": "fks",
       "schema": "public",
       "table": "wanted_person_cases"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "record_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "records",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "impound_custody_record_id_records_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "hold_authority_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "impound_custody_hold_authority_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "owner_notified_by"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "impound_custody_owner_notified_by_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "impound_custody"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "release_auth_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "impound_custody_release_auth_id_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "impound_custody"
     },
     {
       "nameExplicit": false,
@@ -6223,6 +6827,16 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "impound_custody_pkey",
+      "schema": "public",
+      "table": "impound_custody",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "court_case_access_pkey",
       "schema": "public",
       "table": "court_case_access",
@@ -6363,6 +6977,28 @@
       "name": "citation_payments_receipt_no_key",
       "schema": "public",
       "table": "citation_payments",
+      "entityType": "uniques"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "ticket_number"
+      ],
+      "nullsNotDistinct": false,
+      "name": "traffic_citations_ticket_number_key",
+      "schema": "public",
+      "table": "traffic_citations",
+      "entityType": "uniques"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "record_id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "impound_custody_record_id_key",
+      "schema": "public",
+      "table": "impound_custody",
       "entityType": "uniques"
     }
   ],

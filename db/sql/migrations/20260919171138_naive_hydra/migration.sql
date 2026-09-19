@@ -1,5 +1,5 @@
 CREATE TYPE "access_level" AS ENUM('branch', 'district', 'country');--> statement-breakpoint
-CREATE TYPE "audit_action_type" AS ENUM('record_created', 'record_viewed', 'record_updated', 'status_changed', 'cross_district_access', 'cross_branch_access', 'report_generated', 'court_case_referred', 'court_case_viewed', 'court_case_outcome_recorded', 'court_access_renewed', 'court_access_expired', 'policy_entered', 'policy_updated', 'review_added', 'insurer_flag_lookup', 'vehicle_registered', 'user_provisioned');--> statement-breakpoint
+CREATE TYPE "audit_action_type" AS ENUM('record_created', 'record_viewed', 'record_updated', 'status_changed', 'cross_district_access', 'cross_branch_access', 'report_generated', 'court_case_referred', 'court_case_viewed', 'court_case_outcome_recorded', 'court_access_renewed', 'court_access_expired', 'policy_entered', 'policy_updated', 'payment_received', 'citation_voided', 'status_rejected', 'locate_reported', 'locate_confirmed', 'hold_placed', 'hold_released', 'owner_notified', 'review_added', 'insurer_flag_lookup', 'vehicle_registered', 'user_provisioned');--> statement-breakpoint
 CREATE TYPE "case_status" AS ENUM('active', 'resolved', 'closed', 'archived');--> statement-breakpoint
 CREATE TYPE "court_case_outcome" AS ENUM('pending', 'charged', 'withdrawn', 'dismissed', 'convicted', 'acquitted', 'other');--> statement-breakpoint
 CREATE TYPE "danger_level" AS ENUM('low', 'medium', 'high', 'extreme');--> statement-breakpoint
@@ -172,6 +172,12 @@ CREATE TABLE "records" (
 	"person_id" uuid,
 	"access_level" "access_level" DEFAULT 'branch'::"access_level" NOT NULL,
 	"status" "case_status" DEFAULT 'active'::"case_status" NOT NULL,
+	"locate_state" text DEFAULT 'none' NOT NULL,
+	"locate_by" text,
+	"locate_at" timestamp with time zone,
+	"locate_place" text,
+	"locate_note" text,
+	"disposition" text,
 	"data" jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -202,6 +208,10 @@ CREATE TABLE "citation_payments" (
 	"amount" numeric NOT NULL,
 	"receipt_no" text NOT NULL UNIQUE,
 	"note" text,
+	"payer_name" text,
+	"payment_method" text,
+	"channel" text,
+	"receiving_branch_id" uuid,
 	"received_by" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -226,6 +236,12 @@ CREATE TABLE "traffic_citations" (
 	"violation_type" text NOT NULL,
 	"fine_amount" numeric,
 	"is_paid" boolean DEFAULT false NOT NULL,
+	"ticket_number" text UNIQUE,
+	"statute_code" text,
+	"due_date" date,
+	"voided_at" timestamp with time zone,
+	"void_reason" text,
+	"void_by" text,
 	"court_date" date,
 	"court_id" uuid,
 	"district" "district",
@@ -253,6 +269,26 @@ CREATE TABLE "wanted_person_cases" (
 	"district" "district",
 	"status" "case_status" NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "impound_custody" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"record_id" uuid NOT NULL UNIQUE,
+	"tow_company" text,
+	"lot_location" text,
+	"bay" text,
+	"hold_authority_id" text,
+	"hold_basis" text,
+	"hold_placed_at" timestamp with time zone,
+	"owner_notified_at" timestamp with time zone,
+	"owner_notified_by" text,
+	"release_auth_id" text,
+	"release_at" timestamp with time zone,
+	"recipient_name" text,
+	"recipient_id_checked" text,
+	"fees_snapshot" numeric,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "court_case_access" (
@@ -387,6 +423,7 @@ CREATE INDEX "traffic_citations_record_id_idx" ON "traffic_citations" ("record_i
 CREATE INDEX "traffic_citations_vehicle_id_idx" ON "traffic_citations" ("vehicle_id");--> statement-breakpoint
 CREATE INDEX "traffic_citations_district_idx" ON "traffic_citations" ("district");--> statement-breakpoint
 CREATE INDEX "traffic_citations_court_date_idx" ON "traffic_citations" ("court_date");--> statement-breakpoint
+CREATE INDEX "traffic_citations_ticket_number_idx" ON "traffic_citations" ("ticket_number");--> statement-breakpoint
 CREATE INDEX "vehicle_cases_record_id_idx" ON "vehicle_cases" ("record_id");--> statement-breakpoint
 CREATE INDEX "vehicle_cases_vehicle_id_idx" ON "vehicle_cases" ("vehicle_id");--> statement-breakpoint
 CREATE INDEX "vehicle_cases_plate_number_idx" ON "vehicle_cases" ("plate_number");--> statement-breakpoint
@@ -396,6 +433,7 @@ CREATE INDEX "wanted_person_cases_person_id_idx" ON "wanted_person_cases" ("pers
 CREATE INDEX "wanted_person_cases_district_idx" ON "wanted_person_cases" ("district");--> statement-breakpoint
 CREATE INDEX "wanted_person_cases_status_idx" ON "wanted_person_cases" ("status");--> statement-breakpoint
 CREATE INDEX "wanted_person_cases_danger_idx" ON "wanted_person_cases" ("danger_level");--> statement-breakpoint
+CREATE INDEX "impound_custody_record_id_idx" ON "impound_custody" ("record_id");--> statement-breakpoint
 CREATE INDEX "court_case_access_record_id_idx" ON "court_case_access" ("record_id");--> statement-breakpoint
 CREATE INDEX "court_case_access_court_liaison_id_idx" ON "court_case_access" ("court_liaison_id");--> statement-breakpoint
 CREATE INDEX "court_case_access_expires_at_idx" ON "court_case_access" ("expires_at");--> statement-breakpoint
@@ -430,20 +468,27 @@ ALTER TABLE "records" ADD CONSTRAINT "records_reported_by_users_id_fkey" FOREIGN
 ALTER TABLE "records" ADD CONSTRAINT "records_branch_id_branches_id_fkey" FOREIGN KEY ("branch_id") REFERENCES "branches"("id");--> statement-breakpoint
 ALTER TABLE "records" ADD CONSTRAINT "records_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
 ALTER TABLE "records" ADD CONSTRAINT "records_person_id_persons_of_interest_id_fkey" FOREIGN KEY ("person_id") REFERENCES "persons_of_interest"("id");--> statement-breakpoint
+ALTER TABLE "records" ADD CONSTRAINT "records_locate_by_users_id_fkey" FOREIGN KEY ("locate_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "accident_vehicles" ADD CONSTRAINT "accident_vehicles_accident_id_accidents_id_fkey" FOREIGN KEY ("accident_id") REFERENCES "accidents"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "accident_vehicles" ADD CONSTRAINT "accident_vehicles_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
 ALTER TABLE "accidents" ADD CONSTRAINT "accidents_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "citation_payments" ADD CONSTRAINT "citation_payments_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "citation_payments" ADD CONSTRAINT "citation_payments_receiving_branch_id_branches_id_fkey" FOREIGN KEY ("receiving_branch_id") REFERENCES "branches"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "citation_payments" ADD CONSTRAINT "citation_payments_received_by_users_id_fkey" FOREIGN KEY ("received_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "missing_person_cases" ADD CONSTRAINT "missing_person_cases_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "missing_person_cases" ADD CONSTRAINT "missing_person_cases_person_id_persons_of_interest_id_fkey" FOREIGN KEY ("person_id") REFERENCES "persons_of_interest"("id");--> statement-breakpoint
 ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
+ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_void_by_users_id_fkey" FOREIGN KEY ("void_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "traffic_citations" ADD CONSTRAINT "traffic_citations_court_id_organizations_id_fkey" FOREIGN KEY ("court_id") REFERENCES "organizations"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "vehicle_cases" ADD CONSTRAINT "vehicle_cases_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "vehicle_cases" ADD CONSTRAINT "vehicle_cases_vehicle_id_vehicles_id_fkey" FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id");--> statement-breakpoint
 ALTER TABLE "wanted_person_cases" ADD CONSTRAINT "wanted_person_cases_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "wanted_person_cases" ADD CONSTRAINT "wanted_person_cases_person_id_persons_of_interest_id_fkey" FOREIGN KEY ("person_id") REFERENCES "persons_of_interest"("id");--> statement-breakpoint
+ALTER TABLE "impound_custody" ADD CONSTRAINT "impound_custody_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "impound_custody" ADD CONSTRAINT "impound_custody_hold_authority_id_users_id_fkey" FOREIGN KEY ("hold_authority_id") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "impound_custody" ADD CONSTRAINT "impound_custody_owner_notified_by_users_id_fkey" FOREIGN KEY ("owner_notified_by") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "impound_custody" ADD CONSTRAINT "impound_custody_release_auth_id_users_id_fkey" FOREIGN KEY ("release_auth_id") REFERENCES "users"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_record_id_records_id_fkey" FOREIGN KEY ("record_id") REFERENCES "records"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_court_liaison_id_users_id_fkey" FOREIGN KEY ("court_liaison_id") REFERENCES "users"("id");--> statement-breakpoint
 ALTER TABLE "court_case_access" ADD CONSTRAINT "court_case_access_referred_by_users_id_fkey" FOREIGN KEY ("referred_by") REFERENCES "users"("id");--> statement-breakpoint

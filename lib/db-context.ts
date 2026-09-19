@@ -13,7 +13,7 @@ export type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
   *      `app_user_id()` / `app_can_read_record()` policy helpers.
  *
  * Requires the connection role to be a member of `app_user` — see the
- * self-grant block at the top of db/sql/Functions&Policies.sql (and
+ * self-grant block in db/sql/00_prerequisites.sql (and
  * db/sql/Seed-refresh.sql).
  */
 export async function withUserCtx<T>(

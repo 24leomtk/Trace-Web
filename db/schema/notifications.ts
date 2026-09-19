@@ -15,7 +15,13 @@ import { users } from "./auth"
 // notifications — closes the referral loop in-app instead of out-of-band.
 // Created on: court referral / renewal / revocation (-> liaison), outcome
 // recorded (-> referring monitor), status change (-> filing officer +
-// live liaisons), review added (-> filing officer).
+// live liaisons), review added (-> filing officer), task assigned/updated
+// (-> assignee/assigner, DB triggers in db/sql/50_notification_triggers.sql),
+// payment received (-> filing officer).
+// Types: referral_received | referral_updated | outcome_recorded |
+// status_changed | review_added | task_assigned | task_updated |
+// payment_received. Trigger inserts run as the table owner (SECURITY DEFINER)
+// and bypass RLS by design; app inserts go through notifications_write.
 // ---------------------------------------------------------------------------
 
 export const notifications = pgTable(

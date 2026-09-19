@@ -12,6 +12,9 @@ export type NotificationType =
   | "outcome_recorded"
   | "status_changed"
   | "review_added"
+  | "task_assigned"
+  | "task_updated"
+  | "payment_received"
 
 /** Insert a notification inside an existing transaction (no RLS surprises —
  * the policy allows police/liaison/system actors to notify). */
