@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   const rows = await db
-    .selectDistinctOn([users.role], {
+    .select({
       name: users.name,
       phoneNumber: users.phoneNumber,
       role: users.role,
