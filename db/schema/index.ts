@@ -15,6 +15,7 @@ export * from "./insurance"
 // Case records
 export * from "./records"
 export * from "./coded"
+export * from "./custody"
 
 // Court referrals
 export * from "./court"

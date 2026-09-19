@@ -291,6 +291,21 @@ function record(overrides) {
         }).success, false);
     });
 });
+(0, node_test_1.describe)("custodyHoldSchema + custodyReleaseSchema (Phase 4)", () => {
+    const id = "00000000-0000-4000-8000-000000000000";
+    (0, node_test_1.it)("orders holds with a legal basis", () => {
+        strict_1.default.equal(admin_1.custodyHoldSchema.safeParse({ recordId: id, holdBasis: "Held as evidence in case 12/26." }).success, true);
+        strict_1.default.equal(admin_1.custodyHoldSchema.safeParse({ recordId: id, holdBasis: "evidence" }).success, false);
+    });
+    (0, node_test_1.it)("dual-signs releases with recipient + checked ID", () => {
+        strict_1.default.equal(admin_1.custodyReleaseSchema.safeParse({
+            recordId: id,
+            recipientName: "Chifundo Banda",
+            recipientIdChecked: "National ID MW123456",
+        }).success, true);
+        strict_1.default.equal(admin_1.custodyReleaseSchema.safeParse({ recordId: id, recipientName: "X", recipientIdChecked: "" }).success, false);
+    });
+});
 (0, node_test_1.describe)("referralSla", () => {
     const referred = "2026-09-01T12:00:00Z";
     const now = new Date("2026-09-17T12:00:00Z").getTime();

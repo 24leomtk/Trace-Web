@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
+exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.ownerNoticeSchema = exports.custodyReleaseSchema = exports.custodyHoldSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
 const z = __importStar(require("zod"));
 exports.managedRoleOptions = [
     "OFFICER",
@@ -229,6 +229,25 @@ exports.dispositionOptions = [
 exports.dispositionSchema = z.object({
     recordId: z.uuid(),
     disposition: z.enum(exports.dispositionOptions),
+});
+// Phase 4 impound custody: holds are ordered (supervisor/investigator),
+// releases are dual-signed (authority + ID-checked recipient), owner notice
+// is timestamped. Release/hold rows are set-once — corrections go to audit.
+exports.custodyHoldSchema = z.object({
+    recordId: z.uuid(),
+    holdBasis: z.string().trim().min(10).max(500),
+    towCompany: z.string().trim().max(120).optional().or(z.literal("")),
+    lotLocation: z.string().trim().max(200).optional().or(z.literal("")),
+    bay: z.string().trim().max(40).optional().or(z.literal("")),
+});
+exports.custodyReleaseSchema = z.object({
+    recordId: z.uuid(),
+    recipientName: z.string().trim().min(2).max(120),
+    recipientIdChecked: z.string().trim().min(2).max(120),
+    feesSnapshot: z.number().nonnegative().max(100000000).optional(),
+});
+exports.ownerNoticeSchema = z.object({
+    recordId: z.uuid(),
 });
 // F3 court scheduling: monitors set the appearance date (today or future)
 // and optionally the court organization.

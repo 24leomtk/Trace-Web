@@ -10,6 +10,7 @@ import {
   citationPayments,
   courtCaseAccess,
   idempotencyKeys,
+  impoundCustody,
   missingPersonCases,
   recordAttachments,
   records,
@@ -1036,6 +1037,18 @@ async function transitionBlockReason(
     }
     return null
   }
+  if (record.recordType === "vehicle_impoundment") {
+    // Phase 4: the lot matching the system — a signed release unblocks.
+    const [custody] = await tx
+      .select({ releaseAt: impoundCustody.releaseAt })
+      .from(impoundCustody)
+      .where(eq(impoundCustody.recordId, record.id))
+      .limit(1)
+    if (!custody?.releaseAt) {
+      return "Authorize the release first — only the hold authority or a monitor can sign it."
+    }
+    return null
+  }
   return null
 }
 
@@ -1046,7 +1059,7 @@ export interface TransitionHint {
 }
 
 const ADVISORY_HINTS: Partial<Record<RecordType, string>> = {
-  vehicle_impoundment: "Resolving needs a signed release (hold authority, lands in Phase 4).",
+  // Phase 4 hardened impoundment; kept for forward-compatible advisory use.
 }
 
 /**

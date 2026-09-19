@@ -34,7 +34,7 @@ import {
 } from "../lib/format"
 import { otpMessage, resolveSmsConfig } from "../lib/sms"
 import { crimeIncidentSchema, wantedPersonSchema } from "../validations/record"
-import { apiKeySchema, citationPaymentSchema, citationVoidSchema, dispositionSchema, locateReportSchema } from "../validations/admin"
+import { apiKeySchema, citationPaymentSchema, citationVoidSchema, custodyHoldSchema, custodyReleaseSchema, dispositionSchema, locateReportSchema } from "../validations/admin"
 
 const officer: VisibilityScope = {
   role: "OFFICER",
@@ -454,6 +454,36 @@ describe("locateReportSchema + dispositionSchema (Phase 3)", () => {
         recordId: "00000000-0000-4000-8000-000000000000",
         disposition: "lost",
       }).success,
+      false
+    )
+  })
+})
+
+describe("custodyHoldSchema + custodyReleaseSchema (Phase 4)", () => {
+  const id = "00000000-0000-4000-8000-000000000000"
+
+  it("orders holds with a legal basis", () => {
+    assert.equal(
+      custodyHoldSchema.safeParse({ recordId: id, holdBasis: "Held as evidence in case 12/26." }).success,
+      true
+    )
+    assert.equal(
+      custodyHoldSchema.safeParse({ recordId: id, holdBasis: "evidence" }).success,
+      false
+    )
+  })
+
+  it("dual-signs releases with recipient + checked ID", () => {
+    assert.equal(
+      custodyReleaseSchema.safeParse({
+        recordId: id,
+        recipientName: "Chifundo Banda",
+        recipientIdChecked: "National ID MW123456",
+      }).success,
+      true
+    )
+    assert.equal(
+      custodyReleaseSchema.safeParse({ recordId: id, recipientName: "X", recipientIdChecked: "" }).success,
       false
     )
   })

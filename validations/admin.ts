@@ -248,6 +248,34 @@ export const dispositionSchema = z.object({
 
 export type DispositionInput = z.output<typeof dispositionSchema>
 
+// Phase 4 impound custody: holds are ordered (supervisor/investigator),
+// releases are dual-signed (authority + ID-checked recipient), owner notice
+// is timestamped. Release/hold rows are set-once — corrections go to audit.
+export const custodyHoldSchema = z.object({
+  recordId: z.uuid(),
+  holdBasis: z.string().trim().min(10).max(500),
+  towCompany: z.string().trim().max(120).optional().or(z.literal("")),
+  lotLocation: z.string().trim().max(200).optional().or(z.literal("")),
+  bay: z.string().trim().max(40).optional().or(z.literal("")),
+})
+
+export type CustodyHoldInput = z.output<typeof custodyHoldSchema>
+
+export const custodyReleaseSchema = z.object({
+  recordId: z.uuid(),
+  recipientName: z.string().trim().min(2).max(120),
+  recipientIdChecked: z.string().trim().min(2).max(120),
+  feesSnapshot: z.number().nonnegative().max(100_000_000).optional(),
+})
+
+export type CustodyReleaseInput = z.output<typeof custodyReleaseSchema>
+
+export const ownerNoticeSchema = z.object({
+  recordId: z.uuid(),
+})
+
+export type OwnerNoticeInput = z.output<typeof ownerNoticeSchema>
+
 // F3 court scheduling: monitors set the appearance date (today or future)
 // and optionally the court organization.
 export const citationCourtScheduleSchema = z.object({

@@ -77,7 +77,10 @@ exports.trafficCitationSchema = z.object(Object.assign({ plate_number: z.string(
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .optional(), location: z.string().min(1), date_issued: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }, geoFields));
-exports.vehicleImpoundmentSchema = z.object(Object.assign({ plate_number: z.string().min(1), reason: z.string().min(1), impound_location: z.string().min(1), impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), release_conditions: z.string().optional() }, geoFields));
+exports.vehicleImpoundmentSchema = z.object(Object.assign({ plate_number: z.string().min(1), reason: z.string().min(1), impound_location: z.string().min(1), impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), release_conditions: z.string().optional(), 
+    // Phase 4: tow chain captured at filing when known (hold placement can
+    // confirm/correct it). All optional during transition.
+    tow_company: z.string().trim().max(120).optional(), lot_location: z.string().trim().max(200).optional(), bay: z.string().trim().max(40).optional() }, geoFields));
 // ---------------------------------------------------------------------------
 exports.recordSchemas = {
     missing_person: exports.missingPersonSchema,

@@ -43,6 +43,7 @@ import { EntityPicker } from "@/components/app/entity-picker"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ImpoundCustody } from "@/components/app/impound-custody"
 import { LocateCard } from "@/components/app/locate-card"
 import { SearchInput } from "@/components/app/search-input"
 import { ReferralBundle } from "@/components/app/referral-bundle"
@@ -174,6 +175,8 @@ export default function RecordDetailPage({
     await queryClient.invalidateQueries({ queryKey: ["reviews", id] })
     await queryClient.invalidateQueries({ queryKey: ["assignments", id] })
     await queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
+    await queryClient.invalidateQueries({ queryKey: ["custody", id] })
+    await queryClient.invalidateQueries({ queryKey: ["locate", id] })
   }
 
   async function confirmStatusChange(next: CaseStatus, statusReason: string) {
@@ -460,37 +463,9 @@ export default function RecordDetailPage({
             />
           )}
 
-          {record.recordType === "vehicle_impoundment" &&
-            isMonitor &&
-            record.status === "active" && (
-              <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
-                <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Release
-                </h2>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-fit"
-                  onClick={async () => {
-                    try {
-                      await changeStatus({
-                        id: record.id,
-                        status: "resolved",
-                        reason: "Released from impound.",
-                      })
-                      toast.success("Vehicle released.")
-                      await refresh()
-                    } catch (error) {
-                      toast.error(
-                        error instanceof Error ? error.message : "Failed."
-                      )
-                    }
-                  }}
-                >
-                  Mark released
-                </Button>
-              </section>
-            )}
+          {record.recordType === "vehicle_impoundment" && isPolice && (
+            <ImpoundCustody recordId={record.id} />
+          )}
         </>
       )}
 

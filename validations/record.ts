@@ -141,6 +141,11 @@ export const vehicleImpoundmentSchema = z.object({
   impound_location: z.string().min(1),
   impounded_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   release_conditions: z.string().optional(),
+  // Phase 4: tow chain captured at filing when known (hold placement can
+  // confirm/correct it). All optional during transition.
+  tow_company: z.string().trim().max(120).optional(),
+  lot_location: z.string().trim().max(200).optional(),
+  bay: z.string().trim().max(40).optional(),
   ...geoFields,
 })
 

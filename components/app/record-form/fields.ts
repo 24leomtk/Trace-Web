@@ -152,6 +152,9 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
     f("reason", "Reason"),
     f("impound_location", "Impound location"),
     f("impounded_date", "Impounded date", { type: "date", half: true }),
+    o("tow_company", "Tow company", { half: true }),
+    o("lot_location", "Lot location", { half: true }),
+    o("bay", "Bay / slot", { half: true }),
     o("release_conditions", "Release conditions", { type: "textarea" }),
   ],
 }
