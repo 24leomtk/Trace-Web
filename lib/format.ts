@@ -86,6 +86,15 @@ export function formatPhone(phone: string) {
   return `+265 ${rest.slice(0, 2)} ${rest.slice(2, 5)} ${rest.slice(5, 9)}`
 }
 
+/**
+ * Placeholder login email derived from a phone number (phone-OTP-only
+ * auth, no self-registration). Lives here — not in a "use server" module,
+ * which may only export async functions.
+ */
+export function tempEmailFor(phone: string): string {
+  return `${phone}@phone.trace.mw`
+}
+
 export function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning"
   if (hour < 17) return "Good afternoon"

@@ -30,6 +30,7 @@ function VerifyForm() {
 
   const [code, setCode] = useState("")
   const [status, setStatus] = useState<"idle" | "verifying" | "error">("idle")
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [resendIn, setResendIn] = useState(30)
   const containerRef = useRef<HTMLDivElement>(null)
   // DEMO-COMPETITION-ONLY state — remove with the demo box below.
@@ -72,12 +73,16 @@ function VerifyForm() {
 
   async function verify(submitted: string) {
     setStatus("verifying")
+    setErrorMessage(null)
     const { error } = await authClient.phoneNumber.verify({
       phoneNumber: phone,
       code: submitted,
     })
     if (error || !phone) {
       setStatus("error")
+      // Surfaces server-side rejections (e.g. deactivated accounts) while
+      // keeping the generic fallback for wrong codes.
+      setErrorMessage(error?.message ?? null)
       setCode("")
       containerRef.current?.focus()
       return
@@ -96,7 +101,10 @@ function VerifyForm() {
 
   function handleChange(value: string) {
     setCode(value)
-    if (status === "error") setStatus("idle")
+    if (status === "error") {
+      setStatus("idle")
+      setErrorMessage(null)
+    }
     if (value.length === 6) void verify(value)
   }
 
@@ -177,8 +185,8 @@ function VerifyForm() {
           </span>
         ) : status === "error" ? (
           <span className="text-destructive">
-            That code didn&apos;t match, or this number isn&apos;t registered.
-            Contact your administrator.
+            {errorMessage ??
+              "That code didn&apos;t match, or this number isn&apos;t registered. Contact your administrator."}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">

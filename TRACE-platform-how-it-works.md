@@ -124,7 +124,7 @@ Design language: narrow centered column (`max-w-2xl`), card/timeline feed, float
 | `/` | insurer | `InsurerHome`: own policies table + flag lookup |
 | `/` | registrar | `RegistrarHome`: registry search + verify/enrich queue |
 | `/` | auditor | audit-only home (`limit 100`) |
-| `/notifications`, `/profile` | all | inbox (unread badge `9+` cap); profile (posting, role, domain/district/org, phone, badge) |
+| bell popover (floating nav), profile dialog (floating nav) | all | inbox with tabs/search/type filter + details (unread badge `9+` cap); profile (posting, role, domain/district/org, phone, badge) with self-service phone change and account deletion |
 
 ## 7. Mobile API surface (`/api/v1`)
 

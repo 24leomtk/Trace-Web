@@ -14,13 +14,13 @@ import {
   ScrollTextIcon,
   SearchIcon,
   ShieldCheckIcon,
-  UserRoundIcon,
   UsersIcon,
 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { NavButton } from "@/components/app/nav-button"
+import { ProfileDialogButton } from "@/components/app/profile-dialog"
 import { ThemeToggle } from "@/components/app/theme-toggle"
 import { NotificationPopover } from "@/components/notifications"
 import { useUser } from "@/providers/user-context"
@@ -87,7 +87,7 @@ export function FloatingNav() {
                 <ScrollTextIcon className="size-5" />
               </NavButton>
             )}
-            <ProfileNavButton />
+            <ProfileDialogButton />
             <ThemeToggle />
           </>
         )}
@@ -97,7 +97,7 @@ export function FloatingNav() {
             <NavButton label="Referrals" href="/" active={pathname === "/"}>
               <GavelIcon className="size-5" />
             </NavButton>
-            <ProfileNavButton />
+            <ProfileDialogButton />
             <ThemeToggle />
           </>
         )}
@@ -114,7 +114,7 @@ export function FloatingNav() {
             >
               <SearchIcon className="size-5" />
             </NavButton>
-            <ProfileNavButton />
+            <ProfileDialogButton />
             <ThemeToggle />
           </>
         )}
@@ -124,7 +124,7 @@ export function FloatingNav() {
             <NavButton label="Registry" href="/" active={pathname === "/"}>
               <CarFrontIcon className="size-5" />
             </NavButton>
-            <ProfileNavButton />
+            <ProfileDialogButton />
             <ThemeToggle />
           </>
         )}
@@ -169,7 +169,7 @@ export function FloatingNav() {
             >
               <ScrollTextIcon className="size-5" />
             </NavButton>
-            <ProfileNavButton />
+            <ProfileDialogButton />
             <ThemeToggle />
           </>
         )}
@@ -179,7 +179,7 @@ export function FloatingNav() {
             <NavButton label="Audit log" href="/" active={pathname === "/"}>
               <ShieldCheckIcon className="size-5" />
             </NavButton>
-            <ProfileNavButton />
+            <ProfileDialogButton />
             <ThemeToggle />
           </>
         )}
@@ -206,16 +206,4 @@ export function FloatingNav() {
   )
 }
 
-function ProfileNavButton() {
-  const pathname = usePathname()
 
-  return pathname === "/profile" ? (
-    <NavButton key="home" label="Home" href="/">
-      <HouseIcon className="size-5" />
-    </NavButton>
-  ) : (
-    <NavButton key="profile" label="Profile" href="/profile">
-      <UserRoundIcon className="size-5" />
-    </NavButton>
-  )
-}

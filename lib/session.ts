@@ -62,6 +62,9 @@ export async function getUserById(userId: string): Promise<User | null> {
     .limit(1)
 
   if (!row) return null
+  // Deactivated users (including self-deleted accounts) are treated as
+  // signed out everywhere — their sessions are also wiped at deactivation.
+  if (row.user.isActive === false) return null
   return mapUserRow({ ...row.user, ...row })
 }
 

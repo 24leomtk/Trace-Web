@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth"
 // Route groups can't be matched directly, so list the (app) segment paths.
 const PROTECTED_PREFIXES = [
   "/",
-  "/profile",
   "/records",
   "/persons",
   "/lookup",
@@ -51,7 +50,6 @@ export default async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/",
-    "/profile/:path*",
     "/records/:path*",
     "/persons/:path*",
     "/lookup/:path*",

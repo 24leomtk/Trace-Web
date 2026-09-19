@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth"
+import { APIError } from "better-auth/api"
 import { nextCookies } from "better-auth/next-js"
 // The app defines its schema relations with defineRelations (RQB v2), so the
 // adapter must come from the relations-v2 entrypoint.
@@ -59,9 +60,18 @@ export const auth = betterAuth({
           )
         }
       },
-      callbackOnVerification: async () => {
+      callbackOnVerification: async ({ user }) => {
         // Roles are assigned at provisioning time by administrators.
         // There is no public registration path.
+        // Deactivated users (including self-deleted accounts) must not be
+        // able to sign back in — this runs before session creation, so
+        // throwing here blocks sign-in at the OTP step.
+        if ((user as { isActive?: boolean }).isActive === false) {
+          throw new APIError("FORBIDDEN", {
+            message:
+              "This account has been deactivated. Contact your administrator.",
+          })
+        }
       },
     }),
   ],
