@@ -1,7 +1,6 @@
 "use client"
 
-import { usePathname, useRouter } from "next/navigation"
-import { useState } from "react"
+import { usePathname } from "next/navigation"
 import {
   Building2Icon,
   CarFrontIcon,
@@ -10,35 +9,20 @@ import {
   HouseIcon,
   KeyRoundIcon,
   LandmarkIcon,
-  LogOutIcon,
   ScrollTextIcon,
   SearchIcon,
   ShieldCheckIcon,
   UsersIcon,
 } from "lucide-react"
 
-import { authClient } from "@/lib/auth-client"
-import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { NavButton } from "@/components/app/nav-button"
 import { ProfileDialogButton } from "@/components/app/profile-dialog"
-import { ThemeToggle } from "@/components/app/theme-toggle"
 import { NotificationPopover } from "@/components/notifications"
 import { useUser } from "@/providers/user-context"
 
-type Modal = "signout" | null
-
 export function FloatingNav() {
-  const router = useRouter()
   const pathname = usePathname()
   const { user } = useUser()
-  const [modal, setModal] = useState<Modal>(null)
-
-  async function signOut() {
-    await authClient.signOut()
-    router.push("/sign-in")
-    router.refresh()
-    setModal(null)
-  }
 
   const isPolice =
     user.role === "OFFICER" ||
@@ -52,11 +36,10 @@ export function FloatingNav() {
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
 
   return (
-    <>
-      <nav
-        aria-label="Primary"
-        className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 flex-row items-center gap-0.5 border bg-popover/90 p-1.5 shadow-lg ring-1 ring-foreground/5 backdrop-blur-xl lg:top-1/2 lg:right-6 lg:bottom-auto lg:left-auto lg:-translate-x-0 lg:-translate-y-1/2 lg:flex-col dark:ring-foreground/10 print:hidden"
-      >
+    <nav
+      aria-label="Primary"
+      className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 flex-row items-center gap-0.5 border bg-popover/90 p-1.5 shadow-lg ring-1 ring-foreground/5 backdrop-blur-xl lg:top-1/2 lg:right-6 lg:bottom-auto lg:left-auto lg:-translate-x-0 lg:-translate-y-1/2 lg:flex-col dark:ring-foreground/10 print:hidden"
+    >
         {isPolice && (
           <>
             <NavButton label="Home" href="/" active={pathname === "/"}>
@@ -97,7 +80,6 @@ export function FloatingNav() {
               </NavButton>
             )}
             <ProfileDialogButton />
-            <ThemeToggle />
           </>
         )}
 
@@ -107,7 +89,6 @@ export function FloatingNav() {
               <GavelIcon className="size-5" />
             </NavButton>
             <ProfileDialogButton />
-            <ThemeToggle />
           </>
         )}
 
@@ -124,7 +105,6 @@ export function FloatingNav() {
               <SearchIcon className="size-5" />
             </NavButton>
             <ProfileDialogButton />
-            <ThemeToggle />
           </>
         )}
 
@@ -134,7 +114,6 @@ export function FloatingNav() {
               <CarFrontIcon className="size-5" />
             </NavButton>
             <ProfileDialogButton />
-            <ThemeToggle />
           </>
         )}
 
@@ -179,7 +158,6 @@ export function FloatingNav() {
               <ScrollTextIcon className="size-5" />
             </NavButton>
             <ProfileDialogButton />
-            <ThemeToggle />
           </>
         )}
 
@@ -189,29 +167,11 @@ export function FloatingNav() {
               <ShieldCheckIcon className="size-5" />
             </NavButton>
             <ProfileDialogButton />
-            <ThemeToggle />
           </>
         )}
 
         <NotificationPopover />
-        <NavButton
-          key="sign-out"
-          label="Sign out"
-          onClick={() => setModal("signout")}
-        >
-          <LogOutIcon className="size-5" />
-        </NavButton>
-      </nav>
-
-      <ConfirmDialog
-        open={modal === "signout"}
-        onOpenChange={(open) => setModal(open ? "signout" : null)}
-        title="Sign out?"
-        description="You will need to verify your phone number again to access TRACE."
-        confirmLabel="Sign out"
-        onConfirm={signOut}
-      />
-    </>
+    </nav>
   )
 }
 

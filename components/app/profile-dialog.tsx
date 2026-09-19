@@ -6,6 +6,7 @@ import { isValidPhoneNumber } from "react-phone-number-input"
 import {
   ArrowLeftIcon,
   LoaderCircleIcon,
+  LogOutIcon,
   PencilLineIcon,
   Trash2Icon,
   UserRoundIcon,
@@ -25,6 +26,7 @@ import { AdminDeleteDialog } from "@/components/app/admin-section"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { NavButton } from "@/components/app/nav-button"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
+import { ThemePreferenceControl } from "@/components/app/theme-toggle"
 import { PhoneInput } from "@/components/reui/phone-input"
 import { Button } from "@/components/ui/button"
 import {
@@ -216,6 +218,8 @@ function InfoView({
   onChangePhone: () => void
   onDelete: () => void
 }) {
+  const router = useRouter()
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
   const rows: [string, string | undefined][] = [
     ["Name", user.name],
     ["Phone", user.phone],
@@ -249,6 +253,7 @@ function InfoView({
             </div>
           ))}
       </dl>
+      <ThemePreferenceControl />
       <div className="flex flex-col gap-2">
         <Button
           type="button"
@@ -258,6 +263,15 @@ function InfoView({
         >
           <PencilLineIcon data-icon="inline-start" />
           Change phone number
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setConfirmSignOut(true)}
+          className="w-full"
+        >
+          <LogOutIcon data-icon="inline-start" />
+          Sign out
         </Button>
         <Button
           type="button"
@@ -272,8 +286,22 @@ function InfoView({
       <p className="text-xs text-muted-foreground">
         Postings, roles and reactivation are handled by a system administrator.
       </p>
+      <ConfirmDialog
+        open={confirmSignOut}
+        onOpenChange={setConfirmSignOut}
+        title="Sign out?"
+        description="You will need to verify your phone number again to access TRACE."
+        confirmLabel="Sign out"
+        onConfirm={() => void signOut()}
+      />
     </div>
   )
+
+  async function signOut() {
+    await authClient.signOut()
+    router.push("/sign-in")
+    router.refresh()
+  }
 }
 
 function PhoneView({
