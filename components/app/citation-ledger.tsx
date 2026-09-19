@@ -14,18 +14,12 @@ import {
 } from "@/lib/actions/citations"
 import { formatDateKey } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { EntityPicker } from "@/components/app/entity-picker"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
 function mwk(value: number): string {
@@ -258,18 +252,20 @@ export function CitationLedger({
                 allowClear={false}
                 className="flex-1"
               />
-              <Select value={courtId || undefined} onValueChange={setCourtId}>
-                <SelectTrigger aria-label="Court" className="h-9 flex-1">
-                  <SelectValue placeholder="Select court…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(courtsQuery.data ?? []).map((court) => (
-                    <SelectItem key={court.id} value={court.id}>
-                      {court.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <EntityPicker
+                label="Court"
+                placeholder="Select court…"
+                value={courtId}
+                onChange={setCourtId}
+                triggerClassName="h-9 flex-1"
+                source={{
+                  mode: "client",
+                  items: (courtsQuery.data ?? []).map((court) => ({
+                    value: court.id,
+                    label: court.name,
+                  })),
+                }}
+              />
             </div>
             <Button
               type="submit"

@@ -1,23 +1,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  ArrowLeftIcon,
-  BanIcon,
-  KeyRoundIcon,
-  PlusIcon,
-} from "lucide-react"
+import { BanIcon, KeyRoundIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/actions/apikeys"
 import { listManagedUsers } from "@/lib/actions/admin"
-import {
-  AdminCombobox,
-  AdminField,
-  AdminSection,
-} from "@/components/app/admin-section"
+import { AdminField, AdminSection } from "@/components/app/admin-section"
+import { EntityPicker } from "@/components/app/entity-picker"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
@@ -81,10 +72,6 @@ export default function AdminApiKeysPage() {
   })
 
   const hasActiveFilter = keyStatus !== "all" || debouncedQuery !== ""
-  const { data: users } = useQuery({
-    queryKey: ["admin-user-options"],
-    queryFn: () => listManagedUsers({ pageSize: 100 }),
-  })
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["admin-api-keys"] })
@@ -135,15 +122,30 @@ export default function AdminApiKeysPage() {
           className="grid grid-cols-1 gap-3 sm:grid-cols-2"
         >
           <AdminField label="Acting user">
-            <AdminCombobox
+            <EntityPicker
               label="Acting user"
+              placeholder="Select user"
               value={form.userId}
               onChange={(userId) => setForm({ ...form, userId })}
-              placeholder="Select user"
-              options={(users?.users ?? []).map((user) => ({
-                value: user.id,
-                label: `${user.name} · ${user.role}`,
-              }))}
+              source={{
+                mode: "server",
+                queryKey: "admin-user-options",
+                fetchPage: async (query, page, pageSize) => {
+                  const res = await listManagedUsers({
+                    query,
+                    page,
+                    pageSize: pageSize + 1,
+                  })
+                  return {
+                    items: res.users.slice(0, pageSize).map((user) => ({
+                      value: user.id,
+                      label: user.name,
+                      detail: `${user.role.replace(/_/g, " ")} · ${user.phone}`,
+                    })),
+                    hasMore: res.users.length > pageSize,
+                  }
+                },
+              }}
             />
           </AdminField>
           <AdminField label="Key name" hint="e.g. Lilongwe ANPR camera 3.">

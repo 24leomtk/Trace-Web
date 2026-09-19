@@ -10,10 +10,10 @@ import { toast } from "sonner"
 import {
   createManagedUser,
   deactivateUser,
-  listBranches,
   listManagedUsers,
-  listOrganizations,
   reactivateUser,
+  searchBranches,
+  searchOrganizations,
 } from "@/lib/actions/admin"
 import { DISTRICT_OPTIONS } from "@/lib/roles"
 import { formatDistrict } from "@/lib/roles"
@@ -26,6 +26,7 @@ import {
   AdminSection,
 } from "@/components/app/admin-section"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
+import { EntityPicker } from "@/components/app/entity-picker"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
@@ -76,15 +77,6 @@ export default function AdminUsersPage() {
         pageSize: PAGE_SIZE,
       }),
   })
-  const { data: branches } = useQuery({
-    queryKey: ["all-branches"],
-    queryFn: () => listBranches(),
-  })
-  const { data: organizations } = useQuery({
-    queryKey: ["all-organizations"],
-    queryFn: () => listOrganizations(),
-  })
-
   useEffect(() => {
     setPage(0)
   }, [debouncedQuery, role])
@@ -130,10 +122,6 @@ export default function AdminUsersPage() {
       setCreating(false)
     }
   }
-
-  const scopedBranches = (branches ?? []).filter(
-    (branch) => branch.domain === form.domain
-  )
 
   return (
     <div className="flex flex-col gap-5">
@@ -208,16 +196,31 @@ export default function AdminUsersPage() {
           )}
           {form.role === "OFFICER" && (
             <AdminField label="Branch">
-              <AdminCombobox
+              <EntityPicker
                 label="Branch"
+                placeholder="Select branch"
                 value={form.branchId}
                 onChange={(branchId) => setForm({ ...form, branchId })}
-                placeholder="Select branch"
-                options={scopedBranches.map((branch) => ({
-                  value: branch.id,
-                  label: branch.name,
-                  detail: formatDistrict(branch.district),
-                }))}
+                source={{
+                  mode: "server",
+                  queryKey: `provision-branches-${form.domain}`,
+                  fetchPage: async (query, page, pageSize) => {
+                    const res = await searchBranches({
+                      domain: form.domain,
+                      query,
+                      page,
+                      pageSize: pageSize + 1,
+                    })
+                    return {
+                      items: res.items.slice(0, pageSize).map((branch) => ({
+                        value: branch.id,
+                        label: branch.name,
+                        detail: formatDistrict(branch.district),
+                      })),
+                      hasMore: res.items.length > pageSize,
+                    }
+                  },
+                }}
               />
             </AdminField>
           )}
@@ -239,18 +242,32 @@ export default function AdminUsersPage() {
             form.role === "INSURANCE_PORTAL_USER" ||
             form.role === "VEHICLE_REGISTRAR") && (
             <AdminField label="Organization">
-              <AdminCombobox
+              <EntityPicker
                 label="Organization"
+                placeholder="Select organization"
                 value={form.organizationId}
                 onChange={(organizationId) =>
                   setForm({ ...form, organizationId })
                 }
-                placeholder="Select organization"
-                options={(organizations ?? []).map((org) => ({
-                  value: org.id,
-                  label: org.name,
-                  detail: org.orgType,
-                }))}
+                source={{
+                  mode: "server",
+                  queryKey: "provision-organizations",
+                  fetchPage: async (query, page, pageSize) => {
+                    const res = await searchOrganizations({
+                      query,
+                      page,
+                      pageSize: pageSize + 1,
+                    })
+                    return {
+                      items: res.items.slice(0, pageSize).map((org) => ({
+                        value: org.id,
+                        label: org.name,
+                        detail: org.orgType.replace(/_/g, " "),
+                      })),
+                      hasMore: res.items.length > pageSize,
+                    }
+                  },
+                }}
               />
             </AdminField>
           )}

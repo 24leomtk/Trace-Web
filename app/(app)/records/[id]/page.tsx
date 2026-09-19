@@ -33,10 +33,12 @@ import {
 import { addReview, listReviews } from "@/lib/actions/reviews"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { assignmentDue, formatDateTime, referralSla } from "@/lib/format"
+import { formatDistrict } from "@/lib/roles"
 import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
 import { CitationLedger } from "@/components/app/citation-ledger"
+import { EntityPicker } from "@/components/app/entity-picker"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ListPagination } from "@/components/app/list-pagination"
@@ -640,26 +642,23 @@ export default function RecordDetailPage({
                       }
                     }}
                   >
-                    <Select
-                      value={reassignTo || undefined}
-                      onValueChange={setReassignTo}
-                    >
-                      <SelectTrigger
-                        aria-label="Target branch"
-                        className="h-9 flex-1"
-                      >
-                        <SelectValue placeholder="Select branch…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(branchesQuery.data ?? [])
+                    <EntityPicker
+                      label="Target branch"
+                      placeholder="Select branch…"
+                      value={reassignTo}
+                      onChange={setReassignTo}
+                      triggerClassName="h-9 flex-1"
+                      source={{
+                        mode: "client",
+                        items: (branchesQuery.data ?? [])
                           .filter((branch) => branch.id !== record.branchId)
-                          .map((branch) => (
-                            <SelectItem key={branch.id} value={branch.id}>
-                              {branch.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                          .map((branch) => ({
+                            value: branch.id,
+                            label: branch.name,
+                            detail: formatDistrict(branch.district),
+                          })),
+                      }}
+                    />
                     <Button type="submit" size="sm">
                       Move
                     </Button>
@@ -815,21 +814,21 @@ export default function RecordDetailPage({
                   }
                 }}
               >
-                <Select
-                  value={taskAssignee || undefined}
-                  onValueChange={setTaskAssignee}
-                >
-                  <SelectTrigger aria-label="Assignee" className="h-9">
-                    <SelectValue placeholder="Select officer…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(assignableQuery.data ?? []).map((person) => (
-                      <SelectItem key={person.id} value={person.id}>
-                        {person.name} · {person.detail}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <EntityPicker
+                  label="Assignee"
+                  placeholder="Select officer…"
+                  value={taskAssignee}
+                  onChange={setTaskAssignee}
+                  triggerClassName="h-9"
+                  source={{
+                    mode: "client",
+                    items: (assignableQuery.data ?? []).map((person) => ({
+                      value: person.id,
+                      label: person.name,
+                      detail: person.detail,
+                    })),
+                  }}
+                />
                 <div className="flex gap-2">
                   <DatePicker
                     value={taskDue}
@@ -965,22 +964,21 @@ export default function RecordDetailPage({
                   }
                 }}
               >
-                <Select
-                  value={liaisonId || undefined}
-                  onValueChange={setLiaisonId}
-                >
-                  <SelectTrigger aria-label="Court liaison" className="h-9">
-                    <SelectValue placeholder="Select liaison…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(liaisonsQuery.data ?? []).map((liaison) => (
-                      <SelectItem key={liaison.id} value={liaison.id}>
-                        {liaison.name}
-                        {liaison.orgName ? ` · ${liaison.orgName}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <EntityPicker
+                  label="Court liaison"
+                  placeholder="Select liaison…"
+                  value={liaisonId}
+                  onChange={setLiaisonId}
+                  triggerClassName="h-9"
+                  source={{
+                    mode: "client",
+                    items: (liaisonsQuery.data ?? []).map((liaison) => ({
+                      value: liaison.id,
+                      label: liaison.name,
+                      detail: liaison.orgName ?? undefined,
+                    })),
+                  }}
+                />
                 <Input
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}

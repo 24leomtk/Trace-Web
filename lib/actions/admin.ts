@@ -314,6 +314,50 @@ export async function listBranches(domain?: string) {
   }))
 }
 
+export interface BranchSearchRow {
+  id: string
+  name: string
+  domain: string
+  district: string
+}
+
+/**
+ * Paginated branch search for entity pickers (provisioning, reassignment).
+ * Separate from listBranches so existing full-list callers are untouched.
+ */
+export async function searchBranches(
+  params: { domain?: string; query?: string; page?: number; pageSize?: number } = {}
+): Promise<{ items: BranchSearchRow[]; hasMore: boolean }> {
+  await requireSystemAdmin()
+  const { domain, query = "", page = 0, pageSize = 8 } = params
+  const conditions = []
+  if (domain === "regular" || domain === "traffic") {
+    conditions.push(eq(branches.domain, domain as "regular" | "traffic"))
+  }
+  const q = query.trim()
+  if (q) {
+    conditions.push(
+      or(ilike(branches.name, `%${q}%`), ilike(branches.location, `%${q}%`))
+    )
+  }
+  const rows = await db
+    .select({
+      id: branches.id,
+      name: branches.name,
+      domain: branches.domain,
+      district: branches.district,
+    })
+    .from(branches)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(asc(branches.district), asc(branches.name))
+    .limit(pageSize + 1)
+    .offset(page * pageSize)
+  return {
+    items: rows.slice(0, pageSize),
+    hasMore: rows.length > pageSize,
+  }
+}
+
 export async function upsertBranch(input: BranchInput): Promise<{ id: string }> {
   await requireSystemAdmin()
   const parsed = branchSchema.safeParse(input)
@@ -373,6 +417,39 @@ export async function listOrganizations(orgType?: string) {
     ...row,
     createdAt: row.createdAt.toISOString(),
   }))
+}
+
+export interface OrganizationSearchRow {
+  id: string
+  name: string
+  orgType: string
+}
+
+/**
+ * Paginated organization search for entity pickers (provisioning).
+ * Separate from listOrganizations so existing full-list callers are untouched.
+ */
+export async function searchOrganizations(
+  params: { query?: string; page?: number; pageSize?: number } = {}
+): Promise<{ items: OrganizationSearchRow[]; hasMore: boolean }> {
+  await requireSystemAdmin()
+  const { query = "", page = 0, pageSize = 8 } = params
+  const q = query.trim()
+  const rows = await db
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      orgType: organizations.orgType,
+    })
+    .from(organizations)
+    .where(q ? ilike(organizations.name, `%${q}%`) : undefined)
+    .orderBy(asc(organizations.name))
+    .limit(pageSize + 1)
+    .offset(page * pageSize)
+  return {
+    items: rows.slice(0, pageSize),
+    hasMore: rows.length > pageSize,
+  }
 }
 
 export async function upsertOrganization(
