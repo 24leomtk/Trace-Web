@@ -18,7 +18,10 @@ import { useInfiniteList } from "@/hooks/use-infinite-list"
 import { useHomeView } from "@/providers/home-view-context"
 import { cn } from "@/lib/utils"
 import { AttachmentsModal } from "@/components/app/attachments-modal"
-import { CaseFiltersCommand } from "@/components/app/case-filters-command"
+import {
+  CaseFilterBadges,
+  CaseFiltersCommand,
+} from "@/components/app/case-filters-command"
 import { SearchInput } from "@/components/app/search-input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -98,14 +101,17 @@ export function RecordTimeline() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-2">
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search cases by name, plate, place…"
-          className="flex-1"
-        />
-        <CaseFiltersCommand />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-2">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search cases by name, plate, place…"
+            className="flex-1"
+          />
+          <CaseFiltersCommand showBadges={false} />
+        </div>
+        <CaseFilterBadges />
       </div>
 
       {isLoading ? (

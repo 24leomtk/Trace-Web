@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon, PlusIcon } from "lucide-react"
@@ -13,6 +13,11 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import {
+  BranchFilterBadges,
+  BranchFilters,
+  EMPTY_BRANCH_FILTERS,
+} from "@/components/app/branch-filters"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
@@ -40,6 +45,17 @@ export default function AdminBranchesPage() {
     queryKey: ["admin-branches"],
     queryFn: () => listBranches(),
   })
+  const [filters, setFilters] = useState(EMPTY_BRANCH_FILTERS)
+
+  const preFiltered = useMemo(
+    () =>
+      (data ?? []).filter(
+        (branch) =>
+          (filters.domain === "all" || branch.domain === filters.domain) &&
+          (filters.district === "all" || branch.district === filters.district)
+      ),
+    [data, filters]
+  )
 
   const {
     query,
@@ -51,12 +67,17 @@ export default function AdminBranchesPage() {
     total,
     visible,
   } = usePaginatedSearch({
-    items: data ?? [],
+    items: preFiltered,
     search: (branch, q) =>
       `${branch.name} ${branch.domain} ${formatDistrict(branch.district)} ${branch.location ?? ""}`
         .toLowerCase()
         .includes(q),
   })
+
+  const hasActiveFilter =
+    filters.domain !== "all" ||
+    filters.district !== "all" ||
+    debouncedQuery !== ""
 
   function openDialog() {
     setForm(EMPTY_FORM)
@@ -172,11 +193,22 @@ export default function AdminBranchesPage() {
           </Button>
         }
       >
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search branches…"
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search branches…"
+              className="flex-1"
+            />
+            <BranchFilters
+              value={filters}
+              onChange={setFilters}
+              showBadges={false}
+            />
+          </div>
+          <BranchFilterBadges value={filters} onChange={setFilters} />
+        </div>
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !data || data.length === 0 ? (
@@ -185,7 +217,9 @@ export default function AdminBranchesPage() {
           </p>
         ) : visible.length === 0 ? (
           <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            No branches match “{debouncedQuery}”.
+            {hasActiveFilter
+              ? "No branches match the current search and filters."
+              : "No branches yet."}
           </p>
         ) : (
           <>

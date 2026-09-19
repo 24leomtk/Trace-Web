@@ -1,10 +1,17 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { getAuditLog } from "@/lib/actions/access"
 import { formatDateTime } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import {
+  AuditFilterBadges,
+  AuditFilters,
+  EMPTY_AUDIT_FILTERS,
+  matchesAuditFilters,
+} from "@/components/app/audit-filters"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,6 +22,17 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
     queryKey: ["audit-log", limit],
     queryFn: () => getAuditLog(limit),
   })
+  const [filters, setFilters] = useState(EMPTY_AUDIT_FILTERS)
+
+  const actions = useMemo(
+    () => [...new Set((data ?? []).map((entry) => entry.action))].sort(),
+    [data]
+  )
+
+  const preFiltered = useMemo(
+    () => (data ?? []).filter((entry) => matchesAuditFilters(entry, filters)),
+    [data, filters]
+  )
 
   const {
     query,
@@ -26,12 +44,18 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
     total,
     visible,
   } = usePaginatedSearch({
-    items: data ?? [],
+    items: preFiltered,
     search: (entry, q) =>
       `${entry.actorName} ${entry.action.replace(/_/g, " ")} ${entry.detail ?? ""}`
         .toLowerCase()
         .includes(q),
   })
+
+  const hasActiveFilter =
+    filters.action !== "all" ||
+    filters.from !== null ||
+    filters.to !== null ||
+    debouncedQuery !== ""
 
   if (isLoading) {
     return (
@@ -61,14 +85,32 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <SearchInput
-        value={query}
-        onChange={setQuery}
-        placeholder="Search actor, action, detail…"
-      />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-2">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search actor, action, detail…"
+            className="flex-1"
+          />
+          <AuditFilters
+            value={filters}
+            actions={actions}
+            onChange={setFilters}
+            showBadges={false}
+          />
+        </div>
+        <AuditFilterBadges
+          value={filters}
+          actions={actions}
+          onChange={setFilters}
+        />
+      </div>
       {visible.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No audit entries match “{debouncedQuery}”.
+          {hasActiveFilter
+            ? "No audit entries match the current search and filters."
+            : "No audit entries yet."}
         </p>
       ) : (
         <>

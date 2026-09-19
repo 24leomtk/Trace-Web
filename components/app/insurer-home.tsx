@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArchiveIcon, ShieldCheckIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { bulkCreatePolicies, listPolicies } from "@/lib/actions/insurance"
@@ -17,6 +18,7 @@ import {
 import { TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
@@ -212,6 +214,11 @@ export function InsurerHome() {
   )
 }
 
+const POLICY_STATUS_OPTIONS = [
+  { value: "live", label: "Live", icon: ShieldCheckIcon },
+  { value: "expired", label: "Expired / lapsed", icon: ArchiveIcon },
+]
+
 function PoliciesSection({
   data,
   isLoading,
@@ -223,25 +230,61 @@ function PoliciesSection({
   isLoading: boolean
   isError: boolean
 }) {
+  const [status, setStatus] = useState("all")
+
+  const preFiltered = useMemo(
+    () =>
+      (data ?? []).filter((policy) => {
+        const live = isPolicyLive(policy)
+        if (status === "live") return live
+        if (status === "expired") return !live
+        return true
+      }),
+    [data, status]
+  )
+
   const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
     usePaginatedSearch({
-      items: data ?? [],
+      items: preFiltered,
       search: (policy, q) =>
         `${policy.plateNumber} ${policy.policyNumber} ${policy.coverageType ?? ""}`
           .toLowerCase()
           .includes(q),
     })
 
+  const hasActiveFilter = status !== "all" || debouncedQuery !== ""
+
   return (
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Our policies
         </h2>
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search plate or policy number…"
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search plate or policy number…"
+              className="flex-1"
+            />
+            <ListFilter
+              title="Filter policies"
+              description="Narrow by policy status."
+              heading="Status"
+              allLabel="All statuses"
+              options={POLICY_STATUS_OPTIONS}
+              value={status}
+              onChange={setStatus}
+              showBadges={false}
+            />
+          </div>
+          <ListFilterBadges
+            heading="Status"
+            options={POLICY_STATUS_OPTIONS}
+            value={status}
+            onChange={setStatus}
+          />
+        </div>
         {isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : isError ? (
@@ -254,7 +297,9 @@ function PoliciesSection({
           </p>
         ) : visible.length === 0 ? (
           <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-            No policies match “{debouncedQuery}”.
+            {hasActiveFilter
+              ? "No policies match the current search and filters."
+              : "No policies yet."}
           </p>
         ) : (
           <>

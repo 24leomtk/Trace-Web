@@ -1,10 +1,14 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowDownRightIcon,
   ArrowUpRightIcon,
   DownloadIcon,
+  EyeIcon,
+  InfoIcon,
+  SirenIcon,
 } from "lucide-react"
 
 import { getAnalyticsFeed } from "@/lib/actions/analytics"
@@ -13,6 +17,7 @@ import { RECORD_TYPE_META } from "@/lib/record-meta"
 import type { AnalyticsEntry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { EMPTY_CASE_FILTERS, useHomeView } from "@/providers/home-view-context"
@@ -39,11 +44,26 @@ const SEVERITY_STYLE = {
   },
 } as const
 
+const SEVERITY_OPTIONS = [
+  { value: "info", label: "Digest", icon: InfoIcon },
+  { value: "warning", label: "Watch", icon: EyeIcon },
+  { value: "critical", label: "Outbreak alert", icon: SirenIcon },
+]
+
 export function AnalyticsFeed() {
   const { data: feed, isError } = useQuery({
     queryKey: ["analytics-feed"],
     queryFn: getAnalyticsFeed,
   })
+  const [severity, setSeverity] = useState("all")
+
+  const preFiltered = useMemo(
+    () =>
+      (feed ?? []).filter(
+        (entry) => severity === "all" || entry.severity === severity
+      ),
+    [feed, severity]
+  )
 
   const {
     query,
@@ -55,12 +75,14 @@ export function AnalyticsFeed() {
     total,
     visible,
   } = usePaginatedSearch({
-    items: feed ?? [],
+    items: preFiltered,
     search: (entry, q) =>
       `${entry.title} ${entry.description} ${entry.scopeLabel}`
         .toLowerCase()
         .includes(q),
   })
+
+  const hasActiveFilter = severity !== "all" || debouncedQuery !== ""
 
   if (isError) {
     return (
@@ -74,29 +96,51 @@ export function AnalyticsFeed() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search reports…"
-          className="flex-1"
-        />
-        <div className="flex justify-end print:hidden">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="rounded-none"
-            onClick={() => downloadFeedCsv(feed)}
-          >
-            <DownloadIcon data-icon="inline-start" />
-            Export CSV
-          </Button>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search reports…"
+            className="flex-1"
+          />
+          <div className="flex items-center gap-2">
+            <ListFilter
+              title="Filter reports"
+              description="Narrow by alert level."
+              heading="Level"
+              allLabel="All levels"
+              options={SEVERITY_OPTIONS}
+              value={severity}
+              onChange={setSeverity}
+              showBadges={false}
+            />
+            <div className="flex justify-end print:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-none"
+                onClick={() => downloadFeedCsv(feed)}
+              >
+                <DownloadIcon data-icon="inline-start" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
         </div>
+        <ListFilterBadges
+          heading="Level"
+          options={SEVERITY_OPTIONS}
+          value={severity}
+          onChange={setSeverity}
+        />
       </div>
       {visible.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No reports match “{debouncedQuery}”.
+          {hasActiveFilter
+            ? "No reports match the current search and filters."
+            : "No reports available."}
         </p>
       ) : (
         <>

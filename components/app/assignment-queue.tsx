@@ -1,8 +1,14 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckIcon } from "lucide-react"
+import {
+  CheckIcon,
+  ClockIcon,
+  MinusIcon,
+  TriangleAlertIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -12,6 +18,7 @@ import {
 import { assignmentDue } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
@@ -24,6 +31,12 @@ const DUE_CHIP: Record<string, string> = {
   slate: "border-border bg-muted/40 text-muted-foreground",
 }
 
+const DUE_OPTIONS = [
+  { value: "overdue", label: "Overdue", icon: TriangleAlertIcon },
+  { value: "due-soon", label: "Due soon", icon: ClockIcon },
+  { value: "no-due-date", label: "No due date", icon: MinusIcon },
+]
+
 /**
  * F9 "my queue" (Phase 2) — tasks assigned to the current officer/monitor,
  * with overdue escalation. Sits above the case feed on the police home.
@@ -34,8 +47,21 @@ export function AssignmentQueue() {
     queryKey: ["my-assignments"],
     queryFn: listMyAssignments,
   })
+  const [due, setDue] = useState("all")
 
   const open = data?.open ?? []
+  const preFiltered = useMemo(
+    () =>
+      open.filter((item) => {
+        const state = assignmentDue(item.dueAt, item.state)
+        if (due === "overdue") return state.overdue
+        if (due === "due-soon")
+          return !state.overdue && state.tone === "amber"
+        if (due === "no-due-date") return state.daysLeft == null
+        return true
+      }),
+    [open, due]
+  )
   const {
     query,
     setQuery,
@@ -46,7 +72,7 @@ export function AssignmentQueue() {
     total,
     visible,
   } = usePaginatedSearch({
-    items: open,
+    items: preFiltered,
     search: (item, q) =>
       `${item.recordTitle} ${item.assignedByName} ${item.note ?? ""}`
         .toLowerCase()
@@ -57,6 +83,7 @@ export function AssignmentQueue() {
   const overdueCount = open.filter(
     (item) => assignmentDue(item.dueAt, item.state).overdue
   ).length
+  const hasActiveFilter = due !== "all" || debouncedQuery !== ""
 
   return (
     <section aria-label="My queue" className="flex flex-col gap-2">
@@ -74,12 +101,33 @@ export function AssignmentQueue() {
           {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
         </span>
       </h2>
-      {open.length > 4 && (
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search tasks…"
-        />
+      {open.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search tasks…"
+              className="flex-1"
+            />
+            <ListFilter
+              title="Filter tasks"
+              description="Narrow by due state."
+              heading="Due"
+              allLabel="All tasks"
+              options={DUE_OPTIONS}
+              value={due}
+              onChange={setDue}
+              showBadges={false}
+            />
+          </div>
+          <ListFilterBadges
+            heading="Due"
+            options={DUE_OPTIONS}
+            value={due}
+            onChange={setDue}
+          />
+        </div>
       )}
       {open.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
@@ -87,7 +135,9 @@ export function AssignmentQueue() {
         </p>
       ) : visible.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
-          No tasks match “{debouncedQuery}”.
+          {hasActiveFilter
+            ? "No tasks match the current search and filters."
+            : "Queue clear — no open tasks."}
         </p>
       ) : (
         <>

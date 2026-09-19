@@ -1,9 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeftIcon, PlusIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  BanIcon,
+  KeyRoundIcon,
+  PlusIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/actions/apikeys"
@@ -13,6 +18,7 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
@@ -24,6 +30,11 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const EMPTY_FORM = { userId: "", name: "", expiresAt: "" }
+
+const KEY_STATUS_OPTIONS = [
+  { value: "active", label: "Active", icon: KeyRoundIcon },
+  { value: "revoked", label: "Revoked", icon: BanIcon },
+]
 
 /**
  * N4 machine keys (Phase 3) — system admins issue per-user keys bound by
@@ -40,6 +51,17 @@ export default function AdminApiKeysPage() {
     queryKey: ["admin-api-keys"],
     queryFn: listApiKeys,
   })
+  const [keyStatus, setKeyStatus] = useState("all")
+
+  const preFiltered = useMemo(
+    () =>
+      (keys ?? []).filter((key) => {
+        if (keyStatus === "active") return key.isActive
+        if (keyStatus === "revoked") return !key.isActive
+        return true
+      }),
+    [keys, keyStatus]
+  )
 
   const {
     query,
@@ -51,12 +73,14 @@ export default function AdminApiKeysPage() {
     total,
     visible,
   } = usePaginatedSearch({
-    items: keys ?? [],
+    items: preFiltered,
     search: (key, q) =>
       `${key.name} ${key.keyPrefix} ${key.userName} ${key.scopes.join(" ")}`
         .toLowerCase()
         .includes(q),
   })
+
+  const hasActiveFilter = keyStatus !== "all" || debouncedQuery !== ""
   const { data: users } = useQuery({
     queryKey: ["admin-user-options"],
     queryFn: () => listManagedUsers({ pageSize: 100 }),
@@ -190,11 +214,32 @@ export default function AdminApiKeysPage() {
           </Button>
         }
       >
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search keys by name, user, prefix…"
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search keys by name, user, prefix…"
+              className="flex-1"
+            />
+            <ListFilter
+              title="Filter keys"
+              description="Narrow by key status."
+              heading="Status"
+              allLabel="All statuses"
+              options={KEY_STATUS_OPTIONS}
+              value={keyStatus}
+              onChange={setKeyStatus}
+              showBadges={false}
+            />
+          </div>
+          <ListFilterBadges
+            heading="Status"
+            options={KEY_STATUS_OPTIONS}
+            value={keyStatus}
+            onChange={setKeyStatus}
+          />
+        </div>
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !keys || keys.length === 0 ? (
@@ -203,7 +248,9 @@ export default function AdminApiKeysPage() {
           </p>
         ) : visible.length === 0 ? (
           <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            No keys match “{debouncedQuery}”.
+            {hasActiveFilter
+              ? "No keys match the current search and filters."
+              : "No API keys issued."}
           </p>
         ) : (
           <>

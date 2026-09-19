@@ -18,6 +18,7 @@ import { fromDateKey, toDateKey } from "@/lib/format"
 import type { CaseStatus } from "@/lib/types"
 import type { RecordType } from "@/validations/record"
 import {
+  ActiveFilterBadges,
   BaseFiltersCommand,
   type ActiveFilter,
 } from "@/components/base-filters-command"
@@ -49,12 +50,61 @@ function rangeFromFilters(
   }
 }
 
+function buildActiveFilters(
+  caseFilters: ReturnType<typeof useHomeView>["caseFilters"],
+  setCaseFilters: ReturnType<typeof useHomeView>["setCaseFilters"]
+): ActiveFilter[] {
+  const activeFilters: ActiveFilter[] = []
+  if (caseFilters.type) {
+    activeFilters.push({
+      key: "type",
+      label: "Type",
+      value: RECORD_TYPE_META[caseFilters.type].label,
+      onClear: () => setCaseFilters({ ...caseFilters, type: null }),
+    })
+  }
+  if (caseFilters.status) {
+    activeFilters.push({
+      key: "status",
+      label: "Status",
+      value:
+        STATUS_OPTIONS.find((option) => option.value === caseFilters.status)
+          ?.label ?? caseFilters.status,
+      onClear: () => setCaseFilters({ ...caseFilters, status: null }),
+    })
+  }
+  if (caseFilters.from || caseFilters.to) {
+    activeFilters.push({
+      key: "date",
+      label: "Filed",
+      value: [caseFilters.from, caseFilters.to].filter(Boolean).join(" → "),
+      onClear: () =>
+        setCaseFilters({ ...caseFilters, from: null, to: null }),
+    })
+  }
+  return activeFilters
+}
+
+/** Full-width badges row for the applied case filters (context-owned). */
+export function CaseFilterBadges() {
+  const { caseFilters, setCaseFilters } = useHomeView()
+  return (
+    <ActiveFilterBadges
+      filters={buildActiveFilters(caseFilters, setCaseFilters)}
+    />
+  )
+}
+
 /**
  * Case feed filters built on the shared BaseFiltersCommand — staged
  * type/status picks plus a filed-date range, applied together. Rendered
  * next to the feed search box (not in the floating nav).
  */
-export function CaseFiltersCommand() {
+export function CaseFiltersCommand({
+  showBadges = true,
+}: {
+  showBadges?: boolean
+}) {
   const { user } = useUser()
   const { caseFilters, setCaseFilters } = useHomeView()
 
@@ -86,34 +136,7 @@ export function CaseFiltersCommand() {
     (type) => !user.domain || RECORD_TYPE_META[type].domain === user.domain
   )
 
-  const activeFilters: ActiveFilter[] = []
-  if (caseFilters.type) {
-    activeFilters.push({
-      key: "type",
-      label: "Type",
-      value: RECORD_TYPE_META[caseFilters.type].label,
-      onClear: () => setCaseFilters({ ...caseFilters, type: null }),
-    })
-  }
-  if (caseFilters.status) {
-    activeFilters.push({
-      key: "status",
-      label: "Status",
-      value:
-        STATUS_OPTIONS.find((option) => option.value === caseFilters.status)
-          ?.label ?? caseFilters.status,
-      onClear: () => setCaseFilters({ ...caseFilters, status: null }),
-    })
-  }
-  if (caseFilters.from || caseFilters.to) {
-    activeFilters.push({
-      key: "date",
-      label: "Filed",
-      value: [caseFilters.from, caseFilters.to].filter(Boolean).join(" → "),
-      onClear: () =>
-        setCaseFilters({ ...caseFilters, from: null, to: null }),
-    })
-  }
+  const activeFilters = buildActiveFilters(caseFilters, setCaseFilters)
 
   return (
     <BaseFiltersCommand
@@ -166,6 +189,7 @@ export function CaseFiltersCommand() {
       showDateRange
       dateRange={draftRange}
       onDateRangeChange={setDraftRange}
+      showBadges={showBadges}
     />
   )
 }

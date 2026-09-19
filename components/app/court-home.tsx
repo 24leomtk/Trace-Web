@@ -1,7 +1,9 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import Link from "next/link"
+import { GavelIcon, HourglassIcon } from "lucide-react"
 
 import { getMyReferrals } from "@/lib/actions/records"
 import {
@@ -13,15 +15,32 @@ import {
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
+
+const OUTCOME_OPTIONS = [
+  { value: "pending", label: "Awaiting outcome", icon: HourglassIcon },
+  { value: "decided", label: "Outcome recorded", icon: GavelIcon },
+]
 
 export function CourtHome() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["my-referrals"],
     queryFn: getMyReferrals,
   })
+  const [outcome, setOutcome] = useState("all")
+
+  const preFiltered = useMemo(
+    () =>
+      (data ?? []).filter((entry) => {
+        if (outcome === "pending") return entry.outcome === "pending"
+        if (outcome === "decided") return entry.outcome !== "pending"
+        return true
+      }),
+    [data, outcome]
+  )
 
   const {
     query,
@@ -33,12 +52,14 @@ export function CourtHome() {
     total,
     visible,
   } = usePaginatedSearch({
-    items: data ?? [],
+    items: preFiltered,
     search: (entry, q) =>
       `${entry.record.title} ${entry.record.summary} ${entry.record.recordType.replace(/_/g, " ")} ${entry.outcome}`
         .toLowerCase()
         .includes(q),
   })
+
+  const hasActiveFilter = outcome !== "all" || debouncedQuery !== ""
 
   return (
     <div className="flex flex-col gap-5">
@@ -49,11 +70,32 @@ export function CourtHome() {
         </p>
       </header>
 
-      <SearchInput
-        value={query}
-        onChange={setQuery}
-        placeholder="Search referred cases…"
-      />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-2">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search referred cases…"
+            className="flex-1"
+          />
+          <ListFilter
+            title="Filter referrals"
+            description="Narrow by court outcome."
+            heading="Outcome"
+            allLabel="All outcomes"
+            options={OUTCOME_OPTIONS}
+            value={outcome}
+            onChange={setOutcome}
+            showBadges={false}
+          />
+        </div>
+        <ListFilterBadges
+          heading="Outcome"
+          options={OUTCOME_OPTIONS}
+          value={outcome}
+          onChange={setOutcome}
+        />
+      </div>
 
       {isLoading ? (
         <div className="flex flex-col gap-2">
@@ -71,7 +113,9 @@ export function CourtHome() {
         </p>
       ) : visible.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No referrals match “{debouncedQuery}”.
+          {hasActiveFilter
+            ? "No referrals match the current search and filters."
+            : "No active referrals. Access expires unless a monitor renews it."}
         </p>
       ) : (
         <>

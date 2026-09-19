@@ -1,9 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeftIcon, PlusIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  CarFrontIcon,
+  GavelIcon,
+  LandmarkIcon,
+  PlusIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -17,6 +23,7 @@ import {
   AdminField,
   AdminSection,
 } from "@/components/app/admin-section"
+import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
@@ -34,6 +41,12 @@ const EMPTY_FORM = {
   contactEmail: "",
 }
 
+const ORG_TYPE_OPTIONS = [
+  { value: "court", label: "Court", icon: GavelIcon },
+  { value: "insurer", label: "Insurer", icon: LandmarkIcon },
+  { value: "vehicle_registry", label: "Vehicle registry", icon: CarFrontIcon },
+]
+
 export default function AdminOrganizationsPage() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(EMPTY_FORM)
@@ -44,6 +57,15 @@ export default function AdminOrganizationsPage() {
     queryKey: ["admin-organizations"],
     queryFn: () => listOrganizations(),
   })
+  const [orgType, setOrgType] = useState("all")
+
+  const preFiltered = useMemo(
+    () =>
+      (data ?? []).filter(
+        (org) => orgType === "all" || org.orgType === orgType
+      ),
+    [data, orgType]
+  )
 
   const {
     query,
@@ -55,12 +77,14 @@ export default function AdminOrganizationsPage() {
     total,
     visible,
   } = usePaginatedSearch({
-    items: data ?? [],
+    items: preFiltered,
     search: (org, q) =>
       `${org.name} ${org.orgType.replace(/_/g, " ")} ${org.district ? formatDistrict(org.district) : ""}`
         .toLowerCase()
         .includes(q),
   })
+
+  const hasActiveFilter = orgType !== "all" || debouncedQuery !== ""
 
   function openDialog() {
     setForm(EMPTY_FORM)
@@ -184,11 +208,32 @@ export default function AdminOrganizationsPage() {
           </Button>
         }
       >
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Search organizations…"
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-start gap-2">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search organizations…"
+              className="flex-1"
+            />
+            <ListFilter
+              title="Filter organizations"
+              description="Narrow by organization type."
+              heading="Type"
+              allLabel="All types"
+              options={ORG_TYPE_OPTIONS}
+              value={orgType}
+              onChange={setOrgType}
+              showBadges={false}
+            />
+          </div>
+          <ListFilterBadges
+            heading="Type"
+            options={ORG_TYPE_OPTIONS}
+            value={orgType}
+            onChange={setOrgType}
+          />
+        </div>
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : !data || data.length === 0 ? (
@@ -197,7 +242,9 @@ export default function AdminOrganizationsPage() {
           </p>
         ) : visible.length === 0 ? (
           <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            No organizations match “{debouncedQuery}”.
+            {hasActiveFilter
+              ? "No organizations match the current search and filters."
+              : "No organizations yet."}
           </p>
         ) : (
           <>

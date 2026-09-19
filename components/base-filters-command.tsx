@@ -48,6 +48,40 @@ interface BaseFiltersCommandProps {
   dateRange?: DateRange;
   onDateRangeChange?: (range: DateRange | undefined) => void;
   customContent?: React.ReactNode; // Optional custom content to render before date range
+  /**
+   * Hide the active-filter badges (e.g. when the caller renders
+   * ActiveFilterBadges full-width elsewhere, next to a search bar).
+   */
+  showBadges?: boolean;
+}
+
+/** Active-filter badges row — render full-width below a search/filter row. */
+export function ActiveFilterBadges({ filters }: { filters: ActiveFilter[] }) {
+  if (filters.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {filters.map((f) => (
+        <Badge
+          key={f.key}
+          variant="secondary"
+          className={cn(
+            "gap-1 text-[10px] font-medium h-5",
+            f.colorClass ||
+              "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20",
+          )}
+        >
+          {f.label}: {f.value}
+          <button
+            onClick={f.onClear}
+            aria-label={`Clear ${f.label} filter`}
+            className="ml-1 hover:bg-primary/30 rounded-full p-0.5 transition-colors"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </Badge>
+      ))}
+    </div>
+  );
 }
 
 /* ----------  component ---------- */
@@ -64,6 +98,7 @@ export function BaseFiltersCommand({
   dateRange,
   onDateRangeChange,
   customContent,
+  showBadges = true,
 }: BaseFiltersCommandProps) {
   const [open, setOpen] = useState(false);
   const activeFiltersCount = activeFilters.length;
@@ -206,29 +241,7 @@ export function BaseFiltersCommand({
       </Popover>
 
       {/* active filter badges */}
-      {activeFiltersCount > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {activeFilters.map((f) => (
-            <Badge
-              key={f.key}
-              variant="secondary"
-              className={cn(
-                "gap-1 text-[10px] font-medium h-5",
-                f.colorClass ||
-                  "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20",
-              )}
-            >
-              {f.label}: {f.value}
-              <button
-                onClick={f.onClear}
-                className="ml-1 hover:bg-primary/30 rounded-full p-0.5 transition-colors"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
+      {showBadges && <ActiveFilterBadges filters={activeFilters} />}
     </div>
   );
 }
