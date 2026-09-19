@@ -19,6 +19,7 @@ import {
   fileKindFromMime,
   formatCountdown,
   generateReceiptNo,
+  generateTicketNo,
   isCitationPaid,
   lastWeekBuckets,
   normalizePlate,
@@ -32,7 +33,7 @@ import {
 } from "../lib/format"
 import { otpMessage, resolveSmsConfig } from "../lib/sms"
 import { crimeIncidentSchema, wantedPersonSchema } from "../validations/record"
-import { apiKeySchema } from "../validations/admin"
+import { apiKeySchema, citationPaymentSchema, citationVoidSchema } from "../validations/admin"
 
 const officer: VisibilityScope = {
   role: "OFFICER",
@@ -306,6 +307,63 @@ describe("generateReceiptNo", () => {
     const second = generateReceiptNo(1720000000000, 12345)
     assert.equal(first, second)
     assert.match(first, /^R-[0-9A-Z]{6}$/)
+  })
+})
+
+describe("generateTicketNo (Phase 1)", () => {
+  it("is deterministic, yearly, and uppercased", () => {
+    const first = generateTicketNo(1780000000000, 999)
+    const second = generateTicketNo(1780000000000, 999)
+    assert.equal(first, second)
+    assert.match(first, /^T-2026-[0-9A-Z]{6}$/)
+  })
+})
+
+describe("citationPaymentSchema (Phase 1 cross-branch)", () => {
+  const base = {
+    recordId: "00000000-0000-4000-8000-000000000000",
+    amount: 5000,
+    payerName: "Chifundo Banda",
+    paymentMethod: "cash" as const,
+  }
+
+  it("requires payer name and method", () => {
+    assert.equal(citationPaymentSchema.safeParse(base).success, true)
+    assert.equal(
+      citationPaymentSchema.safeParse({ ...base, payerName: "" }).success,
+      false
+    )
+    assert.equal(
+      citationPaymentSchema.safeParse({ ...base, paymentMethod: "cheque" })
+        .success,
+      false
+    )
+  })
+
+  it("rejects non-positive amounts (overpayment guard lives server-side)", () => {
+    assert.equal(
+      citationPaymentSchema.safeParse({ ...base, amount: 0 }).success,
+      false
+    )
+  })
+})
+
+describe("citationVoidSchema (Phase 1)", () => {
+  it("requires a real reason", () => {
+    assert.equal(
+      citationVoidSchema.safeParse({
+        recordId: "00000000-0000-4000-8000-000000000000",
+        reason: "Duplicate entry, original T-2026-ABC123 stands.",
+      }).success,
+      true
+    )
+    assert.equal(
+      citationVoidSchema.safeParse({
+        recordId: "00000000-0000-4000-8000-000000000000",
+        reason: "oops",
+      }).success,
+      false
+    )
   })
 })
 

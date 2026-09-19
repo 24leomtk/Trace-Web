@@ -1,15 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.POLICY_CSV_TEMPLATE = exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = void 0;
+exports.POLICY_CSV_TEMPLATE = exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = exports.PAYMENT_CHANNELS = exports.PAYMENT_METHODS = void 0;
 exports.formatTimelineDate = formatTimelineDate;
 exports.formatFullDate = formatFullDate;
 exports.formatDateTime = formatDateTime;
+exports.formatNotificationTime = formatNotificationTime;
 exports.formatBytes = formatBytes;
 exports.formatDelta = formatDelta;
 exports.toDateKey = toDateKey;
 exports.fromDateKey = fromDateKey;
 exports.formatDateKey = formatDateKey;
 exports.formatPhone = formatPhone;
+exports.tempEmailFor = tempEmailFor;
 exports.greetingForHour = greetingForHour;
 exports.daysUntil = daysUntil;
 exports.daysSince = daysSince;
@@ -19,6 +21,7 @@ exports.normalizePlate = normalizePlate;
 exports.citationBalance = citationBalance;
 exports.isCitationPaid = isCitationPaid;
 exports.generateReceiptNo = generateReceiptNo;
+exports.generateTicketNo = generateTicketNo;
 exports.referralSla = referralSla;
 exports.assignmentDue = assignmentDue;
 exports.lastWeekBuckets = lastWeekBuckets;
@@ -51,6 +54,24 @@ function formatDateTime(iso) {
         minute: "2-digit",
         timeZone: "UTC",
     }).format(new Date(iso));
+}
+/** Compact relative time for notification rows ("just now", "5m ago", …). */
+function formatNotificationTime(iso, now = Date.now()) {
+    const ms = now - new Date(iso).getTime();
+    if (Number.isNaN(ms))
+        return iso;
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1)
+        return "just now";
+    if (minutes < 60)
+        return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24)
+        return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7)
+        return `${days}d ago`;
+    return formatDateTime(iso);
 }
 function formatBytes(bytes) {
     if (bytes < 1024)
@@ -88,6 +109,14 @@ function formatPhone(phone) {
         return phone;
     const rest = phone.slice(4);
     return `+265 ${rest.slice(0, 2)} ${rest.slice(2, 5)} ${rest.slice(5, 9)}`;
+}
+/**
+ * Placeholder login email derived from a phone number (phone-OTP-only
+ * auth, no self-registration). Lives here — not in a "use server" module,
+ * which may only export async functions.
+ */
+function tempEmailFor(phone) {
+    return `${phone}@phone.trace.mw`;
 }
 function greetingForHour(hour) {
     if (hour < 12)
@@ -159,6 +188,14 @@ function generateReceiptNo(now = Date.now(), rand = Math.floor(Math.random() * 3
     const salt = rand.toString(36).toUpperCase().padStart(3, "0").slice(-3);
     return `R-${time}${salt}`;
 }
+/** Phase 1: uniform ticket numbers (T-YYYY-XXXXXX). Deterministic under test args. */
+function generateTicketNo(now = Date.now(), rand = Math.floor(Math.random() * 36 ** 6)) {
+    const year = new Date(now).getUTCFullYear();
+    const salt = rand.toString(36).toUpperCase().padStart(6, "0").slice(-6);
+    return `T-${year}-${salt}`;
+}
+exports.PAYMENT_METHODS = ["cash", "mobile", "bank"];
+exports.PAYMENT_CHANNELS = ["counter", "mobile", "clerk"];
 /** F4 referral timeliness thresholds (days). */
 exports.REFERRAL_VIEW_SLA_DAYS = 7;
 exports.REFERRAL_OUTCOME_SLA_DAYS = 30;

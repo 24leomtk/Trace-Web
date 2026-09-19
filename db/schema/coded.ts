@@ -12,6 +12,7 @@ import {
 import { records } from "./records"
 import { personsOfInterest } from "./persons"
 import { vehicles } from "./vehicles"
+import { branches } from "./branches"
 import { organizations } from "./organizations"
 import { users } from "./auth"
 import { districtEnum, caseStatusEnum, dangerLevelEnum } from "./enums"
@@ -185,6 +186,19 @@ export const trafficCitations = pgTable(
     fineAmount: numeric("fine_amount"),
     isPaid: boolean("is_paid").default(false).notNull(),
 
+    // Phase 1 (records review R2/R3): uniform ticket identity + court/money
+    // lifecycle. `ticketNumber` is server-generated (T-YYYY-XXXXXX) and
+    // unique so any counter can find the citation without branch-feed
+    // access. Voided tickets stay queryable (never deleted).
+    ticketNumber: text("ticket_number").unique(),
+    statuteCode: text("statute_code"),
+    dueDate: date("due_date"),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidReason: text("void_reason"),
+    voidBy: text("void_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+
     // Scheduled court appearance (monitor-set; nullable until scheduled).
     courtDate: date("court_date"),
     courtId: uuid("court_id").references(() => organizations.id, {
@@ -202,6 +216,7 @@ export const trafficCitations = pgTable(
     index("traffic_citations_vehicle_id_idx").on(table.vehicleId),
     index("traffic_citations_district_idx").on(table.district),
     index("traffic_citations_court_date_idx").on(table.courtDate),
+    index("traffic_citations_ticket_number_idx").on(table.ticketNumber),
   ]
 )
 
@@ -222,6 +237,16 @@ export const citationPayments = pgTable(
     amount: numeric("amount").notNull(),
     receiptNo: text("receipt_no").notNull().unique(),
     note: text("note"),
+    // Phase 1: cross-branch receiving. Every payment records who paid, how,
+    // and which branch/counter received it — so a Lilongwe ticket paid in
+    // Blantyre by a non-issuer stays fully traceable. Nullable for legacy
+    // rows written before Phase 1.
+    payerName: text("payer_name"),
+    paymentMethod: text("payment_method"), // cash | mobile | bank
+    channel: text("channel"), // counter | mobile | clerk
+    receivingBranchId: uuid("receiving_branch_id").references(() => branches.id, {
+      onDelete: "set null",
+    }),
     receivedBy: text("received_by").references(() => users.id, {
       onDelete: "set null",
     }),

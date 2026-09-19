@@ -228,6 +228,12 @@ async function writeCodedProjections(
     record.recordType === "traffic_citation"
       ? await tx
           .select({
+            ticketNumber: trafficCitations.ticketNumber,
+            statuteCode: trafficCitations.statuteCode,
+            dueDate: trafficCitations.dueDate,
+            voidedAt: trafficCitations.voidedAt,
+            voidReason: trafficCitations.voidReason,
+            voidBy: trafficCitations.voidBy,
             courtDate: trafficCitations.courtDate,
             courtId: trafficCitations.courtId,
             isPaid: trafficCitations.isPaid,
@@ -325,13 +331,28 @@ async function writeCodedProjections(
       break
     }
     case "traffic_citation": {
-      // Preserved from the pre-delete snapshot above (F3).
+      // Preserved from the pre-delete snapshot above (F3 + Phase 1).
+      // Ticket numbers are stable for life: keep the existing one, or mint
+      // one for legacy rows that predate Phase 1.
+      const { generateTicketNo } = await import("@/lib/format")
       await tx.insert(trafficCitations).values({
         recordId: record.id,
         vehicleId: record.vehicleId ?? undefined,
         violationType: str(data, "violation_type"),
         fineAmount: typeof data.fine_amount === "number" ? String(data.fine_amount) : undefined,
         isPaid: priorCitation?.isPaid ?? false,
+        ticketNumber: priorCitation?.ticketNumber ?? generateTicketNo(),
+        statuteCode:
+          (typeof data.statute_code === "string" && data.statute_code.trim()) ||
+          priorCitation?.statuteCode ||
+          undefined,
+        dueDate:
+          (typeof data.due_date === "string" && data.due_date) ||
+          priorCitation?.dueDate ||
+          undefined,
+        voidedAt: priorCitation?.voidedAt ?? undefined,
+        voidReason: priorCitation?.voidReason ?? undefined,
+        voidBy: priorCitation?.voidBy ?? undefined,
         courtDate: priorCitation?.courtDate ?? undefined,
         courtId: priorCitation?.courtId ?? undefined,
         district: record.district,

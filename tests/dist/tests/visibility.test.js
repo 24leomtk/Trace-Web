@@ -191,6 +191,43 @@ function record(overrides) {
         strict_1.default.match(first, /^R-[0-9A-Z]{6}$/);
     });
 });
+(0, node_test_1.describe)("generateTicketNo (Phase 1)", () => {
+    (0, node_test_1.it)("is deterministic, yearly, and uppercased", () => {
+        const first = (0, format_1.generateTicketNo)(1780000000000, 999);
+        const second = (0, format_1.generateTicketNo)(1780000000000, 999);
+        strict_1.default.equal(first, second);
+        strict_1.default.match(first, /^T-2026-[0-9A-Z]{6}$/);
+    });
+});
+(0, node_test_1.describe)("citationPaymentSchema (Phase 1 cross-branch)", () => {
+    const base = {
+        recordId: "00000000-0000-4000-8000-000000000000",
+        amount: 5000,
+        payerName: "Chifundo Banda",
+        paymentMethod: "cash",
+    };
+    (0, node_test_1.it)("requires payer name and method", () => {
+        strict_1.default.equal(admin_1.citationPaymentSchema.safeParse(base).success, true);
+        strict_1.default.equal(admin_1.citationPaymentSchema.safeParse(Object.assign(Object.assign({}, base), { payerName: "" })).success, false);
+        strict_1.default.equal(admin_1.citationPaymentSchema.safeParse(Object.assign(Object.assign({}, base), { paymentMethod: "cheque" }))
+            .success, false);
+    });
+    (0, node_test_1.it)("rejects non-positive amounts (overpayment guard lives server-side)", () => {
+        strict_1.default.equal(admin_1.citationPaymentSchema.safeParse(Object.assign(Object.assign({}, base), { amount: 0 })).success, false);
+    });
+});
+(0, node_test_1.describe)("citationVoidSchema (Phase 1)", () => {
+    (0, node_test_1.it)("requires a real reason", () => {
+        strict_1.default.equal(admin_1.citationVoidSchema.safeParse({
+            recordId: "00000000-0000-4000-8000-000000000000",
+            reason: "Duplicate entry, original T-2026-ABC123 stands.",
+        }).success, true);
+        strict_1.default.equal(admin_1.citationVoidSchema.safeParse({
+            recordId: "00000000-0000-4000-8000-000000000000",
+            reason: "oops",
+        }).success, false);
+    });
+});
 (0, node_test_1.describe)("referralSla", () => {
     const referred = "2026-09-01T12:00:00Z";
     const now = new Date("2026-09-17T12:00:00Z").getTime();

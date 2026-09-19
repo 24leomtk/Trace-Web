@@ -54,6 +54,9 @@ export function CitationLedger({
   const [amount, setAmount] = useState("")
   const [receiptNo, setReceiptNo] = useState("")
   const [note, setNote] = useState("")
+  const [payerName, setPayerName] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [countersign, setCountersign] = useState("")
   const [paying, setPaying] = useState(false)
   const [courtDate, setCourtDate] = useState("")
   const [courtId, setCourtId] = useState("")
@@ -72,6 +75,10 @@ export function CitationLedger({
       toast.error("Enter a positive amount.")
       return
     }
+    if (!payerName.trim()) {
+      toast.error("Enter the payer's name.")
+      return
+    }
     setPaying(true)
     try {
       const result = await recordCitationPayment({
@@ -79,6 +86,13 @@ export function CitationLedger({
         amount: Math.round(parsed * 100) / 100,
         receiptNo: receiptNo.trim() || undefined,
         note: note.trim() || undefined,
+        payerName: payerName.trim(),
+        paymentMethod: (["cash", "mobile", "bank"] as const).includes(
+          paymentMethod as "cash"
+        )
+          ? (paymentMethod as "cash" | "mobile" | "bank")
+          : "cash",
+        countersignedBy: countersign.trim() || undefined,
       })
       toast.success(
         `Receipt ${result.receiptNo} recorded.${result.isPaid ? " Fine fully paid." : ""}`
@@ -86,6 +100,8 @@ export function CitationLedger({
       setAmount("")
       setReceiptNo("")
       setNote("")
+      setPayerName("")
+      setCountersign("")
       await refresh()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Payment failed.")
@@ -128,7 +144,7 @@ export function CitationLedger({
   }
 
   const ledger = ledgerQuery.data
-  const ticketNo = `TRACE-${recordId.slice(0, 8).toUpperCase()}`
+  const ticketNo = ledger.ticketNumber ?? `TRACE-${recordId.slice(0, 8).toUpperCase()}`
   const ticketUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/records/${recordId}`
@@ -150,7 +166,24 @@ export function CitationLedger({
             <p className="mt-0.5 text-[15px] font-medium">
               {ledger.violationType} · {ledger.plateNumber ?? "No plate"}
             </p>
+            {ledger.voidedAt && (
+              <p className="mt-1 text-sm font-medium text-red-600">
+                VOIDED — {ledger.voidReason ?? "no reason given"}
+              </p>
+            )}
             <dl className="mt-2 flex flex-col gap-1 text-sm">
+              {ledger.statuteCode && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Statute</dt>
+                  <dd className="font-medium">{ledger.statuteCode}</dd>
+                </div>
+              )}
+              {ledger.dueDate && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">Due</dt>
+                  <dd className="font-medium">{formatDateKey(ledger.dueDate)}</dd>
+                </div>
+              )}
               {ledger.driverName && (
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Driver</dt>
@@ -229,9 +262,16 @@ export function CitationLedger({
         setReceiptNo={setReceiptNo}
         note={note}
         setNote={setNote}
+        payerName={payerName}
+        setPayerName={setPayerName}
+        paymentMethod={paymentMethod}
+        setPaymentMethod={setPaymentMethod}
+        countersign={countersign}
+        setCountersign={setCountersign}
         paying={paying}
         canManage={canManage}
         isPaid={ledger.isPaid}
+        isVoid={!!ledger.voidedAt}
         onSubmit={submitPayment}
       />
 
@@ -294,9 +334,16 @@ function PaymentsSection({
   setReceiptNo,
   note,
   setNote,
+  payerName,
+  setPayerName,
+  paymentMethod,
+  setPaymentMethod,
+  countersign,
+  setCountersign,
   paying,
   canManage,
   isPaid,
+  isVoid,
   onSubmit,
 }: {
   payments: Awaited<ReturnType<typeof getCitationLedger>>["payments"]
@@ -306,16 +353,23 @@ function PaymentsSection({
   setReceiptNo: (value: string) => void
   note: string
   setNote: (value: string) => void
+  payerName: string
+  setPayerName: (value: string) => void
+  paymentMethod: string
+  setPaymentMethod: (value: string) => void
+  countersign: string
+  setCountersign: (value: string) => void
   paying: boolean
   canManage: boolean
   isPaid: boolean
+  isVoid: boolean
   onSubmit: (event: React.SubmitEvent) => void
 }) {
   const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
     usePaginatedSearch({
       items: payments,
       search: (payment, q) =>
-        `${payment.receiptNo} ${payment.receivedByName ?? ""} ${payment.note ?? ""} ${payment.amount}`
+        `${payment.receiptNo} ${payment.payerName ?? ""} ${payment.receivedByName ?? ""} ${payment.receivingBranchName ?? ""} ${payment.note ?? ""} ${payment.amount}`
           .toLowerCase()
           .includes(q),
     })
@@ -352,7 +406,13 @@ function PaymentsSection({
                   {mwk(payment.amount)} · {payment.receiptNo}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {[payment.receivedByName, payment.note]
+                  {[
+                    payment.payerName,
+                    payment.paymentMethod,
+                    payment.receivingBranchName,
+                    payment.receivedByName,
+                    payment.note,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
@@ -367,7 +427,7 @@ function PaymentsSection({
           />
         </>
       )}
-      {canManage && !isPaid && (
+      {canManage && !isPaid && !isVoid && (
         <form onSubmit={onSubmit} className="flex flex-col gap-2">
           <div className="flex gap-2">
             <Input
@@ -386,12 +446,39 @@ function PaymentsSection({
               aria-label="Receipt number, blank for auto"
             />
           </div>
+          <div className="flex gap-2">
+            <Input
+              value={payerName}
+              onChange={(event) => setPayerName(event.target.value)}
+              placeholder="Payer name*"
+              aria-label="Payer name"
+            />
+            <select
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value)}
+              aria-label="Payment method"
+              className="h-9 flex-1 rounded-none border bg-background px-2 text-sm"
+            >
+              <option value="cash">Cash</option>
+              <option value="mobile">Mobile money</option>
+              <option value="bank">Bank</option>
+            </select>
+          </div>
           <Input
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="Note (optional)"
             aria-label="Payment note"
           />
+          <Input
+            value={countersign}
+            onChange={(event) => setCountersign(event.target.value)}
+            placeholder="Countersign (required only if you filed this ticket)"
+            aria-label="Countersigning officer"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Any branch counter can receive — your branch is stamped automatically.
+          </p>
           <Button type="submit" size="sm" className="w-fit" disabled={paying}>
             {paying ? "Recording…" : "Record payment"}
           </Button>

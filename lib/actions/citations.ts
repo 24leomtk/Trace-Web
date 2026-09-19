@@ -20,6 +20,7 @@ import { canViewRecord } from "@/lib/visibility"
 import {
   citationCourtScheduleSchema,
   citationPaymentSchema,
+  citationVoidSchema,
 } from "@/validations/admin"
 import { getViewerScope, type ViewerScope } from "@/lib/actions/records"
 import { notifyUser } from "@/lib/actions/notifications"
@@ -28,7 +29,7 @@ function isMonitor(scope: ViewerScope): boolean {
   return scope.role === "DISTRICT_MONITOR" || scope.role === "COUNTRY_MONITOR"
 }
 
-/** Reporter or an in-scope monitor — the same rule the old paid-toggle used. */
+/** Reporter or an in-scope monitor — the old paid-toggle rule (kept for court scheduling). */
 function canManageCitation(
   scope: ViewerScope,
   record: typeof records.$inferSelect
@@ -41,6 +42,26 @@ function canManageCitation(
       ? record.accessLevel === "country"
       : record.district === scope.district)
   )
+}
+
+/**
+ * Phase 1 (records review R2): any active police user in the same domain
+ * can RECEIVE a payment — branch/district gates do not apply to money.
+ * Reading the case file still follows `canViewRecord`; finding the ticket
+ * to receipt follows `findCitationByTicket` (ticket-number lookup).
+ */
+function canReceivePayment(
+  scope: ViewerScope,
+  record: typeof records.$inferSelect
+): boolean {
+  if (
+    scope.role !== "OFFICER" &&
+    scope.role !== "DISTRICT_MONITOR" &&
+    scope.role !== "COUNTRY_MONITOR"
+  ) {
+    return false
+  }
+  return record.domain === scope.domain
 }
 
 /** Live (unexpired, unrevoked) court grant — mirrors records.ts's gate. */
@@ -68,12 +89,21 @@ export interface CitationPaymentRow {
   amount: number
   receiptNo: string
   note: string | null
+  payerName: string | null
+  paymentMethod: string | null
+  channel: string | null
+  receivingBranchName: string | null
   receivedByName: string | null
   createdAt: string
 }
 
 export interface CitationLedger {
   recordId: string
+  ticketNumber: string | null
+  statuteCode: string | null
+  dueDate: string | null
+  voidedAt: string | null
+  voidReason: string | null
   plateNumber: string | null
   violationType: string
   driverName: string | null
@@ -134,6 +164,10 @@ export async function getCitationLedger(recordId: string): Promise<CitationLedge
         amount: citationPayments.amount,
         receiptNo: citationPayments.receiptNo,
         note: citationPayments.note,
+        payerName: citationPayments.payerName,
+        paymentMethod: citationPayments.paymentMethod,
+        channel: citationPayments.channel,
+        receivingBranchId: citationPayments.receivingBranchId,
         receivedBy: citationPayments.receivedBy,
         createdAt: citationPayments.createdAt,
       })
@@ -150,11 +184,22 @@ export async function getCitationLedger(recordId: string): Promise<CitationLedge
             .where(eq(users.id, row.receivedBy))
             .limit(1)
         : []
+      const [receivingBranch] = row.receivingBranchId
+        ? await tx
+            .select({ name: branches.name })
+            .from(branches)
+            .where(eq(branches.id, row.receivingBranchId))
+            .limit(1)
+        : []
       payments.push({
         id: row.id,
         amount: Number(row.amount),
         receiptNo: row.receiptNo,
         note: row.note,
+        payerName: row.payerName,
+        paymentMethod: row.paymentMethod,
+        channel: row.channel,
+        receivingBranchName: receivingBranch?.name ?? null,
         receivedByName: receiver?.name ?? null,
         createdAt: row.createdAt.toISOString(),
       })
@@ -165,6 +210,11 @@ export async function getCitationLedger(recordId: string): Promise<CitationLedge
     const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0)
     return {
       recordId,
+      ticketNumber: projection.ticketNumber ?? null,
+      statuteCode: projection.statuteCode ?? null,
+      dueDate: projection.dueDate ?? null,
+      voidedAt: projection.voidedAt ? projection.voidedAt.toISOString() : null,
+      voidReason: projection.voidReason ?? null,
       plateNumber:
         vehicle?.plateNumber ??
         (typeof data.plate_number === "string" ? data.plate_number : null),
@@ -203,7 +253,9 @@ export async function listCourtOptions(): Promise<{ id: string; name: string }[]
 }
 
 /**
- * Record a fine payment. Partial payments allowed; overpayments rejected;
+ * Record a fine payment. Phase 1: any in-domain officer/monitor can receive
+ * (cross-branch by design); the issuer receipting their own ticket needs a
+ * named countersign. Partial payments allowed; overpayments rejected;
  * `is_paid` is recomputed from the ledger total (F3).
  */
 export async function recordCitationPayment(input: {
@@ -211,6 +263,11 @@ export async function recordCitationPayment(input: {
   amount: number
   receiptNo?: string
   note?: string
+  payerName: string
+  paymentMethod: "cash" | "mobile" | "bank"
+  channel?: "counter" | "mobile" | "clerk"
+  receivingBranchId?: string
+  countersignedBy?: string
 }): Promise<{ receiptNo: string; balance: number | null; isPaid: boolean }> {
   const scope = await getViewerScope()
   const parsed = citationPaymentSchema.safeParse(input)
@@ -225,8 +282,15 @@ export async function recordCitationPayment(input: {
     if (!record || record.recordType !== "traffic_citation") {
       throw new Error("Citation not found.")
     }
-    if (!canManageCitation(scope, record)) {
-      throw new Error("That case is outside your scope.")
+    if (!canReceivePayment(scope, record)) {
+      throw new Error("Only police users in the same domain can receive payments.")
+    }
+    // Issuer ≠ receiver: the filing officer cannot receipt their own ticket
+    // alone — prevents silent self-clearing (Platte County lesson).
+    if (record.reportedBy === scope.id && !parsed.data.countersignedBy?.trim()) {
+      throw new Error(
+        "You filed this ticket — name a countersigning officer/monitor to receipt it."
+      )
     }
     const [projection] = await tx
       .select()
@@ -234,6 +298,28 @@ export async function recordCitationPayment(input: {
       .where(eq(trafficCitations.recordId, record.id))
       .limit(1)
     if (!projection) throw new Error("Citation not found.")
+    if (projection.voidedAt) throw new Error("This ticket was voided — no payments accepted.")
+
+    // Resolve the receiving branch: officers stamp their own branch;
+    // monitors may receipt on behalf of another in-scope branch counter.
+    let receivingBranchId: string | null = null
+    if (scope.role === "OFFICER") {
+      if (!scope.branchId) throw new Error("Your account has no branch.")
+      receivingBranchId = scope.branchId
+    } else if (parsed.data.receivingBranchId) {
+      const [branch] = await tx
+        .select({ id: branches.id, domain: branches.domain, district: branches.district })
+        .from(branches)
+        .where(eq(branches.id, parsed.data.receivingBranchId))
+        .limit(1)
+      if (!branch || branch.domain !== scope.domain) {
+        throw new Error("That receiving branch is outside your scope.")
+      }
+      if (scope.role === "DISTRICT_MONITOR" && branch.district !== scope.district) {
+        throw new Error("That receiving branch is outside your district.")
+      }
+      receivingBranchId = branch.id
+    }
 
     const fine = projection.fineAmount != null ? Number(projection.fineAmount) : null
     const existing = await tx
@@ -250,13 +336,23 @@ export async function recordCitationPayment(input: {
 
     const receiptNo =
       parsed.data.receiptNo?.trim() || generateReceiptNo()
+    const countersign = parsed.data.countersignedBy?.trim()
     const [payment] = await tx
       .insert(citationPayments)
       .values({
         recordId: record.id,
         amount: String(parsed.data.amount),
         receiptNo,
-        note: parsed.data.note?.trim() || undefined,
+        note:
+          (parsed.data.note?.trim() &&
+            (countersign
+              ? `${parsed.data.note.trim()} (countersigned: ${countersign})`
+              : parsed.data.note.trim())) ||
+          (countersign ? `Countersigned: ${countersign}` : undefined),
+        payerName: parsed.data.payerName.trim(),
+        paymentMethod: parsed.data.paymentMethod,
+        channel: parsed.data.channel ?? "counter",
+        receivingBranchId: receivingBranchId ?? undefined,
         receivedBy: scope.id,
       })
       .returning({ id: citationPayments.id })
@@ -272,7 +368,7 @@ export async function recordCitationPayment(input: {
       actorId: scope.id,
       actionType: "record_updated",
       recordId: record.id,
-      reason: `Fine payment MWK ${parsed.data.amount.toLocaleString()} received (${receiptNo}). Balance ${citationBalance(fine, totalPaid)?.toLocaleString() ?? "unknown"}.`,
+      reason: `Fine payment MWK ${parsed.data.amount.toLocaleString()} from ${parsed.data.payerName.trim()} via ${parsed.data.paymentMethod} (${receiptNo}). Balance ${citationBalance(fine, totalPaid)?.toLocaleString() ?? "unknown"}.`,
     })
     if (record.reportedBy !== scope.id) {
       await notifyUser(tx, {
@@ -283,6 +379,105 @@ export async function recordCitationPayment(input: {
       })
     }
     return { receiptNo, balance: citationBalance(fine, totalPaid), isPaid: paid }
+  })
+}
+
+/**
+ * Phase 1: find a citation by uniform ticket number from any branch counter.
+ * Returns the record id when the viewer may receipt it (same-domain police).
+ * Audited as a lookup, not a case-file read.
+ */
+export async function findCitationByTicket(
+  ticketNumber: string
+): Promise<{ recordId: string; plateNumber: string | null; balance: number | null; isPaid: boolean }> {
+  const scope = await getViewerScope()
+  if (
+    scope.role !== "OFFICER" &&
+    scope.role !== "DISTRICT_MONITOR" &&
+    scope.role !== "COUNTRY_MONITOR"
+  ) {
+    throw new Error("Police users only.")
+  }
+  const ticket = ticketNumber.trim().toUpperCase()
+  if (!ticket) throw new Error("Enter a ticket number.")
+  return withUserCtx(scope.id, async (tx) => {
+    const [projection] = await tx
+      .select()
+      .from(trafficCitations)
+      .where(eq(trafficCitations.ticketNumber, ticket))
+      .limit(1)
+    if (!projection) throw new Error("No citation with that ticket number.")
+    const [record] = await tx
+      .select()
+      .from(records)
+      .where(eq(records.id, projection.recordId))
+      .limit(1)
+    if (!record || !canReceivePayment(scope, record)) {
+      throw new Error("That citation is outside your domain.")
+    }
+    const [vehicle] = projection.vehicleId
+      ? await tx
+          .select({ plateNumber: vehicles.plateNumber })
+          .from(vehicles)
+          .where(eq(vehicles.id, projection.vehicleId))
+          .limit(1)
+      : []
+    const rows = await tx
+      .select({ amount: citationPayments.amount })
+      .from(citationPayments)
+      .where(eq(citationPayments.recordId, record.id))
+    const totalPaid = rows.reduce((sum, row) => sum + Number(row.amount), 0)
+    const fine = projection.fineAmount != null ? Number(projection.fineAmount) : null
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_viewed",
+      recordId: record.id,
+      reason: `Ticket lookup ${ticket} for receiving.`,
+    })
+    return {
+      recordId: record.id,
+      plateNumber: vehicle?.plateNumber ?? null,
+      balance: citationBalance(fine, totalPaid),
+      isPaid: projection.isPaid,
+    }
+  })
+}
+
+/** Phase 1: void a spoiled/duplicate ticket (monitor-only, stays queryable). */
+export async function voidCitation(input: {
+  recordId: string
+  reason: string
+}): Promise<void> {
+  const scope = await getViewerScope()
+  if (!isMonitor(scope)) throw new Error("Only monitors void tickets.")
+  const parsed = citationVoidSchema.safeParse(input)
+  if (!parsed.success) throw new Error("Give a reason (min 10 characters).")
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx
+      .select()
+      .from(records)
+      .where(eq(records.id, parsed.data.recordId))
+      .limit(1)
+    if (!record || record.recordType !== "traffic_citation") {
+      throw new Error("Citation not found.")
+    }
+    if (!canManageCitation(scope, record)) {
+      throw new Error("That case is outside your scope.")
+    }
+    await tx
+      .update(trafficCitations)
+      .set({
+        voidedAt: new Date(),
+        voidReason: parsed.data.reason.trim(),
+        voidBy: scope.id,
+      })
+      .where(eq(trafficCitations.recordId, record.id))
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: record.id,
+      reason: `Ticket voided: ${parsed.data.reason.trim()}`,
+    })
   })
 }
 

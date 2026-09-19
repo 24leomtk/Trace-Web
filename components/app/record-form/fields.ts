@@ -139,7 +139,9 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
   traffic_citation: [
     f("plate_number", "Plate number", { half: true }),
     f("violation_type", "Violation type", { half: true }),
+    o("statute_code", "Statute code", { half: true, placeholder: "e.g. s.316.074" }),
     f("fine_amount", "Fine amount", { type: "number", half: true }),
+    o("due_date", "Due date", { type: "date", half: true }),
     o("driver_name", "Driver name", { half: true }),
     o("driver_license_no", "Driver license no.", { half: true }),
     f("location", "Location"),

@@ -167,6 +167,22 @@ export function generateReceiptNo(
   return `R-${time}${salt}`
 }
 
+/** Phase 1: uniform ticket numbers (T-YYYY-XXXXXX). Deterministic under test args. */
+export function generateTicketNo(
+  now = Date.now(),
+  rand = Math.floor(Math.random() * 36 ** 6)
+): string {
+  const year = new Date(now).getUTCFullYear()
+  const salt = rand.toString(36).toUpperCase().padStart(6, "0").slice(-6)
+  return `T-${year}-${salt}`
+}
+
+export const PAYMENT_METHODS = ["cash", "mobile", "bank"] as const
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
+
+export const PAYMENT_CHANNELS = ["counter", "mobile", "clerk"] as const
+export type PaymentChannel = (typeof PAYMENT_CHANNELS)[number]
+
 /** F4 referral timeliness thresholds (days). */
 export const REFERRAL_VIEW_SLA_DAYS = 7
 export const REFERRAL_OUTCOME_SLA_DAYS = 30

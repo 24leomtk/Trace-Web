@@ -121,7 +121,15 @@ export const trafficCitationSchema = z.object({
   driver_name: z.string().optional(),
   driver_license_no: z.string().optional(),
   violation_type: z.string().min(1),
+  // Phase 1: statute coding drives court scheduling + fine tables;
+  // free-text violation alone cannot. Optional during transition.
+  statute_code: z.string().trim().max(32).optional(),
   fine_amount: z.number().nonnegative(),
+  // Payment due date (monitor-set or filing default). Optional during transition.
+  due_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   location: z.string().min(1),
   date_issued: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   ...geoFields,

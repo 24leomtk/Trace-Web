@@ -191,14 +191,38 @@ export type CourtOutcomeInput = z.output<typeof courtOutcomeSchema>
 
 // F3 fine ledger: payments are positive, receipted, and capped above any
 // realistic Malawian traffic fine so typos (extra zeros) fail loudly.
+// Phase 1 (records review R2/R3): every payment records who paid, how, and
+// which branch received it — the issuer/receiver split that makes
+// any-counter payment safe.
+export const paymentMethodOptions = ["cash", "mobile", "bank"] as const
+export const paymentChannelOptions = ["counter", "mobile", "clerk"] as const
+
 export const citationPaymentSchema = z.object({
   recordId: z.uuid(),
   amount: z.number().positive().max(100_000_000),
   receiptNo: z.string().trim().max(64).optional().or(z.literal("")),
   note: z.string().trim().max(500).optional().or(z.literal("")),
+  payerName: z.string().trim().min(2).max(120),
+  paymentMethod: z.enum(paymentMethodOptions),
+  channel: z.enum(paymentChannelOptions).default("counter"),
+  // Set when a monitor receipts on behalf of another branch's counter;
+  // otherwise the server stamps the viewer's own branch.
+  receivingBranchId: z.uuid().optional().or(z.literal("")),
+  // Countersign path: issuer receipting their own ticket must name the
+  // second officer/monitor who witnessed it.
+  countersignedBy: z.string().trim().max(120).optional().or(z.literal("")),
 })
 
 export type CitationPaymentInput = z.output<typeof citationPaymentSchema>
+
+// Phase 1: spoiled/duplicate tickets are voided with a reason + supervisor
+// countersign — never edited away. Voided tickets stay queryable.
+export const citationVoidSchema = z.object({
+  recordId: z.uuid(),
+  reason: z.string().trim().min(10).max(500),
+})
+
+export type CitationVoidInput = z.output<typeof citationVoidSchema>
 
 // F3 court scheduling: monitors set the appearance date (today or future)
 // and optionally the court organization.

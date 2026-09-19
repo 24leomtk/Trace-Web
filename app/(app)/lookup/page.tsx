@@ -11,6 +11,7 @@ import {
   flaggedVehicleWatchlist,
   insurerPlateLookup,
 } from "@/lib/actions/access"
+import { findCitationByTicket } from "@/lib/actions/citations"
 import { unifiedSearch } from "@/lib/actions/search"
 import { daysSince, normalizePlate } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
@@ -39,6 +40,13 @@ export default function LookupPage() {
   }>(null)
   const [plate, setPlate] = useState("")
   const [flagged, setFlagged] = useState<boolean | null>(null)
+  const [ticket, setTicket] = useState("")
+  const [ticketResult, setTicketResult] = useState<null | {
+    recordId: string
+    plateNumber: string | null
+    balance: number | null
+    isPaid: boolean
+  }>(null)
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<Awaited<
     ReturnType<typeof unifiedSearch>
@@ -87,6 +95,20 @@ export default function LookupPage() {
       setFlagged(result.flagged)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Check failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runTicketSearch(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (!ticket.trim()) return
+    setBusy(true)
+    try {
+      setTicketResult(await findCitationByTicket(ticket))
+    } catch (error) {
+      setTicketResult(null)
+      toast.error(error instanceof Error ? error.message : "Ticket lookup failed.")
     } finally {
       setBusy(false)
     }
@@ -212,6 +234,44 @@ export default function LookupPage() {
           </div>
         )}
       </section>
+
+      {isPolice && (
+        <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Ticket lookup · receive payment at any counter
+          </h2>
+          <form onSubmit={runTicketSearch} className="flex gap-2">
+            <Input
+              value={ticket}
+              onChange={(e) => setTicket(e.target.value.toUpperCase())}
+              placeholder="Ticket no. e.g. T-2026-ABC123"
+            />
+            <Button type="submit" disabled={busy}>
+              Find
+            </Button>
+          </form>
+          {ticketResult && (
+            <Link
+              href={`/records/${ticketResult.recordId}`}
+              className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
+            >
+              <span className="font-medium">{ticket.trim().toUpperCase()}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {ticketResult.plateNumber ?? "No plate"} ·{" "}
+                {ticketResult.isPaid
+                  ? "PAID"
+                  : ticketResult.balance != null
+                    ? `Balance MWK ${ticketResult.balance.toLocaleString()}`
+                    : "Balance unknown"}
+              </span>
+              <span className="ml-2 text-xs font-medium text-muted-foreground">
+                Open to receipt →
+              </span>
+            </Link>
+          )}
+        </section>
+      )}
 
       {isPolice && (
         <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
