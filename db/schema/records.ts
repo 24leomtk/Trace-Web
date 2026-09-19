@@ -54,6 +54,23 @@ export const records = pgTable(
     accessLevel: accessLevelEnum("access_level").default("branch").notNull(),
     status: caseStatusEnum("status").default("active").notNull(),
 
+    // Phase 3 (records review R5): locate → confirm → clear. A locate by any
+    // officer (often cross-branch) never auto-clears; the originating branch
+    // (or a monitor) confirms. Plain text, validated in action code — same
+    // pattern as case_assignments.state. Only meaningful for wanted_person,
+    // missing_person, missing_vehicle, stolen_property.
+    locateState: text("locate_state").default("none").notNull(), // none | located | confirmed
+    locateBy: text("locate_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    locateAt: timestamp("locate_at", { withTimezone: true }),
+    locatePlace: text("locate_place"),
+    locateNote: text("locate_note"),
+
+    // Phase 3: stolen-property custodian disposition (held/returned/
+    // destroyed/auctioned). Required before a property case closes.
+    disposition: text("disposition"),
+
     data: jsonb("data").notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true })

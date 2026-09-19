@@ -221,6 +221,12 @@ export function CitationLedger({
                   {ledger.isPaid && " · PAID"}
                 </dd>
               </div>
+              {!ledger.isPaid && !ledger.voidedAt && (
+                <p className="text-[11px] text-muted-foreground">
+                  Resolve stays blocked until this balance is zero or the court
+                  dismisses the case.
+                </p>
+              )}
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Court</dt>
                 <dd className="font-medium">

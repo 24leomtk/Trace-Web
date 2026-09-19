@@ -20,6 +20,7 @@ exports.formatCountdown = formatCountdown;
 exports.normalizePlate = normalizePlate;
 exports.citationBalance = citationBalance;
 exports.isCitationPaid = isCitationPaid;
+exports.citationResolveBlocker = citationResolveBlocker;
 exports.generateReceiptNo = generateReceiptNo;
 exports.generateTicketNo = generateTicketNo;
 exports.referralSla = referralSla;
@@ -181,6 +182,24 @@ function isCitationPaid(fineAmount, totalPaid) {
     if (fineAmount == null || Number.isNaN(fineAmount))
         return totalPaid > 0;
     return totalPaid >= fineAmount;
+}
+/**
+ * Phase 2: pure guard for citation → resolved. Returns the blocking reason,
+ * or null when the transition may proceed. Voided tickets close instead of
+ * resolving; unpaid tickets need a court dismissal (dismissed / withdrawn /
+ * acquitted) recorded on a referral.
+ */
+function citationResolveBlocker(input) {
+    if (input.voided)
+        return "Ticket voided — close it instead of resolving.";
+    if (input.dismissedByCourt)
+        return null;
+    if (input.balance == null)
+        return null;
+    if (input.balance > 0) {
+        return `Outstanding balance MWK ${input.balance.toLocaleString()} — record payment or a court dismissal first.`;
+    }
+    return null;
 }
 /** Receipt numbers: R- + 6 base-36 chars. Deterministic under test args. */
 function generateReceiptNo(now = Date.now(), rand = Math.floor(Math.random() * 36 ** 6)) {

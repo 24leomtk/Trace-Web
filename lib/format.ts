@@ -157,6 +157,26 @@ export function isCitationPaid(
   return totalPaid >= fineAmount
 }
 
+/**
+ * Phase 2: pure guard for citation → resolved. Returns the blocking reason,
+ * or null when the transition may proceed. Voided tickets close instead of
+ * resolving; unpaid tickets need a court dismissal (dismissed / withdrawn /
+ * acquitted) recorded on a referral.
+ */
+export function citationResolveBlocker(input: {
+  voided: boolean
+  balance: number | null
+  dismissedByCourt: boolean
+}): string | null {
+  if (input.voided) return "Ticket voided — close it instead of resolving."
+  if (input.dismissedByCourt) return null
+  if (input.balance == null) return null
+  if (input.balance > 0) {
+    return `Outstanding balance MWK ${input.balance.toLocaleString()} — record payment or a court dismissal first.`
+  }
+  return null
+}
+
 /** Receipt numbers: R- + 6 base-36 chars. Deterministic under test args. */
 export function generateReceiptNo(
   now = Date.now(),

@@ -228,6 +228,69 @@ function record(overrides) {
         }).success, false);
     });
 });
+(0, node_test_1.describe)("citationResolveBlocker (Phase 2)", () => {
+    (0, node_test_1.it)("blocks resolve while a balance is outstanding", () => {
+        const block = (0, format_1.citationResolveBlocker)({
+            voided: false,
+            balance: 3000,
+            dismissedByCourt: false,
+        });
+        strict_1.default.match(block !== null && block !== void 0 ? block : "", /Outstanding balance/);
+    });
+    (0, node_test_1.it)("allows resolve once paid in full", () => {
+        strict_1.default.equal((0, format_1.citationResolveBlocker)({
+            voided: false,
+            balance: 0,
+            dismissedByCourt: false,
+        }), null);
+    });
+    (0, node_test_1.it)("allows resolve on court dismissal without payment", () => {
+        strict_1.default.equal((0, format_1.citationResolveBlocker)({
+            voided: false,
+            balance: 5000,
+            dismissedByCourt: true,
+        }), null);
+    });
+    (0, node_test_1.it)("voided tickets close instead of resolving", () => {
+        const block = (0, format_1.citationResolveBlocker)({
+            voided: true,
+            balance: 0,
+            dismissedByCourt: false,
+        });
+        strict_1.default.match(block !== null && block !== void 0 ? block : "", /close it instead/);
+    });
+    (0, node_test_1.it)("unknown fines resolve (nothing to collect)", () => {
+        strict_1.default.equal((0, format_1.citationResolveBlocker)({
+            voided: false,
+            balance: null,
+            dismissedByCourt: false,
+        }), null);
+    });
+});
+(0, node_test_1.describe)("locateReportSchema + dispositionSchema (Phase 3)", () => {
+    (0, node_test_1.it)("requires place and a real account of what happened", () => {
+        strict_1.default.equal(admin_1.locateReportSchema.safeParse({
+            recordId: "00000000-0000-4000-8000-000000000000",
+            place: "Area 25 market",
+            note: "Found with family, in good health.",
+        }).success, true);
+        strict_1.default.equal(admin_1.locateReportSchema.safeParse({
+            recordId: "00000000-0000-4000-8000-000000000000",
+            place: "x",
+            note: "found",
+        }).success, false);
+    });
+    (0, node_test_1.it)("accepts only the four custodian dispositions", () => {
+        strict_1.default.equal(admin_1.dispositionSchema.safeParse({
+            recordId: "00000000-0000-4000-8000-000000000000",
+            disposition: "returned",
+        }).success, true);
+        strict_1.default.equal(admin_1.dispositionSchema.safeParse({
+            recordId: "00000000-0000-4000-8000-000000000000",
+            disposition: "lost",
+        }).success, false);
+    });
+});
 (0, node_test_1.describe)("referralSla", () => {
     const referred = "2026-09-01T12:00:00Z";
     const now = new Date("2026-09-17T12:00:00Z").getTime();

@@ -7,6 +7,7 @@ import {
   accidentVehicles,
   accidents,
   branches,
+  citationPayments,
   courtCaseAccess,
   idempotencyKeys,
   missingPersonCases,
@@ -23,7 +24,12 @@ import { domainForRecordType } from "@/lib/record-meta"
 import { describeRecord } from "@/lib/record-view"
 import { toUiRole } from "@/lib/roles"
 import { requireUser } from "@/lib/session"
-import { defaultRetentionUntil, fileKindFromMime } from "@/lib/format"
+import {
+  citationBalance,
+  citationResolveBlocker,
+  defaultRetentionUntil,
+  fileKindFromMime,
+} from "@/lib/format"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 import {
   canViewRecord,
@@ -965,6 +971,141 @@ export async function updateRecord({
   })
 }
 
+const DISMISSAL_OUTCOMES = ["dismissed", "withdrawn", "acquitted"] as const
+
+/**
+ * Phase 2+3: per-type guard for → resolved (and stolen-property → closed).
+ * Returns the blocking reason, or null when the transition may proceed.
+ * Citations need balance-vs-dismissal; wanted/missing/property need a
+ * CONFIRMED locate (a mere report never clears); property closing needs a
+ * custodian disposition.
+ */
+async function transitionBlockReason(
+  tx: DbTransaction,
+  record: RecordRow,
+  toStatus: CaseStatus
+): Promise<string | null> {
+  if (record.recordType === "stolen_property" && toStatus === "closed") {
+    if (!record.disposition) {
+      return "Record a custodian disposition (held / returned / destroyed / auctioned) before closing."
+    }
+    return null
+  }
+  if (toStatus !== "resolved") return null
+  if (record.recordType === "traffic_citation") {
+    const [projection] = await tx
+      .select()
+      .from(trafficCitations)
+      .where(eq(trafficCitations.recordId, record.id))
+      .limit(1)
+    if (!projection) return null
+    const paymentRows = await tx
+      .select({ amount: citationPayments.amount })
+      .from(citationPayments)
+      .where(eq(citationPayments.recordId, record.id))
+    const totalPaid = paymentRows.reduce((sum, row) => sum + Number(row.amount), 0)
+    const fine =
+      projection.fineAmount != null ? Number(projection.fineAmount) : null
+    const [dismissal] = await tx
+      .select({ id: courtCaseAccess.id })
+      .from(courtCaseAccess)
+      .where(
+        and(
+          eq(courtCaseAccess.recordId, record.id),
+          inArray(courtCaseAccess.outcome, [...DISMISSAL_OUTCOMES])
+        )
+      )
+      .limit(1)
+    return citationResolveBlocker({
+      voided: !!projection.voidedAt,
+      balance: citationBalance(fine, totalPaid),
+      dismissedByCourt: !!dismissal,
+    })
+  }
+  if (
+    record.recordType === "wanted_person" ||
+    record.recordType === "missing_person" ||
+    record.recordType === "missing_vehicle" ||
+    record.recordType === "stolen_property"
+  ) {
+    // Phase 3: finding isn't closing — only a CONFIRMED locate unblocks.
+    if (record.locateState !== "confirmed") {
+      return record.locateState === "located"
+        ? "Locate reported but not confirmed — the originating branch or a monitor must confirm it first."
+        : "Report a locate first — only a confirmed locate unblocks resolving."
+    }
+    return null
+  }
+  return null
+}
+
+export interface TransitionHint {
+  status: CaseStatus
+  allowed: boolean
+  message: string | null
+}
+
+const ADVISORY_HINTS: Partial<Record<RecordType, string>> = {
+  vehicle_impoundment: "Resolving needs a signed release (hold authority, lands in Phase 4).",
+}
+
+/**
+ * Phase 2: what the status dialog may offer for this record. Monitors only;
+ * same scope rule as changeStatus. `allowed: false` targets are disabled in
+ * the UI with the blocking reason shown inline.
+ */
+export async function getTransitionHints(
+  recordId: string
+): Promise<{ current: CaseStatus; hints: TransitionHint[] }> {
+  const scope = await getViewerScope()
+  if (!isMonitor(scope)) throw new Error("Only monitors change case status.")
+  return withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx
+      .select()
+      .from(records)
+      .where(eq(records.id, recordId))
+      .limit(1)
+    if (!record) throw new Error("Record not found.")
+    const inScope =
+      record.domain === scope.domain &&
+      (scope.role === "COUNTRY_MONITOR"
+        ? record.accessLevel === "country"
+        : record.district === scope.district)
+    if (!inScope) throw new Error("That case is outside your scope.")
+
+    const advisory =
+      ADVISORY_HINTS[record.recordType as RecordType] ?? null
+    const targets: CaseStatus[] = ["active", "resolved", "closed", "archived"]
+    const blocks = new Map<CaseStatus, string | null>()
+    for (const target of targets) {
+      if (target === record.status || (target !== "resolved" && target !== "closed")) {
+        blocks.set(target, null)
+      } else {
+        blocks.set(target, await transitionBlockReason(tx, record, target))
+      }
+    }
+    return {
+      current: record.status as CaseStatus,
+      hints: targets.map((target) => {
+        if (target === record.status) {
+          return { status: target, allowed: false, message: "Current status." }
+        }
+        const block = blocks.get(target)
+        if (block) {
+          return { status: target, allowed: false, message: block }
+        }
+        if ((target === "resolved" || target === "closed") && advisory) {
+          return { status: target, allowed: true, message: advisory }
+        }
+        if (target === "active") {
+          return { status: target, allowed: true, message: "Reopen the case." }
+        }
+        return { status: target, allowed: true, message: null }
+      }),
+    }
+  })
+}
+
 export async function changeStatus({
   id,
   status,
@@ -976,6 +1117,10 @@ export async function changeStatus({
 }): Promise<void> {
   const scope = await getViewerScope()
   if (!isMonitor(scope)) throw new Error("Only monitors can change case status.")
+  // Phase 2: closing transitions are evidence — a reason is mandatory.
+  if (status !== "active" && !reason?.trim()) {
+    throw new Error("Give a reason — resolving, closing, or archiving needs one.")
+  }
   await withUserCtx(scope.id, async (tx) => {
     const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
     if (!record) throw new Error("Record not found.")
@@ -992,6 +1137,19 @@ export async function changeStatus({
         reason: "DENIED: attempted status change outside own scope.",
       })
       throw new Error("That case is outside your scope.")
+    }
+    // Phase 2: per-type transition guards (status can't outrun evidence).
+    if (status === "resolved" || status === "closed") {
+      const block = await transitionBlockReason(tx, record, status)
+      if (block) {
+        await writeAuditTx(tx, {
+          actorId: scope.id,
+          actionType: "status_rejected",
+          recordId: id,
+          reason: `DENIED: ${status} blocked — ${block}`,
+        })
+        throw new Error(block)
+      }
     }
     await tx
       .update(records)

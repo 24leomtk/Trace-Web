@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { AnalyticsFeed } from "@/components/app/analytics-feed"
 import { AssignmentQueue } from "@/components/app/assignment-queue"
+import { LocateQueue } from "@/components/app/locate-queue"
 import { RecordTimeline } from "@/components/app/record-timeline"
 import {
   useHomeView,
@@ -55,6 +56,8 @@ export function OfficerHome() {
       </header>
 
       <AssignmentQueue />
+
+      <LocateQueue />
 
       {isMonitor && (
         <div className="flex gap-1 rounded-none border bg-muted/40 p-1">

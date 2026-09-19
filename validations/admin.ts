@@ -224,6 +224,30 @@ export const citationVoidSchema = z.object({
 
 export type CitationVoidInput = z.output<typeof citationVoidSchema>
 
+// Phase 3 locate → confirm → clear: a locate report carries where + what
+// happened; confirmation is a separate human (approver ≠ reporter).
+export const locateReportSchema = z.object({
+  recordId: z.uuid(),
+  place: z.string().trim().min(2).max(300),
+  note: z.string().trim().min(10).max(2000),
+})
+
+export type LocateReportInput = z.output<typeof locateReportSchema>
+
+export const dispositionOptions = [
+  "held",
+  "returned",
+  "destroyed",
+  "auctioned",
+] as const
+
+export const dispositionSchema = z.object({
+  recordId: z.uuid(),
+  disposition: z.enum(dispositionOptions),
+})
+
+export type DispositionInput = z.output<typeof dispositionSchema>
+
 // F3 court scheduling: monitors set the appearance date (today or future)
 // and optionally the court organization.
 export const citationCourtScheduleSchema = z.object({

@@ -366,7 +366,7 @@ export async function recordCitationPayment(input: {
       .where(eq(trafficCitations.recordId, record.id))
     await writeAuditTx(tx, {
       actorId: scope.id,
-      actionType: "record_updated",
+      actionType: "payment_received",
       recordId: record.id,
       reason: `Fine payment MWK ${parsed.data.amount.toLocaleString()} from ${parsed.data.payerName.trim()} via ${parsed.data.paymentMethod} (${receiptNo}). Balance ${citationBalance(fine, totalPaid)?.toLocaleString() ?? "unknown"}.`,
     })
@@ -474,7 +474,7 @@ export async function voidCitation(input: {
       .where(eq(trafficCitations.recordId, record.id))
     await writeAuditTx(tx, {
       actorId: scope.id,
-      actionType: "record_updated",
+      actionType: "citation_voided",
       recordId: record.id,
       reason: `Ticket voided: ${parsed.data.reason.trim()}`,
     })
@@ -539,5 +539,172 @@ export async function scheduleCitationCourt(input: {
         message: `Court date set to ${parsed.data.courtDate}${courtName ? ` at ${courtName}` : ""}.`,
       })
     }
+  })
+}
+
+export interface ReconciliationDayTotal {
+  date: string
+  receiverName: string
+  count: number
+  total: number
+}
+
+export interface ReconciliationException {
+  recordId: string
+  ticketNumber: string | null
+  plateNumber: string | null
+  issuedAt: string
+  daysWaiting: number
+  balance: number | null
+}
+
+export interface ReconciliationVoid {
+  recordId: string
+  ticketNumber: string | null
+  reason: string | null
+  voidAt: string | null
+}
+
+export interface ReconciliationSummary {
+  totals: ReconciliationDayTotal[]
+  undeposited: ReconciliationException[]
+  voids: ReconciliationVoid[]
+}
+
+/**
+ * Phase 2: daily money reconciliation for monitors. Per-receiver day totals
+ * (what each counter took in) plus exceptions: citations issued >5 days ago
+ * with no payment and no court outcome, and recent voids. District monitors
+ * see their district; country monitors see the domain nationwide.
+ */
+export async function getReconciliationSummary(): Promise<ReconciliationSummary> {
+  const scope = await getViewerScope()
+  if (!isMonitor(scope)) throw new Error("Monitors only.")
+  if (!scope.domain) throw new Error("Your account has no domain.")
+
+  return withUserCtx(scope.id, async (tx) => {
+    // All citations in scope with their records (capped — pilot-scale scan).
+    const rows = await tx
+      .select({
+        recordId: records.id,
+        district: records.district,
+        status: records.status,
+        createdAt: records.createdAt,
+        ticketNumber: trafficCitations.ticketNumber,
+        fineAmount: trafficCitations.fineAmount,
+        isPaid: trafficCitations.isPaid,
+        voidedAt: trafficCitations.voidedAt,
+        voidReason: trafficCitations.voidReason,
+        vehicleId: trafficCitations.vehicleId,
+      })
+      .from(trafficCitations)
+      .innerJoin(records, eq(records.id, trafficCitations.recordId))
+      .orderBy(desc(records.createdAt))
+      .limit(2000)
+
+    // Domain/district gate in JS (records.domain isn't join-filtered above
+    // to keep the query portable across RLS policies).
+
+    const recordRows = await tx
+      .select({
+        id: records.id,
+        domain: records.domain,
+        district: records.district,
+      })
+      .from(records)
+    const recordById = new Map(recordRows.map((r) => [r.id, r]))
+    const keep = (recordId: string) => {
+      const rec = recordById.get(recordId)
+      if (!rec || rec.domain !== scope.domain) return false
+      if (scope.role === "DISTRICT_MONITOR" && rec.district !== scope.district) {
+        return false
+      }
+      return true
+    }
+    const inScopeRows = rows.filter((row) => keep(row.recordId))
+
+    // Payments for in-scope citations.
+    const recordIds = new Set(inScopeRows.map((row) => row.recordId))
+    const paymentRows =
+      recordIds.size === 0
+        ? []
+        : await tx
+            .select({
+              recordId: citationPayments.recordId,
+              amount: citationPayments.amount,
+              receiptNo: citationPayments.receiptNo,
+              receivedBy: citationPayments.receivedBy,
+              createdAt: citationPayments.createdAt,
+            })
+            .from(citationPayments)
+            .orderBy(desc(citationPayments.createdAt))
+            .limit(5000)
+    const scopedPayments = paymentRows.filter((p) => recordIds.has(p.recordId))
+
+    const receiverNames = new Map<string, string>()
+    for (const p of scopedPayments) {
+      if (p.receivedBy && !receiverNames.has(p.receivedBy)) {
+        const [u] = await tx
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, p.receivedBy))
+          .limit(1)
+        receiverNames.set(p.receivedBy, u?.name ?? "Unknown")
+      }
+    }
+
+    const totalsMap = new Map<string, ReconciliationDayTotal>()
+    for (const p of scopedPayments) {
+      const date = p.createdAt.toISOString().slice(0, 10)
+      const receiverName = p.receivedBy
+        ? (receiverNames.get(p.receivedBy) ?? "Unknown")
+        : "Unknown"
+      const key = `${date}::${receiverName}`
+      const entry = totalsMap.get(key) ?? { date, receiverName, count: 0, total: 0 }
+      entry.count += 1
+      entry.total = Math.round((entry.total + Number(p.amount)) * 100) / 100
+      totalsMap.set(key, entry)
+    }
+    const totals = [...totalsMap.values()].sort((a, b) =>
+      b.date.localeCompare(a.date)
+    ).slice(0, 60)
+
+    const paidIds = new Set(scopedPayments.map((p) => p.recordId))
+    const now = Date.now()
+    const FIVE_DAYS = 5 * 86_400_000
+    const undeposited: ReconciliationException[] = []
+    for (const row of inScopeRows) {
+      if (row.isPaid || row.voidedAt || paidIds.has(row.recordId)) continue
+      const age = now - row.createdAt.getTime()
+      if (age < FIVE_DAYS) continue
+      const [vehicle] = row.vehicleId
+        ? await tx
+            .select({ plateNumber: vehicles.plateNumber })
+            .from(vehicles)
+            .where(eq(vehicles.id, row.vehicleId))
+            .limit(1)
+        : []
+      undeposited.push({
+        recordId: row.recordId,
+        ticketNumber: row.ticketNumber ?? null,
+        plateNumber: vehicle?.plateNumber ?? null,
+        issuedAt: row.createdAt.toISOString(),
+        daysWaiting: Math.floor(age / 86_400_000),
+        balance: row.fineAmount != null ? Number(row.fineAmount) : null,
+      })
+      if (undeposited.length >= 100) break
+    }
+
+    const voids: ReconciliationVoid[] = inScopeRows
+      .filter((row) => row.voidedAt)
+      .slice(0, 50)
+      .map((row) => ({
+        recordId: row.recordId,
+        ticketNumber: row.ticketNumber ?? null,
+        reason: row.voidReason ?? null,
+        voidAt: row.voidedAt ? row.voidedAt.toISOString() : null,
+      }))
+
+    return { totals, undeposited, voids }
   })
 }

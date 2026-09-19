@@ -12,6 +12,7 @@ import {
 import {
   assignmentDue,
   citationBalance,
+  citationResolveBlocker,
   daysSince,
   daysUntil,
   defaultRetentionUntil,
@@ -33,7 +34,7 @@ import {
 } from "../lib/format"
 import { otpMessage, resolveSmsConfig } from "../lib/sms"
 import { crimeIncidentSchema, wantedPersonSchema } from "../validations/record"
-import { apiKeySchema, citationPaymentSchema, citationVoidSchema } from "../validations/admin"
+import { apiKeySchema, citationPaymentSchema, citationVoidSchema, dispositionSchema, locateReportSchema } from "../validations/admin"
 
 const officer: VisibilityScope = {
   role: "OFFICER",
@@ -361,6 +362,97 @@ describe("citationVoidSchema (Phase 1)", () => {
       citationVoidSchema.safeParse({
         recordId: "00000000-0000-4000-8000-000000000000",
         reason: "oops",
+      }).success,
+      false
+    )
+  })
+})
+
+describe("citationResolveBlocker (Phase 2)", () => {
+  it("blocks resolve while a balance is outstanding", () => {
+    const block = citationResolveBlocker({
+      voided: false,
+      balance: 3000,
+      dismissedByCourt: false,
+    })
+    assert.match(block ?? "", /Outstanding balance/)
+  })
+
+  it("allows resolve once paid in full", () => {
+    assert.equal(
+      citationResolveBlocker({
+        voided: false,
+        balance: 0,
+        dismissedByCourt: false,
+      }),
+      null
+    )
+  })
+
+  it("allows resolve on court dismissal without payment", () => {
+    assert.equal(
+      citationResolveBlocker({
+        voided: false,
+        balance: 5000,
+        dismissedByCourt: true,
+      }),
+      null
+    )
+  })
+
+  it("voided tickets close instead of resolving", () => {
+    const block = citationResolveBlocker({
+      voided: true,
+      balance: 0,
+      dismissedByCourt: false,
+    })
+    assert.match(block ?? "", /close it instead/)
+  })
+
+  it("unknown fines resolve (nothing to collect)", () => {
+    assert.equal(
+      citationResolveBlocker({
+        voided: false,
+        balance: null,
+        dismissedByCourt: false,
+      }),
+      null
+    )
+  })
+})
+
+describe("locateReportSchema + dispositionSchema (Phase 3)", () => {
+  it("requires place and a real account of what happened", () => {
+    assert.equal(
+      locateReportSchema.safeParse({
+        recordId: "00000000-0000-4000-8000-000000000000",
+        place: "Area 25 market",
+        note: "Found with family, in good health.",
+      }).success,
+      true
+    )
+    assert.equal(
+      locateReportSchema.safeParse({
+        recordId: "00000000-0000-4000-8000-000000000000",
+        place: "x",
+        note: "found",
+      }).success,
+      false
+    )
+  })
+
+  it("accepts only the four custodian dispositions", () => {
+    assert.equal(
+      dispositionSchema.safeParse({
+        recordId: "00000000-0000-4000-8000-000000000000",
+        disposition: "returned",
+      }).success,
+      true
+    )
+    assert.equal(
+      dispositionSchema.safeParse({
+        recordId: "00000000-0000-4000-8000-000000000000",
+        disposition: "lost",
       }).success,
       false
     )

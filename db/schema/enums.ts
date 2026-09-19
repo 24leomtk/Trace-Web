@@ -153,6 +153,11 @@ export const auditActionTypeEnum = pgEnum("audit_action_type", [
   "court_access_expired", // a court_case_access grant lapsed automatically
   "policy_entered", // an insurance_portal_user created a policy
   "policy_updated", // an insurance_portal_user updated a policy
+  "payment_received", // Phase 1: fine payment recorded (any-branch receiving)
+  "citation_voided", // Phase 1: monitor voided a spoiled/duplicate ticket
+  "status_rejected", // Phase 2: a status transition was blocked by its guard
+  "locate_reported", // Phase 3: an officer reported a locate/find/recovery
+  "locate_confirmed", // Phase 3: originator/monitor confirmed the locate
   "review_added", // a monitor (or filing officer) added a review note
   "insurer_flag_lookup", // an insurance_portal_user checked a vehicle's flagged status
   "vehicle_registered", // a vehicle_registrar created/verified a vehicle record

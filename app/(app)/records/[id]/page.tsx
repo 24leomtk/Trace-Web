@@ -10,6 +10,7 @@ import {
   changeStatus,
   getRecord,
   getRecordData,
+  getTransitionHints,
   reassignRecord,
   setAccessLevel,
   updateRecord,
@@ -42,6 +43,7 @@ import { EntityPicker } from "@/components/app/entity-picker"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ListPagination } from "@/components/app/list-pagination"
+import { LocateCard } from "@/components/app/locate-card"
 import { SearchInput } from "@/components/app/search-input"
 import { ReferralBundle } from "@/components/app/referral-bundle"
 import { StatusUpdateDialog } from "@/components/app/status-update-dialog"
@@ -105,6 +107,7 @@ export default function RecordDetailPage({
   const [tab, setTab] = useState("case")
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [statusSaving, setStatusSaving] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
   const recordQuery = useQuery({
@@ -144,6 +147,11 @@ export default function RecordDetailPage({
     queryFn: listAssignableUsers,
     enabled: isMonitor,
   })
+  const hintsQuery = useQuery({
+    queryKey: ["transition-hints", id],
+    queryFn: () => getTransitionHints(id),
+    enabled: isMonitor && statusDialogOpen && !!recordQuery.data,
+  })
   const reviewsSearch = usePaginatedSearch({
     items: reviewsQuery.data ?? [],
     search: (review, q) =>
@@ -170,6 +178,7 @@ export default function RecordDetailPage({
 
   async function confirmStatusChange(next: CaseStatus, statusReason: string) {
     setStatusSaving(true)
+    setStatusError(null)
     try {
       await changeStatus({
         id,
@@ -180,7 +189,9 @@ export default function RecordDetailPage({
       setStatusDialogOpen(false)
       await refresh()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
+      const message = error instanceof Error ? error.message : "Failed."
+      setStatusError(message)
+      toast.error(message)
     } finally {
       setStatusSaving(false)
     }
@@ -484,7 +495,21 @@ export default function RecordDetailPage({
       )}
 
       {tab === "reviews" && (
-        <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
+        <>
+          {isPolice &&
+            [
+              "wanted_person",
+              "missing_person",
+              "missing_vehicle",
+              "stolen_property",
+            ].includes(record.recordType) && (
+              <LocateCard
+                recordId={record.id}
+                recordType={record.recordType}
+                isFiler={isFiler}
+              />
+            )}
+          <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Reviews & follow-up notes
           </h2>
@@ -559,6 +584,7 @@ export default function RecordDetailPage({
             </form>
           )}
         </section>
+        </>
       )}
 
       {isMonitor && (
@@ -1048,9 +1074,14 @@ export default function RecordDetailPage({
       {isMonitor && (
         <StatusUpdateDialog
           open={statusDialogOpen}
-          onOpenChange={setStatusDialogOpen}
+          onOpenChange={(open) => {
+            setStatusDialogOpen(open)
+            if (!open) setStatusError(null)
+          }}
           currentStatus={record.status}
           saving={statusSaving}
+          hints={hintsQuery.data?.hints}
+          serverError={statusError}
           onConfirm={confirmStatusChange}
         />
       )}

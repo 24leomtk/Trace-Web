@@ -87,6 +87,15 @@ export function FloatingNav() {
                 <ScrollTextIcon className="size-5" />
               </NavButton>
             )}
+            {isMonitor && (
+              <NavButton
+                label="Reconciliation"
+                href="/reconciliation"
+                active={pathname.startsWith("/reconciliation")}
+              >
+                <LandmarkIcon className="size-5" />
+              </NavButton>
+            )}
             <ProfileDialogButton />
             <ThemeToggle />
           </>

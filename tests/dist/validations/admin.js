@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
+exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
 const z = __importStar(require("zod"));
 exports.managedRoleOptions = [
     "OFFICER",
@@ -212,6 +212,23 @@ exports.citationPaymentSchema = z.object({
 exports.citationVoidSchema = z.object({
     recordId: z.uuid(),
     reason: z.string().trim().min(10).max(500),
+});
+// Phase 3 locate → confirm → clear: a locate report carries where + what
+// happened; confirmation is a separate human (approver ≠ reporter).
+exports.locateReportSchema = z.object({
+    recordId: z.uuid(),
+    place: z.string().trim().min(2).max(300),
+    note: z.string().trim().min(10).max(2000),
+});
+exports.dispositionOptions = [
+    "held",
+    "returned",
+    "destroyed",
+    "auctioned",
+];
+exports.dispositionSchema = z.object({
+    recordId: z.uuid(),
+    disposition: z.enum(exports.dispositionOptions),
 });
 // F3 court scheduling: monitors set the appearance date (today or future)
 // and optionally the court organization.
