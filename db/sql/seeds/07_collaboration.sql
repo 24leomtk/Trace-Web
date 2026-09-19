@@ -1,11 +1,19 @@
 -- TRACE seed 07 — collaboration: reviews, tasking, attachments, sessions, keys.
--- Run AFTER 06_court.sql. Own transaction. Triggers muted.
+-- Run AFTER 06_court.sql. Own transaction, self-contained.
+-- Notification triggers muted (flag set below).
 -- Covers: reviews, assignments (open / overdue / done / cancelled),
 -- PDF + video attachments, anchor sessions, DEV-ONLY ANPR key.
 --
 -- Knobs: v_review_count = 120 · v_assign_count = 50.
 
 begin;
+
+select set_config('app.seed_load', 'on', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

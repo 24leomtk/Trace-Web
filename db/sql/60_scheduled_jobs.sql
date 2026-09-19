@@ -1,19 +1,54 @@
--- TRACE application security: 60 scheduled jobs (pg_cron).
--- Run AFTER 32 + 40, as the schema owner. Re-runnable; guarded so the file
--- still runs without pg_cron.
+-- TRACE application security: 60 scheduled jobs (pg_cron expiry sweeps).
+-- Run AFTER 32 + 40, as the schema owner. Re-runnable.
 -- 1. Expire lapsed court grants into an audit row (reads stay blocked by the
 --    expires_at check itself; this just records the lapse visibly).
 -- 2. Flip lapsed insurance policies to is_active = false + audit it, so the
 --    portal's "live" state never depends on every reader checking dates.
 -- T14 notification templates live in 50_notification_triggers.sql; these jobs
 -- only write actions rows (inbox rows for lapses are seeded in seeds/08).
+--
+-- This file installs pg_cron itself (needs a superuser connection on
+-- self-hosted Postgres).
+--
+-- NEON: pg_cron is supported (v1.6) but CREATE EXTENSION fails until you
+-- enable it on the compute endpoint via the Neon API (one-time setup):
+--   1. Point pg_cron at your database (replace IDs/names; needs a Neon
+--      API key from console.neon.tech → Account → API keys):
+--        curl -s -X PATCH \
+--          "https://console.neon.tech/api/v2/projects/$PROJECT_ID/endpoints/$ENDPOINT_ID" \
+--          -H "Authorization: Bearer $NEON_API_KEY" \
+--          -H "Content-Type: application/json" \
+--          -d '{"endpoint":{"settings":{"pg_settings":{"cron.database_name":"<your-db-name>"}}}}'
+--   2. Restart the compute (drops connections):
+--        curl -s -X POST \
+--          "https://console.neon.tech/api/v2/projects/$PROJECT_ID/endpoints/$ENDPOINT_ID/restart" \
+--          -H "Authorization: Bearer $NEON_API_KEY"
+--   3. Re-run this file (its CREATE EXTENSION will now succeed).
+-- Neon caveats: one pg_cron database per project; schedules run in UTC;
+-- jobs fire ONLY while the compute is active — disable scale-to-zero on
+-- this branch or the sweeps silently skip idle windows.
+
+-- ── pg_cron install (self-hosted only; guarded) ────────────────────────────
+do $$
+begin
+  begin
+    execute 'create extension if not exists pg_cron';
+  exception
+    when insufficient_privilege then
+      raise warning 'pg_cron install needs a superuser — connect as one and re-run this file to schedule the expiry sweeps.';
+    when others then
+      raise warning 'pg_cron install failed (%) — on Neon, enable it first via the API (cron.database_name + compute restart; see header), then re-run this file.', sqlerrm;
+  end;
+end $$;
+
+-- ── Schedules ─────────────────────────────────────────────────────────────
 do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform cron.schedule(
       'trace-expire-court-grants',
       '*/15 * * * *',
-      $$insert into public.actions (actor_id, action_type, record_id, reason)
+      $job$insert into public.actions (actor_id, action_type, record_id, reason)
         select g.referred_by, 'court_access_expired', g.record_id,
                'Court grant lapsed automatically.'
         from public.court_case_access g
@@ -25,12 +60,12 @@ begin
             where a.record_id = g.record_id
               and a.action_type = 'court_access_expired'
               and a.created_at > g.expires_at
-          )$$
+          )$job$
     );
     perform cron.schedule(
       'trace-expire-policies',
       '0 1 * * *',
-      $$with lapsed as (
+      $job$with lapsed as (
           update public.insurance_policies
              set is_active = false, updated_at = now()
            where is_active
@@ -42,7 +77,7 @@ begin
                'Policy ' || l.policy_number || ' lapsed automatically.'
         from lapsed l
         join public.insurance_policies p
-          on p.vehicle_id = l.vehicle_id and p.policy_number = l.policy_number$$
+          on p.vehicle_id = l.vehicle_id and p.policy_number = l.policy_number$job$
     );
   else
     raise warning 'pg_cron not installed — expiry sweeps not scheduled.';

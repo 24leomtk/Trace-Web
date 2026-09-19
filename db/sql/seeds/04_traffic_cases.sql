@@ -1,5 +1,6 @@
 -- TRACE seed 04 — traffic-domain cases.
--- Run AFTER 03_regular_cases.sql. Own transaction. Triggers muted.
+-- Run AFTER 03_regular_cases.sql. Own transaction, self-contained.
+-- Notification triggers muted (flag set below).
 -- Covers: missing_vehicle ×2, vehicle_offense ×3, road_accident,
 -- traffic_citation ×4 (fine ledger), vehicle_impoundment + custody,
 -- LL 4242 demo pack + voided ticket.
@@ -7,6 +8,13 @@
 -- Knobs: v_case_count = 550.
 
 begin;
+
+select set_config('app.seed_load', 'on', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

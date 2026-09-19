@@ -1,5 +1,6 @@
 -- TRACE seed 03 — regular-domain cases.
--- Run AFTER 02_entities.sql. Own transaction. Triggers muted (flag in 01).
+-- Run AFTER 02_entities.sql. Own transaction, self-contained.
+-- Notification triggers muted (flag set below).
 -- Covers: missing_person ×2, wanted_person, stolen_property ×2,
 -- crime_incident ×3, arrest_record + coded projections, GPS pins,
 -- arrest custody depth, locate/disposition states, micro-districts.
@@ -7,6 +8,13 @@
 -- Knobs: v_case_count = 450 · v_gps_ratio = 0.30.
 
 begin;
+
+select set_config('app.seed_load', 'on', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

@@ -15,20 +15,7 @@ import {
 import type { RecordType } from "@/validations/record"
 import { getViewerScope, type ViewerScope } from "@/lib/actions/records"
 import { notifyUser } from "@/lib/actions/notifications"
-
-/** Record types with a locate → confirm → clear lifecycle (Phase 3). */
-export const LOCATABLE_TYPES = [
-  "wanted_person",
-  "missing_person",
-  "missing_vehicle",
-  "stolen_property",
-] as const
-
-export type LocatableType = (typeof LOCATABLE_TYPES)[number]
-
-export function isLocatable(recordType: string): boolean {
-  return (LOCATABLE_TYPES as readonly string[]).includes(recordType)
-}
+import { isLocatable } from "@/lib/locatable"
 
 function isMonitor(scope: ViewerScope): boolean {
   return scope.role === "DISTRICT_MONITOR" || scope.role === "COUNTRY_MONITOR"

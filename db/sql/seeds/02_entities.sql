@@ -1,10 +1,17 @@
 -- TRACE seed 02 — entities: persons_of_interest + vehicles.
--- Run AFTER 01_foundation.sql. Own transaction. Notification triggers muted
--- (session flag set in 01). No fixed UUIDs.
+-- Run AFTER 01_foundation.sql. Own transaction, self-contained.
+-- Notification triggers muted (flag set below). No fixed UUIDs.
 --
 -- Knobs: v_person_count = 300 · v_vehicle_count = 400.
 
 begin;
+
+select set_config('app.seed_load', 'on', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

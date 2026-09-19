@@ -1,11 +1,19 @@
 -- TRACE seed 05 — insurance policies (both insurers).
--- Run AFTER 04_traffic_cases.sql. Own transaction. Triggers muted.
+-- Run AFTER 04_traffic_cases.sql. Own transaction, self-contained.
+-- Notification triggers muted (flag set below).
 -- Mix: even rows expired (liveness demo), odd rows live. Refreshed by
 -- Seed-refresh.sql (is_active healed from end_date).
 --
 -- Knob: v_policy_count = 150.
 
 begin;
+
+select set_config('app.seed_load', 'on', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

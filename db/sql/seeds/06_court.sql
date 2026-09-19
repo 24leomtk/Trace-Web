@@ -1,5 +1,6 @@
 -- TRACE seed 06 — court referrals + e-Brief tranches.
--- Run AFTER 05_insurance.sql. Own transaction. Triggers muted.
+-- Run AFTER 05_insurance.sql. Own transaction, self-contained.
+-- Notification triggers muted (flag set below).
 -- Covers: pending / viewed / decided (all 6 terminal outcomes) / revoked /
 -- expiring-in-2d (renew demo) / renewed + doc tranches + full e-Brief pack +
 -- second-court isolation pack.
@@ -7,6 +8,13 @@
 -- Knob: v_referral_count = 40.
 
 begin;
+
+select set_config('app.seed_load', 'on', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

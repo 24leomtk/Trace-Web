@@ -1,15 +1,29 @@
 -- ============================================================================
--- TRACE — SEED RUNNER (fresh database)
+-- TRACE — SEED RUNNER (fresh database): run-order checklist + final summary
 -- ----------------------------------------------------------------------------
--- Run AFTER the Drizzle migration + db/sql/00..60, as the schema owner:
+-- Pure SQL — no psql backslash commands, safe to paste into any client
+-- (psql, Neon SQL editor). Run AFTER the Drizzle migration + db/sql/00..60,
+-- as the schema owner.
 --
---   psql "$DATABASE_URL" -v TRACE_SEED_OK=1 -f "db/sql/seeds/00_runner.sql"
+-- HOW TO SEED (each file is its own transaction and self-contained — run
+-- them one by one, in this order; a failure points at one domain):
 --
--- The TRACE_SEED_OK flag is a production guard: without it the script
--- refuses to run. NEVER seed a production database.
+--   psql "$DATABASE_URL" -f "db/sql/seeds/01_foundation.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/02_entities.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/03_regular_cases.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/04_traffic_cases.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/05_insurance.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/06_court.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/07_collaboration.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/08_notifications_audit.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/00_runner.sql"   (this file: summary)
 --
--- What it does (in order — each file is its own transaction so a failure
--- points at one domain):
+-- In the Neon SQL editor: paste-run 01, then 02 … 08, then this file.
+-- FIRST run this opt-in once per session (01 refuses to wipe without it):
+--   select set_config('app.allow_seed', '1', false);
+-- NEVER seed a production database.
+--
+-- What each file does:
 --   01_foundation      branches (54) + orgs (5) + users (anchors + bulk)
 --   02_entities        persons (300+2) + vehicles (400)
 --   03_regular_cases   regular domain (450 + micro-districts + locate chain)
@@ -19,9 +33,8 @@
 --   07_collaboration   reviews (120) + assignments (50) + media + sessions + key
 --   08_notifications_audit  inbox (all 8 types) + audit (every enum value)
 --
--- Files 01–07 run with notification triggers muted (session flag set in 01);
+-- Files 01–07 mute notification triggers via their own app.seed_load flag;
 -- 08 unmutes first, then inserts deterministic inbox rows directly.
--- Shared helpers (pg_temp.pick, setseed) are defined in 01 and dropped below.
 --
 -- Demo logins (phones — OTP sign-in, no passwords):
 --   sysadmin +265997000001 · auditor +265997000002
@@ -34,21 +47,7 @@
 -- -03 paid+scheduled, T-26-DEMO-09 voided).
 -- ============================================================================
 
-\if :{?TRACE_SEED_OK}
-\else
-\echo 'Refusing to seed: re-run with -v TRACE_SEED_OK=1. Never seed production.'
-\quit 1
-\endif
-
-\ir 01_foundation.sql
-\ir 02_entities.sql
-\ir 03_regular_cases.sql
-\ir 04_traffic_cases.sql
-\ir 05_insurance.sql
-\ir 06_court.sql
-\ir 07_collaboration.sql
-\ir 08_notifications_audit.sql
-
+-- Session teardown (harmless if absent — pg_temp dies with the session anyway).
 drop function if exists pg_temp.pick(anyarray);
 select set_config('app.seed_load', 'off', false);
 

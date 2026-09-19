@@ -1,13 +1,25 @@
 -- TRACE seed 01 — foundation: branches, organizations, users.
--- Run FIRST via seeds/00_runner.sql on a fresh migrated database.
--- Re-runnable within a seed run (truncates all data tables first).
--- Mutes notification triggers for files 01–07 (session-level flag;
--- seeds/08 turns it back off before inserting deterministic inbox rows).
+-- Run FIRST on a fresh migrated database. Own transaction, self-contained:
+-- paste/run this file on its own (psql -f or SQL editor).
+-- Re-runnable (truncates all data tables first).
+-- Mutes notification triggers for this file (seed_load flag below).
+--
+-- PRODUCTION GUARD: this file wipes all data. It refuses to run unless
+-- this session has opted in — run this line first, in the same session:
+--   select set_config('app.allow_seed', '1', false);
+-- NEVER seed a production database.
 --
 -- Stable natural keys (hand-test handles, no fixed UUIDs):
 --   phones +265997000001…018 per role · branch names · org names.
 
 begin;
+
+do $$
+begin
+  if coalesce(current_setting('app.allow_seed', true), '') <> '1' then
+    raise exception 'Refusing to seed: run SELECT set_config(''app.allow_seed'', ''1'', false) in this session first. Never seed production.';
+  end if;
+end $$;
 
 select set_config('app.seed_load', 'on', false);
 select setseed(0.20260918);

@@ -1,6 +1,6 @@
 -- TRACE seed 08 — notifications (all 8 types) + audit trail.
--- Run LAST via seeds/00_runner.sql. Own transaction.
--- Turns the session seed-mute OFF first, then inserts deterministic inbox rows
+-- Run LAST, AFTER 07_collaboration.sql. Own transaction, self-contained.
+-- Turns the seed-mute OFF first, then inserts deterministic inbox rows
 -- directly (bulk triggers in 01–07 were silent by design, so this file is the
 -- authoritative inbox fixture). Includes read + unread mix.
 --
@@ -9,6 +9,11 @@
 begin;
 
 select set_config('app.seed_load', 'off', false);
+select setseed(0.20260918);
+
+create or replace function pg_temp.pick(anyarray) returns anyelement as $$
+  select $1[floor(random() * array_length($1, 1))::int + 1];
+$$ language sql;
 
 do $$
 declare

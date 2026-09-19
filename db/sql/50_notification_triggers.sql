@@ -63,12 +63,15 @@ stable
 security definer
 set search_path = public, pg_catalog
 as $$
-  select coalesce(
-    nullif(r.data ->> 'full_name', ''),
-    nullif(r.data ->> 'plate_number', ''),
-    nullif((select ticket_number from public.traffic_citations c where c.record_id = r.id), ''),
-    initcap(replace(r.record_type::text, '_', ' '))
-  || ' (' || replace(r.record_type::text, '_', ' ') || ')'
+  select (
+    coalesce(
+      nullif(r.data ->> 'full_name', ''),
+      nullif(r.data ->> 'plate_number', ''),
+      nullif((select ticket_number from public.traffic_citations c where c.record_id = r.id), ''),
+      initcap(replace(r.record_type::text, '_', ' '))
+    )
+    || ' (' || replace(r.record_type::text, '_', ' ') || ')'
+  )
   from public.records r where r.id = p_record_id
 $$;
 
