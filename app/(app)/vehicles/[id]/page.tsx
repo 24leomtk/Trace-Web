@@ -57,7 +57,7 @@ export default function VehicleDetailPage({
     )
   }
 
-  const { vehicle, caseCount, linkedCases } = data
+  const { vehicle, caseCount, linkedCases, taxes } = data
   const outOfService = (vehicle as { status?: string }).status === "out_of_service"
 
   async function refresh() {
@@ -202,6 +202,42 @@ export default function VehicleDetailPage({
           refreshing={isFetching}
           onRefresh={refresh}
         />
+      )}
+
+      {!isRegistrar && taxes.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Taxes ({taxes.length})
+          </h2>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {taxes.map((tax) => {
+              const state = tax.isPaid
+                ? "paid"
+                : tax.isExempt
+                  ? "exempt"
+                  : tax.isWaived
+                    ? "waived"
+                    : tax.dueDate < new Date().toISOString().slice(0, 10)
+                      ? "OVERDUE"
+                      : "unpaid"
+              return (
+                <li
+                  key={tax.id}
+                  className="flex items-center justify-between gap-2 rounded-none border px-3 py-2"
+                >
+                  <span>
+                    {tax.taxType.replace(/_/g, " ")} · MWK {tax.amountDue}
+                  </span>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {state}
+                    {tax.waiverStatus !== "none" ? ` (${tax.waiverStatus})` : ""} ·
+                    due {tax.dueDate}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       )}
 
       {isRegistrar && !outOfService && (

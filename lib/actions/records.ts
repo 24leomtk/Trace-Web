@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -19,6 +19,7 @@ import {
   trafficCitations,
   users,
   vehicleCases,
+  vehicleTaxes,
   vehicles,
   wantedPersonCases,
 } from "@/db/schema"
@@ -199,12 +200,14 @@ async function resolveVehicleByPlate(tx: DbTransaction, plate: string) {
   return created
 }
 
-/** A vehicle is flagged while an active missing/offense/impound case points at it. */
-async function refreshVehicleFlag(
+/** A vehicle is flagged while an active missing/offense/impound case points
+ * at it, OR an unsettled, non-waived, non-exempt tax assessment is past due
+ * — the same predicate Seed-refresh.sql uses. */
+export async function refreshVehicleFlag(
   tx: DbTransaction,
   vehicleId: string
 ): Promise<void> {
-  const rows = await tx
+  const caseRows = await tx
     .select({ id: vehicleCases.id })
     .from(vehicleCases)
     .where(
@@ -219,9 +222,26 @@ async function refreshVehicleFlag(
       )
     )
     .limit(1)
+  let flagged = caseRows.length > 0
+  if (!flagged) {
+    const taxRows = await tx
+      .select({ id: vehicleTaxes.id })
+      .from(vehicleTaxes)
+      .where(
+        and(
+          eq(vehicleTaxes.vehicleId, vehicleId),
+          eq(vehicleTaxes.isPaid, false),
+          eq(vehicleTaxes.isWaived, false),
+          eq(vehicleTaxes.isExempt, false),
+          lt(vehicleTaxes.dueDate, new Date().toISOString().slice(0, 10))
+        )
+      )
+      .limit(1)
+    flagged = taxRows.length > 0
+  }
   await tx
     .update(vehicles)
-    .set({ isFlagged: rows.length > 0, updatedAt: new Date() })
+    .set({ isFlagged: flagged, updatedAt: new Date() })
     .where(eq(vehicles.id, vehicleId))
 }
 

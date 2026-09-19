@@ -31,6 +31,9 @@ export const vehicles = pgTable(
     color: text("color"),
     chassisNumber: text("chassis_number"),
     engineNumber: text("engine_number"),
+    // Engine capacity in cc — drives banded taxes (Malawi carbon bands).
+    // Nullable for legacy/ad-hoc rows; registrars fill it at verification.
+    engineCc: integer("engine_cc"),
 
     ownerName: text("owner_name"),
     ownerNationalId: text("owner_national_id"),

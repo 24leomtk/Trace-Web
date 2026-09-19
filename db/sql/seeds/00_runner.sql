@@ -18,9 +18,10 @@
 --   psql "$DATABASE_URL" -f "db/sql/seeds/08_notifications_audit.sql"
 --   psql "$DATABASE_URL" -f "db/sql/seeds/09_case_images.sql"
 --   psql "$DATABASE_URL" -f "db/sql/seeds/10_queues.sql"
+--   psql "$DATABASE_URL" -f "db/sql/seeds/11_taxation.sql"
 --   psql "$DATABASE_URL" -f "db/sql/seeds/00_runner.sql"   (this file: summary)
 --
--- In the Neon SQL editor: paste-run 01, then 02 … 10, then this file.
+-- In the Neon SQL editor: paste-run 01, then 02 … 11, then this file.
 -- FIRST run this opt-in once per session (01 refuses to wipe without it):
 --   select set_config('app.allow_seed', '1', false);
 -- NEVER seed a production database.
@@ -36,6 +37,7 @@
 --   08_notifications_audit  inbox (all 9 types) + audit (every enum value)
 --   09_case_images        portraits (missing persons) + photos (missing vehicles)
 --   10_queues             tasks per anchor/branch + locate rows per monitor scope
+--   11_taxation           automation rules + tax ledger (paid/overdue/waivers)
 --
 -- Files 01–07 mute notification triggers via their own app.seed_load flag;
 -- 08 unmutes first, then inserts deterministic inbox rows directly.
@@ -45,6 +47,7 @@
 --   regular officer +265997000003 · traffic officer +265997000004
 --   district monitor +265997000005 · country monitor (traffic) +265997000006
 --   court liaison +265997000007 · insurer +265997000008 · registrar +265997000009
+--   tax officer +265997000019 · tax compliance +265997000021
 --   Blantyre traffic officer +265997000018 · Lilongwe traffic monitor +265997000011
 -- Demo key (plate:read, traffic officer): trace_seed_demo_anpr_001
 -- Demo plates: LL 4242 (T-26-DEMO-01 overdue / -02 cross-branch part-paid /

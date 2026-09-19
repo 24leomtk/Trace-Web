@@ -70,3 +70,31 @@ export function isPolicyLive(policy: {
   const today = policy.today ?? new Date().toISOString().slice(0, 10)
   return policy.isActive && policy.startDate <= today && today <= policy.endDate
 }
+
+export interface TaxLiveness {
+  isPaid: boolean
+  isWaived: boolean
+  isExempt: boolean
+  dueDate: string
+  today?: string
+}
+
+/** Settled means paid, waived, or exempt — nothing left to collect. */
+export function isTaxSettled(tax: TaxLiveness): boolean {
+  return tax.isPaid || tax.isWaived || tax.isExempt
+}
+
+/** Overdue means past due with a live balance (derived, never stored). */
+export function isTaxOverdue(tax: TaxLiveness): boolean {
+  const today = tax.today ?? new Date().toISOString().slice(0, 10)
+  return !isTaxSettled(tax) && tax.dueDate < today
+}
+
+/** Due within 30 days with a live balance — the "due soon" queue. */
+export function isTaxDueSoon(tax: TaxLiveness): boolean {
+  const today = tax.today ?? new Date().toISOString().slice(0, 10)
+  if (isTaxSettled(tax) || tax.dueDate < today) return false
+  const horizon = new Date(today)
+  horizon.setDate(horizon.getDate() + 30)
+  return tax.dueDate <= horizon.toISOString().slice(0, 10)
+}

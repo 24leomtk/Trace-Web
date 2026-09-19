@@ -45,6 +45,8 @@ const ROLE_HINT: Record<string, string> = {
   COURT_LIAISON: "Needs a court organization.",
   INSURANCE_PORTAL_USER: "Needs an insurer organization.",
   VEHICLE_REGISTRAR: "Needs the registry organization.",
+  TAX_OFFICER: "Needs a revenue authority.",
+  TAX_COMPLIANCE_OFFICER: "Needs a revenue authority.",
 }
 
 const EMPTY_FORM = {
@@ -241,7 +243,9 @@ export default function AdminUsersPage() {
           )}
           {(form.role === "COURT_LIAISON" ||
             form.role === "INSURANCE_PORTAL_USER" ||
-            form.role === "VEHICLE_REGISTRAR") && (
+            form.role === "VEHICLE_REGISTRAR" ||
+            form.role === "TAX_OFFICER" ||
+            form.role === "TAX_COMPLIANCE_OFFICER") && (
             <AdminField label="Organization">
               <EntityPicker
                 label="Organization"

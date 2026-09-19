@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, gt, gte, inArray, isNull, sql } from "drizzle-orm"
+import { and, desc, eq, gt, gte, inArray, isNull, lt, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -14,6 +14,7 @@ import {
   referralDocuments,
   users,
   vehicleCases,
+  vehicleTaxes,
   vehicles,
   wantedPersonCases,
 } from "@/db/schema"
@@ -559,8 +560,32 @@ async function plateLookupCore(
           )
           .limit(10)
       : []
+    // Tax-driven flags surface as their own reason (police only — insurers
+    // keep the boolean, exactly like case reasons).
+    const taxRows =
+      vehicle && isPolice
+        ? await tx
+            .select({ id: vehicleTaxes.id })
+            .from(vehicleTaxes)
+            .where(
+              and(
+                eq(vehicleTaxes.vehicleId, vehicle.id),
+                eq(vehicleTaxes.isPaid, false),
+                eq(vehicleTaxes.isWaived, false),
+                eq(vehicleTaxes.isExempt, false),
+                lt(
+                  vehicleTaxes.dueDate,
+                  new Date().toISOString().slice(0, 10)
+                )
+              )
+            )
+            .limit(1)
+        : []
     const reasons = isPolice
-      ? [...new Set(reasonRows.map((row) => row.caseType))]
+      ? [
+          ...new Set(reasonRows.map((row) => row.caseType)),
+          ...(taxRows.length > 0 ? ["unpaid_tax"] : []),
+        ]
       : []
     await writeAuditTx(tx, {
       actorId: scope.id,

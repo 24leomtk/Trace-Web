@@ -30,6 +30,11 @@ export type AuditActionType =
   | "insurer_flag_lookup"
   | "vehicle_registered"
   | "user_provisioned"
+  | "tax_assessed"
+  | "tax_payment_recorded"
+  | "tax_waiver_proposed"
+  | "tax_waiver_decided"
+  | "tax_rule_updated"
 
 export type AuditInput = {
   actorId: string // who did it

@@ -21,6 +21,8 @@ export type Role =
   | "COURT_LIAISON"
   | "INSURANCE_PORTAL_USER"
   | "VEHICLE_REGISTRAR"
+  | "TAX_OFFICER"
+  | "TAX_COMPLIANCE_OFFICER"
 
 export type Domain = "regular" | "traffic"
 export type AccessLevel = "branch" | "district" | "country"

@@ -9,6 +9,8 @@ export const managedRoleOptions = [
   "COURT_LIAISON",
   "INSURANCE_PORTAL_USER",
   "VEHICLE_REGISTRAR",
+  "TAX_OFFICER",
+  "TAX_COMPLIANCE_OFFICER",
 ] as const
 
 export type ManagedRole = (typeof managedRoleOptions)[number]
@@ -33,6 +35,7 @@ const uuidOrEmpty = z.uuid().optional().or(z.literal(""))
 //   COUNTRY_MONITOR       -> domain required
 //   SYSTEM_ADMIN / COMPLIANCE_AUDITOR -> no domain/branch/district/organization
 //   COURT_LIAISON / INSURANCE_PORTAL_USER / VEHICLE_REGISTRAR -> organizationId required
+//   TAX_OFFICER / TAX_COMPLIANCE_OFFICER -> organizationId required (a revenue_authority)
 export const createManagedUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
   phoneNumber: phoneSchema,
@@ -74,6 +77,7 @@ export const organizationTypeOptions = [
   "court",
   "insurer",
   "vehicle_registry",
+  "revenue_authority",
 ] as const
 
 export const organizationSchema = z.object({
@@ -163,6 +167,88 @@ export const bulkPolicyRowSchema = z.object({
 })
 
 export type BulkPolicyRowInput = z.output<typeof bulkPolicyRowSchema>
+
+// ---------------------------------------------------------------------------
+// Vehicle taxes (MRA revenue authority — tax_officer assesses/collects,
+// tax_compliance_officer decides waivers, system_admin owns automation).
+// tax_type is fixed validated vocab (like violation types); amounts mirror
+// the fine-ledger caps so typos fail loudly.
+// ---------------------------------------------------------------------------
+
+export const taxTypeOptions = [
+  "import_duty",
+  "import_excise",
+  "import_vat",
+  "carbon_tax",
+  "road_access_fee",
+  "transit_fee",
+  "license_fee",
+  "toll_fee",
+  "penalty",
+] as const
+
+export type TaxTypeOption = (typeof taxTypeOptions)[number]
+
+export const taxPeriodOptions = ["monthly", "quarterly", "annual"] as const
+
+export type TaxPeriodOption = (typeof taxPeriodOptions)[number]
+
+const taxDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
+export const taxAssessmentSchema = z.object({
+  vehicleId: z.uuid(),
+  taxType: z.enum(taxTypeOptions),
+  amountDue: z.number().positive().max(100_000_000),
+  dueDate: taxDate,
+  periodStart: taxDate.optional().or(z.literal("")),
+  periodEnd: taxDate.optional().or(z.literal("")),
+  referenceNo: z.string().trim().max(64).optional().or(z.literal("")),
+  engineCc: z.number().int().min(50).max(20000).optional(),
+})
+
+export type TaxAssessmentInput = z.output<typeof taxAssessmentSchema>
+
+// Simple paid toggle (no ledger): flipping paid requires a receipt number,
+// exactly like fine payments. Corrections are new audit rows, never edits.
+export const taxPaymentSchema = z.object({
+  taxId: z.uuid(),
+  receiptNo: z.string().trim().min(1).max(64),
+})
+
+export type TaxPaymentInput = z.output<typeof taxPaymentSchema>
+
+// Maker-checker waivers: officers propose (justification required, same bar
+// as citation voids); only tax_compliance_officer decides.
+export const taxWaiverProposeSchema = z.object({
+  taxId: z.uuid(),
+  reason: z.string().trim().min(10).max(1000),
+})
+
+export type TaxWaiverProposeInput = z.output<typeof taxWaiverProposeSchema>
+
+export const taxWaiverDecisionOptions = ["approved", "rejected"] as const
+
+export const taxWaiverDecideSchema = z.object({
+  taxId: z.uuid(),
+  decision: z.enum(taxWaiverDecisionOptions),
+  reason: z.string().trim().max(1000).optional().or(z.literal("")),
+})
+
+export type TaxWaiverDecideInput = z.output<typeof taxWaiverDecideSchema>
+
+// Automation rules are REFERENCE DATA (system_admin only). Amounts and bands
+// are management-set policy; the junior officer role never sees this form.
+export const taxRuleSchema = z.object({
+  ownerOrgId: z.uuid(),
+  taxType: z.enum(taxTypeOptions),
+  period: z.enum(taxPeriodOptions),
+  isEnabled: z.boolean().default(false),
+  amount: z.number().nonnegative().max(100_000_000).optional().nullable(),
+  engineBands: z.record(z.string(), z.number().nonnegative()).optional().nullable(),
+  dueDayOffset: z.number().int().min(0).max(365).default(30),
+})
+
+export type TaxRuleInput = z.output<typeof taxRuleSchema>
 
 export const courtReferralSchema = z.object({
   recordId: z.uuid(),

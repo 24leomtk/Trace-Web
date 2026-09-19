@@ -224,8 +224,8 @@ export default function LookupPage() {
           >
             <p className="text-sm font-medium">
               {flagged
-                ? `FLAGGED — open case on ${plate}.`
-                : `CLEAR — no open case on ${plate}.`}
+                ? `FLAGGED — open case or unpaid tax on ${plate}.`
+                : `CLEAR — no open case or unpaid tax on ${plate}.`}
             </p>
             <p className="mt-1 text-xs opacity-80">
               {flagged

@@ -75,6 +75,8 @@ function record(overrides) {
             "COURT_LIAISON",
             "INSURANCE_PORTAL_USER",
             "VEHICLE_REGISTRAR",
+            "TAX_OFFICER",
+            "TAX_COMPLIANCE_OFFICER",
         ]) {
             strict_1.default.equal((0, visibility_1.canViewRecord)(Object.assign(Object.assign({}, officer), { role, branchId: null, branchDistrict: null }), mine), false, role);
         }
@@ -597,6 +599,82 @@ function record(overrides) {
             name: "ANPR camera 3",
             scopes: ["plate:read"],
             expiresAt: "2000-01-01",
+        }).success, false);
+    });
+});
+(0, node_test_1.describe)("tax ledger (MRA)", () => {
+    (0, node_test_1.it)("settles on paid, waived, or exempt", () => {
+        const base = { dueDate: "2020-01-01", today: "2026-09-19" };
+        strict_1.default.equal((0, visibility_1.isTaxSettled)(Object.assign(Object.assign({}, base), { isPaid: true, isWaived: false, isExempt: false })), true);
+        strict_1.default.equal((0, visibility_1.isTaxSettled)(Object.assign(Object.assign({}, base), { isPaid: false, isWaived: true, isExempt: false })), true);
+        strict_1.default.equal((0, visibility_1.isTaxSettled)(Object.assign(Object.assign({}, base), { isPaid: false, isWaived: false, isExempt: true })), true);
+        strict_1.default.equal((0, visibility_1.isTaxSettled)(Object.assign(Object.assign({}, base), { isPaid: false, isWaived: false, isExempt: false })), false);
+    });
+    (0, node_test_1.it)("is overdue only when past due with a live balance", () => {
+        const live = { isPaid: false, isWaived: false, isExempt: false };
+        strict_1.default.equal((0, visibility_1.isTaxOverdue)(Object.assign(Object.assign({}, live), { dueDate: "2020-01-01", today: "2026-09-19" })), true);
+        strict_1.default.equal((0, visibility_1.isTaxOverdue)(Object.assign(Object.assign({}, live), { dueDate: "2026-09-19", today: "2026-09-19" })), false);
+        strict_1.default.equal((0, visibility_1.isTaxOverdue)(Object.assign(Object.assign({}, live), { dueDate: "2099-01-01", today: "2026-09-19" })), false);
+        strict_1.default.equal((0, visibility_1.isTaxOverdue)({ isPaid: true, isWaived: false, isExempt: false, dueDate: "2020-01-01", today: "2026-09-19" }), false);
+    });
+    (0, node_test_1.it)("flags due-soon inside 30 days", () => {
+        const live = { isPaid: false, isWaived: false, isExempt: false };
+        strict_1.default.equal((0, visibility_1.isTaxDueSoon)(Object.assign(Object.assign({}, live), { dueDate: "2026-10-01", today: "2026-09-19" })), true);
+        strict_1.default.equal((0, visibility_1.isTaxDueSoon)(Object.assign(Object.assign({}, live), { dueDate: "2027-06-01", today: "2026-09-19" })), false);
+        strict_1.default.equal((0, visibility_1.isTaxDueSoon)(Object.assign(Object.assign({}, live), { dueDate: "2020-01-01", today: "2026-09-19" })), false);
+    });
+});
+(0, node_test_1.describe)("taxAssessmentSchema", () => {
+    const good = {
+        vehicleId: "123e4567-e89b-12d3-a456-426614174000",
+        taxType: "carbon_tax",
+        amountDue: 60000,
+        dueDate: "2026-10-01",
+    };
+    (0, node_test_1.it)("accepts a minimal assessment", () => {
+        strict_1.default.equal(admin_1.taxAssessmentSchema.safeParse(good).success, true);
+    });
+    (0, node_test_1.it)("rejects unknown types, negative amounts, bad dates", () => {
+        strict_1.default.equal(admin_1.taxAssessmentSchema.safeParse(Object.assign(Object.assign({}, good), { taxType: "road_toll" })).success, false);
+        strict_1.default.equal(admin_1.taxAssessmentSchema.safeParse(Object.assign(Object.assign({}, good), { amountDue: -5 })).success, false);
+        strict_1.default.equal(admin_1.taxAssessmentSchema.safeParse(Object.assign(Object.assign({}, good), { dueDate: "10/01/2026" })).success, false);
+    });
+});
+(0, node_test_1.describe)("taxPaymentSchema", () => {
+    (0, node_test_1.it)("requires a receipt number", () => {
+        strict_1.default.equal(admin_1.taxPaymentSchema.safeParse({ taxId: "123e4567-e89b-12d3-a456-426614174000", receiptNo: "TAX-R-1" }).success, true);
+        strict_1.default.equal(admin_1.taxPaymentSchema.safeParse({ taxId: "123e4567-e89b-12d3-a456-426614174000", receiptNo: "" }).success, false);
+    });
+});
+(0, node_test_1.describe)("tax waiver maker-checker", () => {
+    (0, node_test_1.it)("proposals need a real justification", () => {
+        strict_1.default.equal(admin_1.taxWaiverProposeSchema.safeParse({ taxId: "123e4567-e89b-12d3-a456-426614174000", reason: "Duplicate assessment at the border." }).success, true);
+        strict_1.default.equal(admin_1.taxWaiverProposeSchema.safeParse({ taxId: "123e4567-e89b-12d3-a456-426614174000", reason: "waive it" }).success, false);
+    });
+    (0, node_test_1.it)("decisions are approved or rejected only", () => {
+        strict_1.default.equal(admin_1.taxWaiverDecideSchema.safeParse({ taxId: "123e4567-e89b-12d3-a456-426614174000", decision: "approved" }).success, true);
+        strict_1.default.equal(admin_1.taxWaiverDecideSchema.safeParse({ taxId: "123e4567-e89b-12d3-a456-426614174000", decision: "maybe" }).success, false);
+    });
+});
+(0, node_test_1.describe)("taxRuleSchema (admin reference data)", () => {
+    (0, node_test_1.it)("accepts bands or flat amounts with an offset", () => {
+        strict_1.default.equal(admin_1.taxRuleSchema.safeParse({
+            ownerOrgId: "123e4567-e89b-12d3-a456-426614174000",
+            taxType: "carbon_tax",
+            period: "annual",
+            isEnabled: true,
+            amount: null,
+            engineBands: { "2000": 40000, above: 90000 },
+            dueDayOffset: 30,
+        }).success, true);
+    });
+    (0, node_test_1.it)("rejects unknown periods", () => {
+        strict_1.default.equal(admin_1.taxRuleSchema.safeParse({
+            ownerOrgId: "123e4567-e89b-12d3-a456-426614174000",
+            taxType: "carbon_tax",
+            period: "fortnightly",
+            isEnabled: true,
+            dueDayOffset: 30,
         }).success, false);
     });
 });

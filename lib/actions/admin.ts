@@ -3,21 +3,30 @@
 import { and, asc, count, eq, gte, ilike, or, sql } from "drizzle-orm"
 
 import { db } from "@/db"
-import { actions, branches, organizations, sessions, users } from "@/db/schema"
+import {
+  actions,
+  branches,
+  organizations,
+  sessions,
+  taxAutomationRules,
+  users,
+} from "@/db/schema"
 import { requireUser } from "@/lib/session"
 import { toDbRole, toUiRole } from "@/lib/roles"
 import {
   branchSchema,
   createManagedUserSchema,
   organizationSchema,
+  taxRuleSchema,
   updateManagedUserSchema,
   type BranchInput,
   type CreateManagedUserInput,
   type OrganizationInput,
+  type TaxRuleInput,
   type UpdateManagedUserInput,
 } from "@/validations/admin"
 import { withUserCtx } from "@/lib/db-context"
-import { writeAuditTx } from "@/lib/server/audit"
+import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 
 export async function requireSystemAdmin() {
   const user = await requireUser()
@@ -89,6 +98,8 @@ function validateScope(input: { role: string; domain?: string; branchId?: string
     case "COURT_LIAISON":
     case "INSURANCE_PORTAL_USER":
     case "VEHICLE_REGISTRAR":
+    case "TAX_OFFICER":
+    case "TAX_COMPLIANCE_OFFICER":
       if (!organizationId) {
         throw new Error("External users must belong to an organization.")
       }
@@ -658,4 +669,106 @@ export async function getAccessReview(): Promise<AccessReview> {
     dormantCount: usersOut.filter((u) => u.dormant).length,
     rejectedTotal: [...rejectedByUser.values()].reduce((a, b) => a + b, 0),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tax automation rules — REFERENCE DATA (system_admin only). Amounts, bands
+// and toggles are management-set policy; the junior tax_officer role never
+// sees this surface. Every change is audited.
+// ---------------------------------------------------------------------------
+
+export interface TaxRuleRow {
+  id: string
+  ownerOrgId: string
+  ownerOrgName: string | null
+  taxType: string
+  period: string
+  isEnabled: boolean
+  amount: string | null
+  engineBands: Record<string, number> | null
+  dueDayOffset: number
+  updatedAt: string
+}
+
+export async function listTaxRules(): Promise<TaxRuleRow[]> {
+  await requireSystemAdmin()
+  const rows = await db
+    .select({
+      id: taxAutomationRules.id,
+      ownerOrgId: taxAutomationRules.ownerOrgId,
+      ownerOrgName: organizations.name,
+      taxType: taxAutomationRules.taxType,
+      period: taxAutomationRules.period,
+      isEnabled: taxAutomationRules.isEnabled,
+      amount: taxAutomationRules.amount,
+      engineBands: taxAutomationRules.engineBands,
+      dueDayOffset: taxAutomationRules.dueDayOffset,
+      updatedAt: taxAutomationRules.updatedAt,
+    })
+    .from(taxAutomationRules)
+    .leftJoin(organizations, eq(taxAutomationRules.ownerOrgId, organizations.id))
+    .orderBy(asc(taxAutomationRules.taxType), asc(taxAutomationRules.period))
+    .limit(100)
+  return rows.map((row) => ({
+    ...row,
+    engineBands: (row.engineBands ?? null) as Record<string, number> | null,
+    updatedAt: row.updatedAt.toISOString(),
+  }))
+}
+
+export async function upsertTaxRule(input: TaxRuleInput): Promise<{ id: string }> {
+  const admin = await requireSystemAdmin()
+  const parsed = taxRuleSchema.safeParse(input)
+  if (!parsed.success) throw new Error("The rule didn't pass validation.")
+  const data = parsed.data
+
+  const [org] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, data.ownerOrgId))
+    .limit(1)
+  if (!org) throw new Error("Revenue organization not found.")
+
+  const [existing] = await db
+    .select({ id: taxAutomationRules.id })
+    .from(taxAutomationRules)
+    .where(
+      and(
+        eq(taxAutomationRules.ownerOrgId, data.ownerOrgId),
+        eq(taxAutomationRules.taxType, data.taxType),
+        eq(taxAutomationRules.period, data.period)
+      )
+    )
+    .limit(1)
+  const values = {
+    ownerOrgId: data.ownerOrgId,
+    taxType: data.taxType,
+    period: data.period,
+    isEnabled: data.isEnabled,
+    amount: data.amount == null ? null : String(data.amount),
+    engineBands: (data.engineBands ?? null) as Record<string, number> | null,
+    dueDayOffset: data.dueDayOffset,
+    updatedBy: admin.id,
+    updatedAt: new Date(),
+  }
+  let id: string
+  if (existing) {
+    await db
+      .update(taxAutomationRules)
+      .set(values)
+      .where(eq(taxAutomationRules.id, existing.id))
+    id = existing.id
+  } else {
+    const [created] = await db
+      .insert(taxAutomationRules)
+      .values(values)
+      .returning({ id: taxAutomationRules.id })
+    id = created.id
+  }
+  await writeAudit({
+    actorId: admin.id,
+    actionType: "tax_rule_updated",
+    reason: `rule ${data.taxType}/${data.period} ${data.isEnabled ? "enabled" : "disabled"}.`,
+  })
+  return { id }
 }

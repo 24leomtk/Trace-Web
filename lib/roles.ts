@@ -9,6 +9,8 @@ export type DbRole =
   | "court_liaison"
   | "insurance_portal_user"
   | "vehicle_registrar"
+  | "tax_officer"
+  | "tax_compliance_officer"
 export type DbDistrict =
   | "balaka"
   | "blantyre"
@@ -50,6 +52,8 @@ const DB_TO_UI: Record<DbRole, Role> = {
   court_liaison: "COURT_LIAISON",
   insurance_portal_user: "INSURANCE_PORTAL_USER",
   vehicle_registrar: "VEHICLE_REGISTRAR",
+  tax_officer: "TAX_OFFICER",
+  tax_compliance_officer: "TAX_COMPLIANCE_OFFICER",
 }
 
 const UI_TO_DB: Record<Role, DbRole> = {
@@ -61,6 +65,8 @@ const UI_TO_DB: Record<Role, DbRole> = {
   COURT_LIAISON: "court_liaison",
   INSURANCE_PORTAL_USER: "insurance_portal_user",
   VEHICLE_REGISTRAR: "vehicle_registrar",
+  TAX_OFFICER: "tax_officer",
+  TAX_COMPLIANCE_OFFICER: "tax_compliance_officer",
 }
 
 export function toUiRole(role: string): Role {
@@ -94,12 +100,14 @@ export function isMonitorRole(role: Role): boolean {
   return role === "DISTRICT_MONITOR" || role === "COUNTRY_MONITOR"
 }
 
-/** Court / insurer / registry staff — scoped by organization, not branch. */
+/** Court / insurer / registry / revenue staff — scoped by organization, not branch. */
 export function isExternalRole(role: Role): boolean {
   return (
     role === "COURT_LIAISON" ||
     role === "INSURANCE_PORTAL_USER" ||
-    role === "VEHICLE_REGISTRAR"
+    role === "VEHICLE_REGISTRAR" ||
+    role === "TAX_OFFICER" ||
+    role === "TAX_COMPLIANCE_OFFICER"
   )
 }
 

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.ownerNoticeSchema = exports.custodyReleaseSchema = exports.custodyHoldSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.vehicleStatusOptions = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
+exports.apiKeySchema = exports.apiKeyScopes = exports.assignmentSchema = exports.referralDocumentSchema = exports.referralDocumentLabels = exports.citationCourtScheduleSchema = exports.ownerNoticeSchema = exports.custodyReleaseSchema = exports.custodyHoldSchema = exports.dispositionSchema = exports.dispositionOptions = exports.locateReportSchema = exports.citationVoidSchema = exports.citationPaymentSchema = exports.paymentChannelOptions = exports.paymentMethodOptions = exports.courtOutcomeSchema = exports.courtOutcomeOptions = exports.courtReferralSchema = exports.taxRuleSchema = exports.taxWaiverDecideSchema = exports.taxWaiverDecisionOptions = exports.taxWaiverProposeSchema = exports.taxPaymentSchema = exports.taxAssessmentSchema = exports.taxPeriodOptions = exports.taxTypeOptions = exports.bulkPolicyRowSchema = exports.insurancePolicySchema = exports.personSchema = exports.vehicleSchema = exports.vehicleStatusOptions = exports.organizationSchema = exports.organizationTypeOptions = exports.branchSchema = exports.updateManagedUserSchema = exports.createManagedUserSchema = exports.domainOptions = exports.managedRoleOptions = void 0;
 const z = __importStar(require("zod"));
 exports.managedRoleOptions = [
     "OFFICER",
@@ -44,6 +44,8 @@ exports.managedRoleOptions = [
     "COURT_LIAISON",
     "INSURANCE_PORTAL_USER",
     "VEHICLE_REGISTRAR",
+    "TAX_OFFICER",
+    "TAX_COMPLIANCE_OFFICER",
 ];
 exports.domainOptions = ["regular", "traffic"];
 const phoneSchema = z
@@ -61,6 +63,7 @@ const uuidOrEmpty = z.uuid().optional().or(z.literal(""));
 //   COUNTRY_MONITOR       -> domain required
 //   SYSTEM_ADMIN / COMPLIANCE_AUDITOR -> no domain/branch/district/organization
 //   COURT_LIAISON / INSURANCE_PORTAL_USER / VEHICLE_REGISTRAR -> organizationId required
+//   TAX_OFFICER / TAX_COMPLIANCE_OFFICER -> organizationId required (a revenue_authority)
 exports.createManagedUserSchema = z.object({
     name: z.string().trim().min(2).max(120),
     phoneNumber: phoneSchema,
@@ -93,6 +96,7 @@ exports.organizationTypeOptions = [
     "court",
     "insurer",
     "vehicle_registry",
+    "revenue_authority",
 ];
 exports.organizationSchema = z.object({
     id: z.uuid().optional(),
@@ -165,6 +169,64 @@ exports.bulkPolicyRowSchema = z.object({
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     isActive: z.boolean().default(true),
     externalReference: z.string().trim().max(128).optional().or(z.literal("")),
+});
+// ---------------------------------------------------------------------------
+// Vehicle taxes (MRA revenue authority — tax_officer assesses/collects,
+// tax_compliance_officer decides waivers, system_admin owns automation).
+// tax_type is fixed validated vocab (like violation types); amounts mirror
+// the fine-ledger caps so typos fail loudly.
+// ---------------------------------------------------------------------------
+exports.taxTypeOptions = [
+    "import_duty",
+    "import_excise",
+    "import_vat",
+    "carbon_tax",
+    "road_access_fee",
+    "transit_fee",
+    "license_fee",
+    "toll_fee",
+    "penalty",
+];
+exports.taxPeriodOptions = ["monthly", "quarterly", "annual"];
+const taxDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+exports.taxAssessmentSchema = z.object({
+    vehicleId: z.uuid(),
+    taxType: z.enum(exports.taxTypeOptions),
+    amountDue: z.number().positive().max(100000000),
+    dueDate: taxDate,
+    periodStart: taxDate.optional().or(z.literal("")),
+    periodEnd: taxDate.optional().or(z.literal("")),
+    referenceNo: z.string().trim().max(64).optional().or(z.literal("")),
+    engineCc: z.number().int().min(50).max(20000).optional(),
+});
+// Simple paid toggle (no ledger): flipping paid requires a receipt number,
+// exactly like fine payments. Corrections are new audit rows, never edits.
+exports.taxPaymentSchema = z.object({
+    taxId: z.uuid(),
+    receiptNo: z.string().trim().min(1).max(64),
+});
+// Maker-checker waivers: officers propose (justification required, same bar
+// as citation voids); only tax_compliance_officer decides.
+exports.taxWaiverProposeSchema = z.object({
+    taxId: z.uuid(),
+    reason: z.string().trim().min(10).max(1000),
+});
+exports.taxWaiverDecisionOptions = ["approved", "rejected"];
+exports.taxWaiverDecideSchema = z.object({
+    taxId: z.uuid(),
+    decision: z.enum(exports.taxWaiverDecisionOptions),
+    reason: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+// Automation rules are REFERENCE DATA (system_admin only). Amounts and bands
+// are management-set policy; the junior officer role never sees this form.
+exports.taxRuleSchema = z.object({
+    ownerOrgId: z.uuid(),
+    taxType: z.enum(exports.taxTypeOptions),
+    period: z.enum(exports.taxPeriodOptions),
+    isEnabled: z.boolean().default(false),
+    amount: z.number().nonnegative().max(100000000).optional().nullable(),
+    engineBands: z.record(z.string(), z.number().nonnegative()).optional().nullable(),
+    dueDayOffset: z.number().int().min(0).max(365).default(30),
 });
 exports.courtReferralSchema = z.object({
     recordId: z.uuid(),

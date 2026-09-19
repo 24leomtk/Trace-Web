@@ -40,23 +40,29 @@ Legend: ✅ allowed · 🔒 conditional (see note) · — denied.
 | Ability | SYSTEM_ADMIN | COMPLIANCE_AUDITOR |
 |---|---|---|
 | Provision / deactivate users | ✅ | — |
-| Manage branches / organizations / API keys | ✅ | — |
+| Manage branches / organizations / API keys / tax automation rules | ✅ | — |
 | Read case records, vehicles, persons, policies | — | — |
 | Full audit log | ✅ (incident investigation) | ✅ (oversight only) |
 | Access review board | ✅ | — |
 
 ## External organization roles (scoped by organization)
 
-| Ability | COURT_LIAISON | INSURANCE_PORTAL_USER | VEHICLE_REGISTRAR |
-|---|---|---|---|
-| Browse / search cases | — | — | — |
-| Read referred case + attachments | 🔒 live grant only | — | — |
-| Record outcome on own referral (even post-expiry) | ✅ | — | — |
-| Renew own grant | — (monitor does) | — | — |
-| Own-org policies (create/update + bulk CSV) | — | ✅ own insurer | — |
-| Boolean plate-flag lookup | — | ✅ (audited) | policy-gated |
-| Registry create / verify-in-place | — | — | ✅ national |
-| Read case / person / insurance detail | — | — | — |
+| Ability | COURT_LIAISON | INSURANCE_PORTAL_USER | VEHICLE_REGISTRAR | TAX_OFFICER | TAX_COMPLIANCE_OFFICER |
+|---|---|---|---|---|---|
+| Browse / search cases | — | — | — | — | — |
+| Read referred case + attachments | 🔒 live grant only | — | — | — | — |
+| Record outcome on own referral (even post-expiry) | ✅ | — | — | — | — |
+| Renew own grant | — (monitor does) | — | — | — | — |
+| Own-org policies (create/update + bulk CSV) | — | ✅ own insurer | — | — | — |
+| Boolean plate-flag lookup | — | ✅ (audited) | policy-gated | — | — |
+| Registry create / verify-in-place | — | — | ✅ national | — | — |
+| Read case / person / insurance detail | — | — | — | — | — |
+| Tax assessments (create/update) | — | — | — | ✅ own revenue office | — |
+| Record tax payments (receipted toggle) | — | — | — | ✅ own revenue office | — |
+| Propose waiver (→ pending) | — | — | — | ✅ | — |
+| Approve / reject waiver | — | — | — | — | ✅ |
+| Read own-org tax ledger | — | — | — | ✅ | ✅ read-only |
+| Read tax audit trail | — | — | — | own entries | all `tax_*` |
 
 ## Separation-of-duties invariants (the ones that prevent fraud)
 
@@ -67,6 +73,7 @@ Legend: ✅ allowed · 🔒 conditional (see note) · — denied.
 5. **Court disposes, police don't.** Once deposited, a citation ends by payment, court outcome, or monitor void — never by editing the fine.
 6. **Corrections are new rows.** Payments, releases, locates, and audit entries are append-only; voids stay queryable. (TCATS DELETE + re-ADD, never silent overwrite.)
 7. **Access expires unless renewed.** Court grants lapse at `expires_at`; dormant accounts (>90 days) are deactivation candidates.
+8. **Assess ≠ waive.** A tax officer bills and collects but can only *propose* waivers; only the tax compliance officer approves. The junior role never forgives money.
 
 ## Recertification checklist (quarterly, system admin)
 

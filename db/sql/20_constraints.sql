@@ -20,6 +20,8 @@ create index if not exists traffic_citations_violation_type_trgm_idx
 
 -- 2. Per-role scope rules on users (mirrors the scoping comment on users in
 --    db/schema/auth.ts; app code enforces first, this is the backstop).
+--    External org roles (court/insurer/registry/revenue) require
+--    organization_id with domain/branch/district NULL.
 --    If this fails, an existing row violates the rules — find it with:
 --      select id, role, domain, branch_id, district, organization_id
 --        from public.users where not (
@@ -27,11 +29,13 @@ create index if not exists traffic_citations_violation_type_trgm_idx
 --        or (role::text = 'district_monitor' and domain is not null and district is not null and branch_id is null and organization_id is null)
 --        or (role::text = 'country_monitor' and domain is not null and branch_id is null and district is null and organization_id is null)
 --        or (role::text in ('system_admin', 'compliance_auditor') and domain is null and branch_id is null and district is null and organization_id is null)
---        or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar') and organization_id is not null and domain is null and branch_id is null and district is null));
+--        or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar', 'tax_officer', 'tax_compliance_officer') and organization_id is not null and domain is null and branch_id is null and district is null));
 do $$
 begin
-  if not exists (select 1 from pg_constraint where conname = 'users_role_scope_chk') then
-    alter table public.users add constraint users_role_scope_chk check (
+  -- Drop-then-add (not IF-NOT-EXISTS): role arms grow over time and a stale
+  -- definition would otherwise survive re-runs and reject new roles.
+  alter table public.users drop constraint if exists users_role_scope_chk;
+  alter table public.users add constraint users_role_scope_chk check (
       (role::text = 'officer'
         and domain is not null and branch_id is not null
         and district is null and organization_id is null)
@@ -44,11 +48,11 @@ begin
       or (role::text in ('system_admin', 'compliance_auditor')
         and domain is null and branch_id is null
         and district is null and organization_id is null)
-      or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar')
+      or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar',
+                            'tax_officer', 'tax_compliance_officer')
         and organization_id is not null
         and domain is null and branch_id is null and district is null)
     );
-  end if;
 end $$;
 
 -- 2b. Phase 6: money + lifecycle vocab backstops (app validates first).

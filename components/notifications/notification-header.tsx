@@ -9,6 +9,7 @@ import {
   MessageSquareIcon,
   RefreshCwIcon,
   SearchIcon,
+  StampIcon,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -48,6 +49,7 @@ const TYPE_OPTIONS = [
   { value: "task_updated", label: "Task updated", icon: ActivityIcon },
   { value: "payment_received", label: "Payment received", icon: RefreshCwIcon },
   { value: "verification_needed", label: "Verification needed", icon: BellIcon },
+  { value: "approval_needed", label: "Approval needed", icon: StampIcon },
 ]
 
 export function NotificationHeader({

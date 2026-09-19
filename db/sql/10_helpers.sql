@@ -139,3 +139,42 @@ as $$
       )
   )
 $$;
+
+-- ── Flag recompute (narrow writer) ────────────────────────────────────────
+-- Recomputes vehicles.is_flagged for one plate: active missing/offense/
+-- impound case OR unsettled, non-waived, non-exempt tax past due — the same
+-- predicate refreshVehicleFlag() uses in app code and Seed-refresh.sql §2.
+--
+-- Why a function: vehicles_update RLS only allows police/registrar writes,
+-- so tax officers (and the pg_cron generator) cannot touch the flag
+-- directly. This SECURITY DEFINER function updates ONLY is_flagged +
+-- updated_at and bypasses RLS by design. App code calls it inside the same
+-- transaction as the tax mutation.
+create or replace function public.trace_refresh_vehicle_flag(p_vehicle_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+begin
+  update public.vehicles v
+     set is_flagged = (
+           exists (
+             select 1 from public.vehicle_cases vc
+              where vc.vehicle_id = v.id
+                and vc.status = 'active'
+                and vc.case_type in ('missing_vehicle','vehicle_offense','vehicle_impoundment')
+           )
+           or exists (
+             select 1 from public.vehicle_taxes t
+              where t.vehicle_id = v.id
+                and not t.is_paid
+                and not t.is_waived
+                and not t.is_exempt
+                and t.due_date < current_date
+           )
+         ),
+         updated_at = now()
+   where v.id = p_vehicle_id;
+end;
+$$;

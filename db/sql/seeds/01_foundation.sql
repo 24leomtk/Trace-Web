@@ -52,6 +52,8 @@ truncate public.actions,
   public.impound_custody,
   public.record_attachments,
   public.insurance_policies,
+  public.vehicle_taxes,
+  public.tax_automation_rules,
   public.records,
   public.vehicles,
   public.persons_of_interest,
@@ -86,6 +88,7 @@ declare
   v_org_ins_nico     uuid;
   v_org_ins_om       uuid;
   v_org_rtd          uuid;
+  v_org_mra          uuid;
 begin
   -- ── A. Anchor branches (6) ──────────────────────────────────────────
   insert into public.branches (id, name, domain, district, location, contact_phone) values
@@ -114,18 +117,20 @@ begin
     v_seq := v_seq + 1;
   end loop;
 
-  -- ── C. Organizations (5) ────────────────────────────────────────────
+  -- ── C. Organizations (6) ────────────────────────────────────────────
   insert into public.organizations (id, name, org_type, district, contact_phone, contact_email) values
     (gen_random_uuid(), 'Blantyre Magistrate Court', 'court', 'blantyre', '+265991000101', 'registry@blantyre-court.mw'),
     (gen_random_uuid(), 'Lilongwe Magistrate Court', 'court', 'lilongwe', '+265991000104', 'registry@lilongwe-court.mw'),
     (gen_random_uuid(), 'NICO General', 'insurer', null, '+265991000102', 'motor@nico.mw'),
     (gen_random_uuid(), 'Old Mutual', 'insurer', null, '+265991000105', 'motor@oldmutual.mw'),
-    (gen_random_uuid(), 'Directorate of Road Traffic', 'vehicle_registry', null, '+265991000103', 'registry@rtd.mw');
+    (gen_random_uuid(), 'Directorate of Road Traffic', 'vehicle_registry', null, '+265991000103', 'registry@rtd.mw'),
+    (gen_random_uuid(), 'Malawi Revenue Authority', 'revenue_authority', null, '+265991000106', 'motoring@mra.mw');
   select id into v_org_court_bt from public.organizations where name = 'Blantyre Magistrate Court';
   select id into v_org_court_ll from public.organizations where name = 'Lilongwe Magistrate Court';
   select id into v_org_ins_nico from public.organizations where name = 'NICO General';
   select id into v_org_ins_om   from public.organizations where name = 'Old Mutual';
   select id into v_org_rtd      from public.organizations where name = 'Directorate of Road Traffic';
+  select id into v_org_mra      from public.organizations where name = 'Malawi Revenue Authority';
 
   -- ── D. Anchor users: one login per role, sequential stable phones ───
   insert into public.users
@@ -169,7 +174,14 @@ begin
     -- Every branch needs ≥1 active officer or random case filing fails
     -- on reported_by NOT NULL.
     (gen_random_uuid()::text, 'Yankho Phiri', 'yankho.phiri@trace.mw', false, '+265997000018', true,
-     'MPT-2023-0220', 'officer', 'traffic', v_br_bt_traffic, null, null, true);
+     'MPT-2023-0220', 'officer', 'traffic', v_br_bt_traffic, null, null, true),
+    -- Revenue authority: 2 assessing officers + 1 compliance approver.
+    (gen_random_uuid()::text, 'Chrispin Banda', 'chrispin.banda@trace.mw', false, '+265997000019', true,
+     null, 'tax_officer', null, null, null, v_org_mra, true),
+    (gen_random_uuid()::text, 'Esther Mvula', 'esther.mvula@trace.mw', false, '+265997000020', true,
+     null, 'tax_officer', null, null, null, v_org_mra, true),
+    (gen_random_uuid()::text, 'Lovemore Nyirenda', 'lovemore.nyirenda@trace.mw', false, '+265997000021', true,
+     null, 'tax_compliance_officer', null, null, null, v_org_mra, true);
 
   -- ── E. Bulk officers: 2 per bulk branch ─────────────────────────────
   for v_branch, v_branch_district, v_domain in
@@ -210,7 +222,7 @@ begin
     v_seq := v_seq + 1;
   end loop;
 
-  raise notice 'seed/01 foundation: % branches, 5 orgs, % users.',
+  raise notice 'seed/01 foundation: % branches, 6 orgs, % users.',
     (select count(*) from public.branches), (select count(*) from public.users);
 end $$;
 

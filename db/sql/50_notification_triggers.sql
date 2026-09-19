@@ -873,3 +873,41 @@ drop trigger if exists trace_policy_write on public.insurance_policies;
 create trigger trace_policy_write
 after insert or update on public.insurance_policies
 for each row execute function public.trace_policy_write();
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- N4 vehicle_taxes INSERT/UPDATE → colleagues of the same revenue office
+-- Mirrors trace_policy_write. Assessment, payment-toggle and waiver edits
+-- all surface here; the app also notifies (belt + suspenders, same as
+-- every other trigger in this file — newest row wins in inbox sort).
+-- ══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.trace_tax_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_actor text; v_plate text; v_verb text;
+  r record;
+begin
+  if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
+  v_actor := public.trace_actor_name(public.trace_actor_uid());
+  v_verb := case when TG_OP = 'INSERT' then 'entered' else 'updated' end;
+  select plate_number into v_plate from public.vehicles where id = new.vehicle_id;
+  for r in select id as uid from public.users
+           where organization_id = new.owner_org_id
+             and role in ('tax_officer', 'tax_compliance_officer')
+             and is_active loop
+    perform public.trace_notify(r.uid, 'status_changed', null,
+      'Tax ' || v_verb || ': ' || new.tax_type || ' ' || new.amount_due::text
+      || ' on ' || coalesce(v_plate, 'a vehicle') || ' by ' || v_actor || '.');
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists trace_tax_write on public.vehicle_taxes;
+create trigger trace_tax_write
+after insert or update on public.vehicle_taxes
+for each row execute function public.trace_tax_write();

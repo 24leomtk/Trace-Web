@@ -4,6 +4,9 @@ exports.canViewRecord = canViewRecord;
 exports.isOwnScopeRead = isOwnScopeRead;
 exports.escapeLike = escapeLike;
 exports.isPolicyLive = isPolicyLive;
+exports.isTaxSettled = isTaxSettled;
+exports.isTaxOverdue = isTaxOverdue;
+exports.isTaxDueSoon = isTaxDueSoon;
 /** Can this police viewer open this record directly? (Court grants handled separately.) */
 function canViewRecord(scope, record) {
     var _a;
@@ -44,4 +47,24 @@ function isPolicyLive(policy) {
     var _a;
     const today = (_a = policy.today) !== null && _a !== void 0 ? _a : new Date().toISOString().slice(0, 10);
     return policy.isActive && policy.startDate <= today && today <= policy.endDate;
+}
+/** Settled means paid, waived, or exempt — nothing left to collect. */
+function isTaxSettled(tax) {
+    return tax.isPaid || tax.isWaived || tax.isExempt;
+}
+/** Overdue means past due with a live balance (derived, never stored). */
+function isTaxOverdue(tax) {
+    var _a;
+    const today = (_a = tax.today) !== null && _a !== void 0 ? _a : new Date().toISOString().slice(0, 10);
+    return !isTaxSettled(tax) && tax.dueDate < today;
+}
+/** Due within 30 days with a live balance — the "due soon" queue. */
+function isTaxDueSoon(tax) {
+    var _a;
+    const today = (_a = tax.today) !== null && _a !== void 0 ? _a : new Date().toISOString().slice(0, 10);
+    if (isTaxSettled(tax) || tax.dueDate < today)
+        return false;
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + 30);
+    return tax.dueDate <= horizon.toISOString().slice(0, 10);
 }

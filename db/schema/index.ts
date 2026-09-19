@@ -12,6 +12,9 @@ export * from "./vehicles"
 // Insurance (entered via insurer portal accounts)
 export * from "./insurance"
 
+// Vehicle taxes (entered via tax officer accounts, MRA)
+export * from "./tax"
+
 // Case records
 export * from "./records"
 export * from "./coded"

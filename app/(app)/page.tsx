@@ -7,6 +7,8 @@ import { CourtHome } from "@/components/app/court-home"
 import { InsurerHome } from "@/components/app/insurer-home"
 import { OfficerHome } from "@/components/app/officer-home"
 import { RegistrarHome } from "@/components/app/registrar-home"
+import { TaxComplianceHome } from "@/components/app/tax-compliance-home"
+import { TaxHome } from "@/components/app/tax-home"
 
 export default async function HomePage() {
   const user = await getCurrentUser()
@@ -24,6 +26,10 @@ export default async function HomePage() {
       return <InsurerHome />
     case "VEHICLE_REGISTRAR":
       return <RegistrarHome />
+    case "TAX_OFFICER":
+      return <TaxHome />
+    case "TAX_COMPLIANCE_OFFICER":
+      return <TaxComplianceHome />
     case "SYSTEM_ADMIN":
       return <AdminHome />
     case "COMPLIANCE_AUDITOR":

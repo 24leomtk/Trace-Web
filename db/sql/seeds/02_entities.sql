@@ -66,7 +66,7 @@ begin
     v_plate := (v_prefix ->> v_district) || ' ' || (1000 + v_seq);
     insert into public.vehicles
       (id, plate_number, make, model, year, color, chassis_number,
-       engine_number, owner_name, owner_national_id, owner_phone,
+       engine_number, engine_cc, owner_name, owner_national_id, owner_phone,
        owner_district, is_flagged, is_verified, registered_by, verified_at)
     values
       (gen_random_uuid(), v_plate,
@@ -79,6 +79,9 @@ begin
             then 'CHS-MW-' || lpad((100000 + v_seq)::text, 6, '0') end,
        case when v_i % 4 = 0 or random() < 0.8
             then 'ENG-' || lpad((200000 + v_seq)::text, 6, '0') end,
+       -- engine capacity spread across the Malawi carbon bands.
+       case when v_i % 4 = 0 or random() < 0.8
+            then pg_temp.pick(array[1200,1500,1800,2000,2200,2500,2800,3200,3500]) end,
        case when v_i % 3 = 0 then pg_temp.pick(v_first) || ' ' || pg_temp.pick(v_last) end,
        case when v_i % 3 = 0 then 'MW-P-' || (300000 + v_seq) end,
        case when v_i % 3 = 0 then '+26599' || lpad((500000 + v_seq)::text, 7, '0') end,

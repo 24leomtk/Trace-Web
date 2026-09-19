@@ -63,6 +63,10 @@ create policy actions_read on public.actions for select to app_user
     or public.app_is_monitor()
     or public.app_is_system_admin()
     or public.app_is_auditor()
+    -- Tax compliance sees the money trail only (own-org tax rows stay
+    -- behind taxes_org_read; other orgs' log lines stay hidden).
+    or (public.app_my_role() = 'tax_compliance_officer'
+        and action_type::text like 'tax\_%')
   );
 drop policy if exists actions_insert on public.actions;
 create policy actions_insert on public.actions for insert to app_user
@@ -82,6 +86,8 @@ create policy notifications_write on public.notifications for insert to app_user
   with check (
     public.app_is_police()
     or public.app_my_role() = 'court_liaison'
+    or public.app_my_role() = 'tax_officer'
+    or public.app_my_role() = 'tax_compliance_officer'
     or public.app_is_system_admin()
   );
 drop policy if exists notifications_mark_read on public.notifications;

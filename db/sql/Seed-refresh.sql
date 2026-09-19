@@ -19,7 +19,9 @@
 --   1. Renews the seeded court referral so it stays valid for the next
 --      90 days ("referred today").
 --   2. Recomputes every vehicle's is_flagged from active missing_vehicle /
---      vehicle_offense / vehicle_impoundment rows.
+--      vehicle_offense / vehicle_impoundment rows PLUS unpaid-overdue
+--      vehicle_taxes (tax liveness itself is derived per-read like
+--      policies — nothing stored, nothing to heal here).
 --   3. Resyncs traffic_citations.is_paid from the citation_payments ledger
 --      (the flag is derived at runtime; this heals any drift).
 --   4. Backfills ticket_number for rows that predate Phase 1 (stable,
@@ -61,15 +63,29 @@ where revoked_at is null
   and expires_at <= now();
 
 -- ---------------------------------------------------------------------------
--- 2. Recompute vehicle flags from active cases
+-- 2. Recompute vehicle flags from active cases + unpaid-overdue taxes.
+--    A plate is flagged while an active missing/offense/impound case points
+--    at it OR an unsettled, non-waived, non-exempt tax assessment is past
+--    due — the same predicate refreshVehicleFlag() uses in app code.
 -- ---------------------------------------------------------------------------
 update public.vehicles v
-set is_flagged = exists (
-  select 1
-  from public.vehicle_cases vc
-  where vc.vehicle_id = v.id
-    and vc.status = 'active'
-    and vc.case_type in ('missing_vehicle', 'vehicle_offense', 'vehicle_impoundment')
+set is_flagged = (
+  exists (
+    select 1
+    from public.vehicle_cases vc
+    where vc.vehicle_id = v.id
+      and vc.status = 'active'
+      and vc.case_type in ('missing_vehicle', 'vehicle_offense', 'vehicle_impoundment')
+  )
+  or exists (
+    select 1
+    from public.vehicle_taxes t
+    where t.vehicle_id = v.id
+      and not t.is_paid
+      and not t.is_waived
+      and not t.is_exempt
+      and t.due_date < current_date
+  )
 ),
 updated_at = now();
 

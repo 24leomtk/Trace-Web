@@ -3,7 +3,7 @@
 import { and, desc, eq, ilike } from "drizzle-orm"
 
 import { db } from "@/db"
-import { recordAttachments, records, users, vehicleCases, vehicles } from "@/db/schema"
+import { recordAttachments, records, users, vehicleCases, vehicles, vehicleTaxes } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
 import { defaultRetentionUntil, fileKindFromMime } from "@/lib/format"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
@@ -115,6 +115,23 @@ export async function getVehicle(id: string) {
               return { ...entry, recordType: record?.recordType, district: record?.district }
             })
           )
+    // Tax rows ride the tax RLS (own-org + police read); roles without a
+    // grant simply see none — same pattern as the registrar case blackout.
+    const taxRows = await tx
+      .select({
+        id: vehicleTaxes.id,
+        taxType: vehicleTaxes.taxType,
+        amountDue: vehicleTaxes.amountDue,
+        isPaid: vehicleTaxes.isPaid,
+        dueDate: vehicleTaxes.dueDate,
+        isWaived: vehicleTaxes.isWaived,
+        isExempt: vehicleTaxes.isExempt,
+        waiverStatus: vehicleTaxes.waiverStatus,
+      })
+      .from(vehicleTaxes)
+      .where(eq(vehicleTaxes.vehicleId, id))
+      .orderBy(desc(vehicleTaxes.dueDate))
+      .limit(20)
     return {
       vehicle: {
         ...vehicle,
@@ -125,6 +142,7 @@ export async function getVehicle(id: string) {
       },
       caseCount: cases.length,
       linkedCases,
+      taxes: taxRows,
     }
   })
 }

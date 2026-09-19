@@ -118,6 +118,14 @@ export const appRelations = defineRelations(schema, (r) => ({
       from: r.organizations.id,
       to: r.insurancePolicies.insurerId,
     }),
+    taxAssessments: r.many.vehicleTaxes({
+      from: r.organizations.id,
+      to: r.vehicleTaxes.ownerOrgId,
+    }),
+    taxRules: r.many.taxAutomationRules({
+      from: r.organizations.id,
+      to: r.taxAutomationRules.ownerOrgId,
+    }),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -219,6 +227,10 @@ export const appRelations = defineRelations(schema, (r) => ({
       from: r.vehicles.id,
       to: r.insurancePolicies.vehicleId,
     }),
+    taxes: r.many.vehicleTaxes({
+      from: r.vehicles.id,
+      to: r.vehicleTaxes.vehicleId,
+    }),
     attachments: r.many.recordAttachments({
       from: r.vehicles.id,
       to: r.recordAttachments.vehicleId,
@@ -245,6 +257,41 @@ export const appRelations = defineRelations(schema, (r) => ({
       from: r.insurancePolicies.enteredBy,
       to: r.users.id,
       optional: true,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // vehicle_taxes + tax_automation_rules
+  // ══════════════════════════════════════════════════════════════════════════
+  vehicleTaxes: {
+    vehicle: r.one.vehicles({
+      from: r.vehicleTaxes.vehicleId,
+      to: r.vehicles.id,
+    }),
+    ownerOrg: r.one.organizations({
+      from: r.vehicleTaxes.ownerOrgId,
+      to: r.organizations.id,
+    }),
+    enteredByUser: r.one.users({
+      from: r.vehicleTaxes.enteredBy,
+      to: r.users.id,
+      optional: true,
+    }),
+    paymentReceiver: r.one.users({
+      from: r.vehicleTaxes.receivedBy,
+      to: r.users.id,
+      optional: true,
+    }),
+    waiverDecider: r.one.users({
+      from: r.vehicleTaxes.waiverDecidedBy,
+      to: r.users.id,
+      optional: true,
+    }),
+  },
+  taxAutomationRules: {
+    ownerOrg: r.one.organizations({
+      from: r.taxAutomationRules.ownerOrgId,
+      to: r.organizations.id,
     }),
   },
 

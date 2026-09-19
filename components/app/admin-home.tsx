@@ -1,5 +1,6 @@
 import Link from "next/link"
 import {
+  BanknoteIcon,
   Building2Icon,
   KeyRoundIcon,
   LandmarkIcon,
@@ -32,6 +33,12 @@ const LINKS = [
     label: "Organizations",
     detail: "Courts, insurers, vehicle registry.",
     icon: LandmarkIcon,
+  },
+  {
+    href: "/admin/tax-rules",
+    label: "Tax automation",
+    detail: "Which cyclical vehicle taxes self-generate, and at what amounts.",
+    icon: BanknoteIcon,
   },
   {
     href: "/admin/api-keys",

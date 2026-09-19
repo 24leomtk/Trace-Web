@@ -46,6 +46,8 @@ const ROLE_LABEL: Record<string, string> = {
   COURT_LIAISON: "Court liaison",
   INSURANCE_PORTAL_USER: "Insurance portal user",
   VEHICLE_REGISTRAR: "Vehicle registrar",
+  TAX_OFFICER: "Tax officer",
+  TAX_COMPLIANCE_OFFICER: "Tax compliance officer",
 }
 
 type ProfileView = "info" | "phone" | "verify"

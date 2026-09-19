@@ -23,6 +23,8 @@ export const userRoleEnum = pgEnum("user_role", [
   "court_liaison", // court/prosecution staff; access limited to referred cases
   "insurance_portal_user", // insurer staff; manages their own company's policies
   "vehicle_registrar", // vehicle registry authority; maintains the vehicle registry
+  "tax_officer", // revenue authority staff; assesses and collects vehicle taxes
+  "tax_compliance_officer", // revenue authority oversight; approves waivers, read-only ledger
 ])
 
 // All 28 Malawian districts (kept identical to your other system)
@@ -67,6 +69,7 @@ export const organizationTypeEnum = pgEnum("organization_type", [
   "court", // court_liaison users belong here
   "insurer", // insurance_portal_user users belong here
   "vehicle_registry", // vehicle_registrar users belong here
+  "revenue_authority", // tax_officer + tax_compliance_officer users belong here (MRA)
 ])
 
 // ---------------------------------------------------------------------------
@@ -173,4 +176,9 @@ export const auditActionTypeEnum = pgEnum("audit_action_type", [
   "insurer_flag_lookup", // an insurance_portal_user checked a vehicle's flagged status
   "vehicle_registered", // a vehicle_registrar created/verified a vehicle record
   "user_provisioned", // a system_admin created or edited a user account
+  "tax_assessed", // a tax_officer created a vehicle tax assessment
+  "tax_payment_recorded", // a tax_officer recorded payment against an assessment
+  "tax_waiver_proposed", // a tax_officer proposed a waiver (goes to pending)
+  "tax_waiver_decided", // a tax_compliance_officer approved/rejected a waiver
+  "tax_rule_updated", // a system_admin created or edited a tax automation rule
 ])

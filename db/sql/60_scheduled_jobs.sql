@@ -1,9 +1,11 @@
--- TRACE application security: 60 scheduled jobs (pg_cron expiry sweeps).
--- Run AFTER 32 + 40, as the schema owner. Re-runnable.
+-- TRACE application security: 60 scheduled jobs (pg_cron).
+-- Run AFTER 32 + 40 (+ 61 for the tax generator), as the schema owner.
+-- Re-runnable.
 -- 1. Expire lapsed court grants into an audit row (reads stay blocked by the
 --    expires_at check itself; this just records the lapse visibly).
 -- 2. Flip lapsed insurance policies to is_active = false + audit it, so the
 --    portal's "live" state never depends on every reader checking dates.
+-- 3. Generate recurring vehicle taxes (daily; see 61_tax_automation.sql).
 -- T14 notification templates live in 50_notification_triggers.sql; these jobs
 -- only write actions rows (inbox rows for lapses are seeded in seeds/08).
 --
@@ -79,8 +81,13 @@ begin
         join public.insurance_policies p
           on p.vehicle_id = l.vehicle_id and p.policy_number = l.policy_number$job$
     );
+    perform cron.schedule(
+      'trace-generate-taxes',
+      '0 2 * * *',
+      $job$select public.trace_generate_recurring_taxes()$job$
+    );
   else
-    raise warning 'pg_cron not installed — expiry sweeps not scheduled.';
+    raise warning 'pg_cron not installed — sweeps not scheduled (court grants, policies, recurring taxes).';
   end if;
 exception when undefined_function or insufficient_privilege then
   raise warning 'Could not schedule pg_cron jobs (missing extension or rights).';

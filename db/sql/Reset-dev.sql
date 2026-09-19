@@ -81,6 +81,9 @@ drop function if exists public.trace_live_liaisons(uuid) cascade;
 drop function if exists public.trace_vehicle_insert() cascade;
 drop function if exists public.trace_vehicle_verify() cascade;
 drop function if exists public.trace_policy_write() cascade;
+drop function if exists public.trace_tax_write() cascade;
+drop function if exists public.trace_generate_recurring_taxes() cascade;
+drop function if exists public.trace_refresh_vehicle_flag(uuid) cascade;
 
 -- Legacy functions from the previous (medical records) app.
 drop function if exists public.redeem_access_code(text, text, text, text, text) cascade;
@@ -99,6 +102,8 @@ drop table if exists
   public.case_assignments,
   public.citation_payments,
   public.referral_documents,
+  public.vehicle_taxes,
+  public.tax_automation_rules,
   public.actions,
   public.notifications,
   public.idempotency_keys,

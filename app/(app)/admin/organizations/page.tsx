@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeftIcon,
+  BanknoteIcon,
   CarFrontIcon,
   GavelIcon,
   LandmarkIcon,
@@ -46,6 +47,7 @@ const ORG_TYPE_OPTIONS = [
   { value: "court", label: "Court", icon: GavelIcon },
   { value: "insurer", label: "Insurer", icon: LandmarkIcon },
   { value: "vehicle_registry", label: "Vehicle registry", icon: CarFrontIcon },
+  { value: "revenue_authority", label: "Revenue authority", icon: BanknoteIcon },
 ]
 
 export default function AdminOrganizationsPage() {

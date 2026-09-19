@@ -1,4 +1,4 @@
--- TRACE seed 08 — notifications (all 9 types) + audit trail.
+-- TRACE seed 08 — notifications (all 10 types) + audit trail.
 -- Run LAST, AFTER 07_collaboration.sql. Own transaction, self-contained.
 -- Turns the seed-mute OFF first, then inserts deterministic inbox rows
 -- directly (bulk triggers in 01–07 were silent by design, so this file is the
@@ -23,10 +23,12 @@ declare
   v_officer_regular text;
   v_sysadmin    text;
   v_registrar   text;
+  v_tax_comp    text;
 begin
   select id into v_officer_regular from public.users where phone_number = '+265997000003';
   select id into v_sysadmin from public.users where phone_number = '+265997000001';
   select id into v_registrar from public.users where phone_number = '+265997000009';
+  select id into v_tax_comp from public.users where phone_number = '+265997000021';
 
   -- ── Inbox fixtures: mirror the §2.2 trigger templates verbatim ─────────
   -- referral_received ×5 (newest grants → liaisons).
@@ -101,6 +103,14 @@ begin
          'Verification needed: plate ' || v.plate_number || ' — confirm against the registry (demo).',
          (row_number() over () % 2 = 0)
     from public.vehicles v where not v.is_verified limit 4;
+  -- approval_needed ×3 (waiver proposals → compliance queue).
+  if v_tax_comp is not null then
+    insert into public.notifications (user_id, type, record_id, message, is_read)
+    values
+      (v_tax_comp, 'approval_needed', null, 'Waiver needs decision: carbon_tax 60000 proposed by Chrispin Banda (demo).', false),
+      (v_tax_comp, 'approval_needed', null, 'Waiver needs decision: license_fee 15000 proposed by Esther Mvula (demo).', false),
+      (v_tax_comp, 'approval_needed', null, 'Waiver needs decision: penalty 120000 proposed by Chrispin Banda (demo).', true);
+  end if;
 
   -- ── Audit trail: every enum value at least twice ───────────────────────
   for v_i in 1..v_audit_count loop

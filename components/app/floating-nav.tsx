@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation"
 import {
+  BanknoteIcon,
   Building2Icon,
   CarFrontIcon,
   FilePlus2Icon,
@@ -112,6 +113,24 @@ export function FloatingNav() {
           <>
             <NavButton label="Registry" href="/" active={pathname === "/"}>
               <CarFrontIcon className="size-5" />
+            </NavButton>
+            <ProfileDialogButton />
+          </>
+        )}
+
+        {user.role === "TAX_OFFICER" && (
+          <>
+            <NavButton label="Tax ledger" href="/" active={pathname === "/"}>
+              <BanknoteIcon className="size-5" />
+            </NavButton>
+            <ProfileDialogButton />
+          </>
+        )}
+
+        {user.role === "TAX_COMPLIANCE_OFFICER" && (
+          <>
+            <NavButton label="Compliance review" href="/" active={pathname === "/"}>
+              <ShieldCheckIcon className="size-5" />
             </NavButton>
             <ProfileDialogButton />
           </>
