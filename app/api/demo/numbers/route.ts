@@ -14,6 +14,7 @@ export async function GET() {
       name: users.name,
       phoneNumber: users.phoneNumber,
       role: users.role,
+      domain: users.domain,
     })
     .from(users)
     .where(isNotNull(users.phoneNumber))

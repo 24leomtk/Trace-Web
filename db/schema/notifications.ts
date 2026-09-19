@@ -20,7 +20,8 @@ import { users } from "./auth"
 // payment received (-> filing officer).
 // Types: referral_received | referral_updated | outcome_recorded |
 // status_changed | review_added | task_assigned | task_updated |
-// payment_received. Trigger inserts run as the table owner (SECURITY DEFINER)
+// payment_received | verification_needed (registrar queue for unverified
+// plates). Trigger inserts run as the table owner (SECURITY DEFINER)
 // and bypass RLS by design; app inserts go through notifications_write.
 // ---------------------------------------------------------------------------
 

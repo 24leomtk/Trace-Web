@@ -15,6 +15,7 @@ export type NotificationType =
   | "task_assigned"
   | "task_updated"
   | "payment_received"
+  | "verification_needed"
 
 /** Insert a notification inside an existing transaction (no RLS surprises —
  * the policy allows police/liaison/system actors to notify). */

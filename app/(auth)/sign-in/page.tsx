@@ -54,7 +54,12 @@ const FALLBACK_DEMO_NUMBERS = [
   },
 ]
 
-type DemoNumber = { name: string; phoneNumber: string; role: string }
+type DemoNumber = {
+  name: string
+  phoneNumber: string
+  role: string
+  domain?: string
+}
 
 // DEMO-COMPETITION-ONLY — page size for the test-numbers dialog.
 const DEMO_PAGE_SIZE = 6
@@ -205,7 +210,7 @@ export default function SignInPage() {
                         {entry.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {entry.phoneNumber} · {entry.role}
+                        {entry.phoneNumber} · {entry.role} · {entry.domain}
                       </p>
                     </div>
                     <Button

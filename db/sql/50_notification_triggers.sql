@@ -21,7 +21,23 @@
 --
 -- Types used: referral_received | referral_updated | outcome_recorded |
 -- status_changed | review_added (existing) + task_assigned | task_updated |
--- payment_received (new — see lib/actions/notifications.ts).
+-- payment_received + verification_needed (new — registrar review queue,
+-- see lib/actions/notifications.ts).
+--
+-- Role coverage contract (who hears about what — admin/auditor get nothing
+-- by design: admins provision, auditors watch the audit log):
+--   officer (filer)    status/review/payment/locate/custody on own cases,
+--                      outcome of own referred cases, verification of own
+--                      plates, tasks + any change to tasked cases
+--   district_monitor   referrals in/out of district, outcomes, e-Brief docs,
+--                      reviews, status/escalation/reassignment, payments,
+--                      voids, locates, custody in their district+domain
+--   country_monitor    escalations to country, status on country-level
+--                      records, wanted locates, outcomes in their domain
+--   court_liaison      referrals, renewals, revocations, e-Brief docs,
+--                      status of referred cases, court dates at their court
+--   insurance_portal_user  policies created/updated by org colleagues
+--   vehicle_registrar  newly filed unverified plates needing review
 
 -- ── shared helpers ────────────────────────────────────────────────────────
 
@@ -91,6 +107,50 @@ begin
 end;
 $$;
 
+-- Active users holding a role/scope slot (null = any). Powers the monitor /
+-- registrar / org-colleague fan-out below; trace_notify() still skips the
+-- actor, so callers pass everyone and never special-case themselves.
+create or replace function public.trace_users_in_scope(
+  p_role text, p_domain text, p_district text)
+returns setof text
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select id from public.users
+   where role::text = p_role
+     and is_active
+     and (p_domain is null or domain::text = p_domain)
+     and (p_district is null or district::text = p_district)
+$$;
+
+-- Open task holders on a case — they must hear when their case changes.
+create or replace function public.trace_open_assignees(p_record_id uuid)
+returns setof text
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select assignee_id from public.case_assignments
+   where record_id = p_record_id and state = 'open'
+$$;
+
+-- Live court grants on a record (for status-change fan-out).
+create or replace function public.trace_live_liaisons(p_record_id uuid)
+returns setof text
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select court_liaison_id from public.court_case_access
+   where record_id = p_record_id
+     and revoked_at is null
+     and (expires_at is null or expires_at > now())
+$$;
+
 -- ══════════════════════════════════════════════════════════════════════════
 -- T1–T4 court_case_access (referral lifecycle)
 -- ══════════════════════════════════════════════════════════════════════════
@@ -103,14 +163,30 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_title text; v_referrer text; v_reason text;
+  v_domain text; v_district text; v_level text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
   v_title := public.trace_record_title(new.record_id);
   v_referrer := public.trace_actor_name(new.referred_by);
   v_reason := coalesce(nullif(new.reason, ''), 'Referred for prosecution.');
+  select domain::text, district::text, access_level::text
+    into v_domain, v_district, v_level
+    from public.records where id = new.record_id;
   perform public.trace_notify(new.court_liaison_id, 'referral_received', new.record_id,
     'New referral: ' || v_title || ' from ' || v_referrer || '. Reason: '
     || left(v_reason, 100) || '. Expires ' || coalesce(to_char(new.expires_at, 'YYYY-MM-DD'), '—') || '.');
+  -- Oversight: a case leaving the branch for court concerns the monitors.
+  for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+    perform public.trace_notify(r.uid, 'referral_received', new.record_id,
+      'Referred to court: ' || v_title || ' by ' || v_referrer || '.');
+  end loop;
+  if v_level = 'country' then
+    for r in select public.trace_users_in_scope('country_monitor', v_domain, null) as uid loop
+      perform public.trace_notify(r.uid, 'referral_received', new.record_id,
+        'Referred to court: ' || v_title || ' by ' || v_referrer || '.');
+    end loop;
+  end if;
   return new;
 end;
 $$;
@@ -123,14 +199,22 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_title text; v_actor text; v_liaison text;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
   v_title := public.trace_record_title(new.record_id);
   v_actor := public.trace_actor_name(public.trace_actor_uid());
+  select domain::text, district::text into v_domain, v_district
+    from public.records where id = new.record_id;
   -- T3 revocation wins over renewal/outcome when set in the same write.
   if old.revoked_at is null and new.revoked_at is not null then
     perform public.trace_notify(new.court_liaison_id, 'referral_updated', new.record_id,
       'Access revoked: ' || v_title || ' revoked by ' || v_actor || '. Contact the referring monitor if still needed.');
+    for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+      perform public.trace_notify(r.uid, 'referral_updated', new.record_id,
+        'Court access revoked: ' || v_title || ' by ' || v_actor || '.');
+    end loop;
     return new;
   end if;
   -- T2 renewal / extension.
@@ -142,12 +226,21 @@ begin
       || coalesce(to_char(new.expires_at, 'YYYY-MM-DD'), '—') || ' by ' || v_actor
       || ' (renewal #' || coalesce(new.renewal_count, 0)::text || ').');
   end if;
-  -- T4 outcome recorded → back to the referrer.
+  -- T4 outcome recorded → back to the referrer + the filing officer (it is
+  -- their case's verdict) + country monitors of the domain.
   if old.outcome is distinct from new.outcome and new.outcome <> 'pending' then
     v_liaison := public.trace_actor_name(new.court_liaison_id);
     perform public.trace_notify(new.referred_by, 'outcome_recorded', new.record_id,
       'Court outcome: ' || v_title || ' → ' || new.outcome::text || ' by ' || v_liaison
       || '. Notes: ' || left(coalesce(nullif(new.outcome_notes, ''), '—'), 100) || '.');
+    for r in select reported_by as uid from public.records where id = new.record_id loop
+      perform public.trace_notify(r.uid, 'outcome_recorded', new.record_id,
+        'Court outcome on your case ' || v_title || ': ' || new.outcome::text || '.');
+    end loop;
+    for r in select public.trace_users_in_scope('country_monitor', v_domain, null) as uid loop
+      perform public.trace_notify(r.uid, 'outcome_recorded', new.record_id,
+        'Court outcome: ' || v_title || ' → ' || new.outcome::text || '.');
+    end loop;
   end if;
   return new;
 end;
@@ -175,11 +268,15 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_title text; v_actor text; v_liaison text; v_referrer text; v_rec uuid;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
-  select g.court_liaison_id, g.referred_by, g.record_id
-    into v_liaison, v_referrer, v_rec
-    from public.court_case_access g where g.id = new.referral_id;
+  select g.court_liaison_id, g.referred_by, g.record_id, rec.domain::text, rec.district::text
+    into v_liaison, v_referrer, v_rec, v_domain, v_district
+    from public.court_case_access g
+    join public.records rec on rec.id = g.record_id
+   where g.id = new.referral_id;
   if not found then return new; end if;
   v_title := public.trace_record_title(v_rec);
   v_actor := public.trace_actor_name(public.trace_actor_uid());
@@ -187,6 +284,10 @@ begin
     'e-Brief update: new ' || new.label || ' added to ' || v_title || ' by ' || v_actor || '.');
   perform public.trace_notify(v_referrer, 'referral_updated', (select record_id from public.court_case_access where id = new.referral_id),
     'e-Brief update: new ' || new.label || ' added to ' || v_title || ' by ' || v_actor || '.');
+  for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+    perform public.trace_notify(r.uid, 'referral_updated', v_rec,
+      'e-Brief update: new ' || new.label || ' added to ' || v_title || '.');
+  end loop;
   return new;
 end;
 $$;
@@ -208,14 +309,27 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_title text; v_reviewer text; v_reporter text;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
-  select reported_by into v_reporter from public.records where id = new.record_id;
-  if not found or v_reporter = new.reviewer_id then return new; end if;
+  select reported_by, domain::text, district::text into v_reporter, v_domain, v_district
+    from public.records where id = new.record_id;
+  if not found then return new; end if;
+  -- (No reviewer=self skip: trace_notify() already skips the actor.)
   v_title := public.trace_record_title(new.record_id);
   v_reviewer := public.trace_actor_name(new.reviewer_id);
   perform public.trace_notify(v_reporter, 'review_added', new.record_id,
     'Review on your case ' || v_title || ': "' || left(new.note, 120) || '" — ' || v_reviewer || '.');
+  -- Task holders and the district monitor follow the same case.
+  for r in select public.trace_open_assignees(new.record_id) as uid loop
+    perform public.trace_notify(r.uid, 'review_added', new.record_id,
+      'Review on tasked case ' || v_title || ' by ' || v_reviewer || '.');
+  end loop;
+  for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+    perform public.trace_notify(r.uid, 'review_added', new.record_id,
+      'Review on ' || v_title || ' by ' || v_reviewer || '.');
+  end loop;
   return new;
 end;
 $$;
@@ -297,34 +411,83 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_title text; v_actor text; v_branch text; v_subject text;
+  v_domain text; v_district text; v_level text; v_rtype text;
+  v_old_district text;
   r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
   v_title := public.trace_record_title(new.id);
   v_actor := public.trace_actor_name(public.trace_actor_uid());
-  -- T9a status change → reporter + live liaisons.
+  select domain::text, district::text, access_level::text, record_type::text
+    into v_domain, v_district, v_level, v_rtype
+    from public.records where id = new.id;
+  -- T9a status change → reporter + live liaisons + task holders +
+  -- district monitor; country monitors when the record is country-visible.
   if old.status is distinct from new.status then
     perform public.trace_notify(old.reported_by, 'status_changed', new.id,
       'Status: ' || v_title || ' ' || old.status::text || ' → ' || new.status::text || ' by ' || v_actor || '.');
-    for r in select court_liaison_id from public.court_case_access
-             where record_id = new.id and revoked_at is null
-               and (expires_at is null or expires_at > now()) loop
-      perform public.trace_notify(r.court_liaison_id, 'status_changed', new.id,
+    for r in select public.trace_live_liaisons(new.id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
         'Status: ' || v_title || ' ' || old.status::text || ' → ' || new.status::text || ' by ' || v_actor || '.');
     end loop;
+    for r in select public.trace_open_assignees(new.id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
+        'Status of tasked case ' || v_title || ': ' || old.status::text || ' → ' || new.status::text || '.');
+    end loop;
+    for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
+        'Status: ' || v_title || ' ' || old.status::text || ' → ' || new.status::text || ' by ' || v_actor || '.');
+    end loop;
+    if v_level = 'country' then
+      for r in select public.trace_users_in_scope('country_monitor', v_domain, null) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Status: ' || v_title || ' ' || old.status::text || ' → ' || new.status::text || '.');
+      end loop;
+    end if;
   end if;
-  -- T9b visibility escalation.
+  -- T9b visibility escalation → reporter + monitors (a scope change is
+  -- oversight-relevant; country monitors only when widened to country).
   if old.access_level is distinct from new.access_level then
     perform public.trace_notify(old.reported_by, 'status_changed', new.id,
       'Visibility: ' || v_title || ' ' || old.access_level::text || ' → ' || new.access_level::text || ' by ' || v_actor || '.');
+    for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
+        'Visibility: ' || v_title || ' ' || old.access_level::text || ' → ' || new.access_level::text || ' by ' || v_actor || '.');
+    end loop;
+    if new.access_level = 'country' then
+      for r in select public.trace_users_in_scope('country_monitor', v_domain, null) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Escalated to country: ' || v_title || ' by ' || v_actor || '.');
+      end loop;
+    end if;
+    for r in select public.trace_open_assignees(new.id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
+        'Visibility of tasked case ' || v_title || ' changed to ' || new.access_level::text || '.');
+    end loop;
   end if;
-  -- T9c reassignment.
+  -- T9c reassignment → reporter + task holders + monitors of both branches.
   if old.branch_id is distinct from new.branch_id then
     select name into v_branch from public.branches where id = new.branch_id;
+    select district::text into v_old_district from public.branches where id = old.branch_id;
     perform public.trace_notify(old.reported_by, 'status_changed', new.id,
       'Reassigned: ' || v_title || ' → ' || coalesce(v_branch, 'another branch') || ' by ' || v_actor || '.');
+    for r in select public.trace_open_assignees(new.id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
+        'Tasked case reassigned: ' || v_title || ' → ' || coalesce(v_branch, 'another branch') || '.');
+    end loop;
+    for r in select public.trace_users_in_scope('district_monitor', v_domain, v_old_district) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.id,
+        'Case moved out: ' || v_title || ' → ' || coalesce(v_branch, 'another branch') || '.');
+    end loop;
+    if v_old_district is distinct from v_district then
+      for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Case moved in: ' || v_title || ' by ' || v_actor || '.');
+      end loop;
+    end if;
   end if;
-  -- T12 locate reported / confirmed.
+  -- T12 locate reported / confirmed → reporter + spotter + task holders +
+  -- district monitor; country monitors when a wanted person is involved.
   if old.locate_state is distinct from new.locate_state then
     v_subject := coalesce(nullif(new.data ->> 'full_name', ''),
                           nullif(new.data ->> 'plate_number', ''), v_title);
@@ -333,12 +496,43 @@ begin
         'Locate reported: ' || v_subject || ' seen at '
         || coalesce(new.locate_place, 'unknown location') || ' by '
         || public.trace_actor_name(new.locate_by) || '.');
+      for r in select public.trace_open_assignees(new.id) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Locate reported on tasked case ' || v_title || ' at '
+          || coalesce(new.locate_place, 'unknown location') || '.');
+      end loop;
+      for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Locate reported: ' || v_subject || ' at '
+          || coalesce(new.locate_place, 'unknown location') || '.');
+      end loop;
+      if v_rtype = 'wanted_person' then
+        for r in select public.trace_users_in_scope('country_monitor', v_domain, null) as uid loop
+          perform public.trace_notify(r.uid, 'status_changed', new.id,
+            'Wanted person located: ' || v_subject || ' at '
+            || coalesce(new.locate_place, 'unknown location') || '.');
+        end loop;
+      end if;
     elsif new.locate_state = 'confirmed' then
       perform public.trace_notify(old.reported_by, 'status_changed', new.id,
         'Locate confirmed by ' || v_actor || ' at ' || coalesce(new.locate_place, 'unknown location') || '.');
       if new.locate_by is not null then
         perform public.trace_notify(new.locate_by, 'status_changed', new.id,
           'Locate confirmed by ' || v_actor || ' at ' || coalesce(new.locate_place, 'unknown location') || '.');
+      end if;
+      for r in select public.trace_open_assignees(new.id) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Locate confirmed on tasked case ' || v_title || '.');
+      end loop;
+      for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+        perform public.trace_notify(r.uid, 'status_changed', new.id,
+          'Locate confirmed: ' || v_title || ' by ' || v_actor || '.');
+      end loop;
+      if v_rtype = 'wanted_person' then
+        for r in select public.trace_users_in_scope('country_monitor', v_domain, null) as uid loop
+          perform public.trace_notify(r.uid, 'status_changed', new.id,
+            'Wanted person locate confirmed: ' || v_title || '.');
+        end loop;
       end if;
     end if;
   end if;
@@ -365,9 +559,12 @@ as $$
 declare
   v_title text; v_reporter text; v_no text; v_plate text; v_branch text;
   v_total numeric; v_fine numeric; v_bal numeric;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
-  select reported_by into v_reporter from public.records where id = new.record_id;
+  select reported_by, domain::text, district::text into v_reporter, v_domain, v_district
+    from public.records where id = new.record_id;
   select ticket_number, (select plate_number from public.vehicles v where v.id = c.vehicle_id)
     into v_no, v_plate from public.traffic_citations c where c.record_id = new.record_id;
   select name into v_branch from public.branches where id = new.receiving_branch_id;
@@ -380,6 +577,12 @@ begin
     || ' (' || coalesce(v_plate, '—') || ') by ' || coalesce(nullif(new.payer_name, ''), 'a payer')
     || ' at ' || coalesce(v_branch, 'counter') || '. Balance ' || v_bal::text
     || '. Receipt ' || new.receipt_no || '.');
+  -- Fine money is oversight-relevant: the district monitor sees every receipt.
+  for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+    perform public.trace_notify(r.uid, 'payment_received', new.record_id,
+      'Payment: ' || new.amount::text || ' on ticket ' || coalesce(v_no, '—')
+      || ' at ' || coalesce(v_branch, 'counter') || '. Receipt ' || new.receipt_no || '.');
+  end loop;
   return new;
 end;
 $$;
@@ -401,19 +604,44 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_reporter text; v_no text; v_court text;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
-  select reported_by into v_reporter from public.records where id = new.record_id;
+  select reported_by, domain::text, district::text into v_reporter, v_domain, v_district
+    from public.records where id = new.record_id;
   v_no := coalesce(new.ticket_number, 'a ticket');
+  -- Voiding kills a fine: reporter + task holders + the district monitor.
   if old.voided_at is null and new.voided_at is not null then
     perform public.trace_notify(v_reporter, 'status_changed', new.record_id,
       'Ticket ' || v_no || ' voided: ' || left(coalesce(new.void_reason, '—'), 120) || '.');
+    for r in select public.trace_open_assignees(new.record_id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+        'Ticket ' || v_no || ' on tasked case voided.');
+    end loop;
+    for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+        'Ticket ' || v_no || ' voided: ' || left(coalesce(new.void_reason, '—'), 120) || '.');
+    end loop;
   end if;
+  -- Court scheduling: reporter + task holders + liaisons of that court.
   if old.court_date is distinct from new.court_date and new.court_date is not null then
     select name into v_court from public.organizations where id = new.court_id;
     perform public.trace_notify(v_reporter, 'status_changed', new.record_id,
       'Court: ticket ' || v_no || ' → ' || coalesce(v_court, 'court')
       || ' on ' || to_char(new.court_date, 'YYYY-MM-DD') || '.');
+    for r in select public.trace_open_assignees(new.record_id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+        'Court date set: ticket ' || v_no || ' on ' || to_char(new.court_date, 'YYYY-MM-DD') || '.');
+    end loop;
+    if new.court_id is not null then
+      for r in select id as uid from public.users
+               where organization_id = new.court_id
+                 and role = 'court_liaison' and is_active loop
+        perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+          'Hearing scheduled: ticket ' || v_no || ' on ' || to_char(new.court_date, 'YYYY-MM-DD') || '.');
+      end loop;
+    end if;
   end if;
   return new;
 end;
@@ -437,9 +665,12 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_reporter text; v_plate text; v_auth text;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
-  select r.reported_by, v.plate_number into v_reporter, v_plate
+  select r.reported_by, v.plate_number, r.domain::text, r.district::text
+    into v_reporter, v_plate, v_domain, v_district
     from public.records r left join public.vehicles v on v.id = r.vehicle_id
    where r.id = new.record_id;
   v_auth := public.trace_actor_name(new.hold_authority_id);
@@ -452,6 +683,14 @@ begin
       'Hold placed: ' || coalesce(v_plate, 'vehicle') || ' at '
       || coalesce(new.lot_location, 'yard') || '/' || coalesce(new.bay, '—') || '.');
   end if;
+  for r in select public.trace_open_assignees(new.record_id) as uid loop
+    perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+      'Hold placed on tasked case (' || coalesce(v_plate, 'vehicle') || ').');
+  end loop;
+  for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+    perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+      'Hold placed: ' || coalesce(v_plate, 'vehicle') || ' by ' || v_auth || '.');
+  end loop;
   return new;
 end;
 $$;
@@ -464,9 +703,12 @@ set search_path = public, pg_catalog
 as $$
 declare
   v_reporter text; v_plate text; v_actor text;
+  v_domain text; v_district text;
+  r record;
 begin
   if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
-  select r.reported_by, v.plate_number into v_reporter, v_plate
+  select r.reported_by, v.plate_number, r.domain::text, r.district::text
+    into v_reporter, v_plate, v_domain, v_district
     from public.records r left join public.vehicles v on v.id = r.vehicle_id
    where r.id = new.record_id;
   v_actor := public.trace_actor_name(public.trace_actor_uid());
@@ -479,10 +721,23 @@ begin
         'Released: ' || coalesce(v_plate, 'vehicle') || ' to '
         || coalesce(new.recipient_name, 'recipient') || ' (ID checked).');
     end if;
+    for r in select public.trace_open_assignees(new.record_id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+        'Released: ' || coalesce(v_plate, 'vehicle') || ' on tasked case.');
+    end loop;
+    for r in select public.trace_users_in_scope('district_monitor', v_domain, v_district) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+        'Released: ' || coalesce(v_plate, 'vehicle') || ' to '
+        || coalesce(new.recipient_name, 'recipient') || '.');
+    end loop;
   end if;
   if old.owner_notified_at is null and new.owner_notified_at is not null then
     perform public.trace_notify(v_reporter, 'status_changed', new.record_id,
       'Owner notified for ' || coalesce(v_plate, 'vehicle') || ' by ' || v_actor || '.');
+    for r in select public.trace_open_assignees(new.record_id) as uid loop
+      perform public.trace_notify(r.uid, 'status_changed', new.record_id,
+        'Owner notified for ' || coalesce(v_plate, 'vehicle') || ' on tasked case.');
+    end loop;
   end if;
   return new;
 end;
@@ -498,3 +753,123 @@ create trigger trace_custody_update
 after update on public.impound_custody
 for each row when (old.* is distinct from new.*)
 execute function public.trace_custody_update();
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- N1 vehicles INSERT (unverified) → registrars' review queue
+-- A registrar's whole job is confirming ad-hoc plates; without this they
+-- hear about nothing until someone tells them out-of-band.
+-- ══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.trace_vehicle_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_actor text; v_desc text;
+  r record;
+begin
+  if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
+  v_actor := public.trace_actor_name(public.trace_actor_uid());
+  v_desc := nullif(concat_ws(' ', new.make, new.model), '');
+  for r in select public.trace_users_in_scope('vehicle_registrar', null, null) as uid loop
+    perform public.trace_notify(r.uid, 'verification_needed', null,
+      'Verification needed: plate ' || new.plate_number
+      || case when v_desc is not null then ' (' || v_desc || ')' else '' end
+      || ' filed by ' || v_actor || ' — confirm against the registry.');
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists trace_vehicle_insert on public.vehicles;
+create trigger trace_vehicle_insert
+after insert on public.vehicles
+for each row when (new.is_verified = false)
+execute function public.trace_vehicle_insert();
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- N2 vehicles UPDATE (verified) → reporters of live cases on that plate
+-- Closes the loop for officers whose ad-hoc plate just became authoritative.
+-- ══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.trace_vehicle_verify()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_actor text;
+  r record;
+begin
+  if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
+  v_actor := public.trace_actor_name(public.trace_actor_uid());
+  -- Reporters of live cases on this plate (record link carried per row).
+  for r in select distinct reported_by as uid, id as record_id
+           from public.records
+          where vehicle_id = new.id and status = 'active' loop
+    perform public.trace_notify(r.uid, 'status_changed', r.record_id,
+      'Registry update: plate ' || new.plate_number || ' verified by '
+      || v_actor || '.');
+  end loop;
+  -- District monitors watching those cases (one row per monitor).
+  for r in select distinct u.id as uid
+           from public.records rec
+           join public.users u
+             on u.role = 'district_monitor'
+            and u.is_active
+            and u.domain::text = rec.domain::text
+            and u.district::text = rec.district::text
+          where rec.vehicle_id = new.id and rec.status = 'active' loop
+    perform public.trace_notify(r.uid, 'status_changed', null,
+      'Registry update: plate ' || new.plate_number || ' verified by '
+      || v_actor || '.');
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists trace_vehicle_verify on public.vehicles;
+create trigger trace_vehicle_verify
+after update on public.vehicles
+for each row when (old.is_verified = false and new.is_verified = true)
+execute function public.trace_vehicle_verify();
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- N3 insurance_policies INSERT/UPDATE → colleagues of the same insurer
+-- An insurer's staff otherwise never learn a coworker entered or changed a
+-- policy. record_id stays null (policies are vehicle-level, not case-level).
+-- ══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.trace_policy_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_actor text; v_plate text; v_verb text;
+  r record;
+begin
+  if pg_trigger_depth() > 1 or public.trace_seed_muted() then return new; end if;
+  v_actor := public.trace_actor_name(public.trace_actor_uid());
+  v_verb := case when TG_OP = 'INSERT' then 'entered' else 'updated' end;
+  select plate_number into v_plate from public.vehicles where id = new.vehicle_id;
+  for r in select id as uid from public.users
+           where organization_id = new.insurer_id
+             and role = 'insurance_portal_user'
+             and is_active loop
+    perform public.trace_notify(r.uid, 'status_changed', null,
+      'Policy ' || new.policy_number || ' (' || coalesce(v_plate, 'unknown plate')
+      || ') ' || v_verb || ' by ' || v_actor || '.');
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists trace_policy_write on public.insurance_policies;
+create trigger trace_policy_write
+after insert or update on public.insurance_policies
+for each row execute function public.trace_policy_write();

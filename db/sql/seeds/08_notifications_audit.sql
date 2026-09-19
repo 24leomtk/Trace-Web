@@ -1,4 +1,4 @@
--- TRACE seed 08 — notifications (all 8 types) + audit trail.
+-- TRACE seed 08 — notifications (all 9 types) + audit trail.
 -- Run LAST, AFTER 07_collaboration.sql. Own transaction, self-contained.
 -- Turns the seed-mute OFF first, then inserts deterministic inbox rows
 -- directly (bulk triggers in 01–07 were silent by design, so this file is the
@@ -22,9 +22,11 @@ declare
   v_record      uuid;
   v_officer_regular text;
   v_sysadmin    text;
+  v_registrar   text;
 begin
   select id into v_officer_regular from public.users where phone_number = '+265997000003';
   select id into v_sysadmin from public.users where phone_number = '+265997000001';
+  select id into v_registrar from public.users where phone_number = '+265997000009';
 
   -- ── Inbox fixtures: mirror the §2.2 trigger templates verbatim ─────────
   -- referral_received ×5 (newest grants → liaisons).
@@ -93,6 +95,12 @@ begin
          'Payment: ' || p.amount::text || ' received. Receipt ' || p.receipt_no || ' (demo).',
          (row_number() over () % 2 = 0)
     from public.citation_payments p join public.records r on r.id = p.record_id limit 6;
+  -- verification_needed ×4 (unverified plates → registrar review queue).
+  insert into public.notifications (user_id, type, record_id, message, is_read)
+  select v_registrar, 'verification_needed', null,
+         'Verification needed: plate ' || v.plate_number || ' — confirm against the registry (demo).',
+         (row_number() over () % 2 = 0)
+    from public.vehicles v where not v.is_verified limit 4;
 
   -- ── Audit trail: every enum value at least twice ───────────────────────
   for v_i in 1..v_audit_count loop

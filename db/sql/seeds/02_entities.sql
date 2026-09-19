@@ -58,21 +58,31 @@ begin
     (gen_random_uuid(), 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe'),
     (gen_random_uuid(), 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe');
 
-  -- ── Vehicles: 1-in-4 registrar-verified; flags stay false here (cases in
-  -- 03/04 set them; Seed-refresh.sql recomputes) ───────────────────────────
+  -- ── Vehicles: 1-in-4 registrar-verified (verified rows are fully
+  -- detailed — that is what verification means); flags stay false here
+  -- (cases in 03/04 set them; Seed-refresh.sql recomputes) ───────────────
   for v_i in 1..v_vehicle_count loop
     v_district := pg_temp.pick(v_bulk_districts);
     v_plate := (v_prefix ->> v_district) || ' ' || (1000 + v_seq);
     insert into public.vehicles
-      (id, plate_number, make, model, color, owner_name, owner_national_id,
-       is_flagged, is_verified, registered_by, verified_at)
+      (id, plate_number, make, model, year, color, chassis_number,
+       engine_number, owner_name, owner_national_id, owner_phone,
+       owner_district, is_flagged, is_verified, registered_by, verified_at)
     values
       (gen_random_uuid(), v_plate,
        pg_temp.pick(array['Toyota','Nissan','Honda','Mazda','Mitsubishi','Ford','VW']),
        pg_temp.pick(array['Corolla','Navara','Fit','Demio','Pajero','Ranger','Golf']),
+       -- year/chassis/engine: always on verified rows, ~80% otherwise.
+       case when v_i % 4 = 0 or random() < 0.8 then 2005 + floor(random() * 20)::int end,
        pg_temp.pick(array['Silver','White','Black','Blue','Red','Grey']),
+       case when v_i % 4 = 0 or random() < 0.8
+            then 'CHS-MW-' || lpad((100000 + v_seq)::text, 6, '0') end,
+       case when v_i % 4 = 0 or random() < 0.8
+            then 'ENG-' || lpad((200000 + v_seq)::text, 6, '0') end,
        case when v_i % 3 = 0 then pg_temp.pick(v_first) || ' ' || pg_temp.pick(v_last) end,
        case when v_i % 3 = 0 then 'MW-P-' || (300000 + v_seq) end,
+       case when v_i % 3 = 0 then '+26599' || lpad((500000 + v_seq)::text, 7, '0') end,
+       case when v_i % 3 = 0 then pg_temp.pick(v_all_districts)::district end,
        false,
        v_i % 4 = 0,
        case when v_i % 4 = 0 then v_registrar end,

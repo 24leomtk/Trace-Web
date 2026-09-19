@@ -98,9 +98,26 @@ begin
     end if;
 
     if random() < 0.25 then
+      -- Roadside ad-hoc plate: officer files with what they can see roadside
+      -- (full identity block so every seeded vehicle is test-complete).
       v_plate := (v_prefix ->> v_branch_district) || ' ' || (9000 + v_seq);
-      insert into public.vehicles (id, plate_number)
-      values (gen_random_uuid(), v_plate) returning id into v_vehicle;
+      insert into public.vehicles
+        (id, plate_number, make, model, year, color, chassis_number,
+         engine_number, owner_name, owner_national_id, owner_phone,
+         owner_district)
+      values
+        (gen_random_uuid(), v_plate,
+         pg_temp.pick(array['Toyota','Nissan','Honda','Mazda','Mitsubishi','Ford','VW']),
+         pg_temp.pick(array['Corolla','Navara','Fit','Demio','Pajero','Ranger','Golf']),
+         2005 + floor(random() * 20)::int,
+         pg_temp.pick(array['Silver','White','Black','Blue','Red','Grey']),
+         'CHS-MW-' || lpad((100000 + v_seq)::text, 6, '0'),
+         'ENG-' || lpad((200000 + v_seq)::text, 6, '0'),
+         case when v_i % 2 = 0 then pg_temp.pick(v_first) || ' ' || pg_temp.pick(v_last) end,
+         case when v_i % 2 = 0 then 'MW-P-' || (300000 + v_seq) end,
+         case when v_i % 2 = 0 then '+26599' || lpad((500000 + v_seq)::text, 7, '0') end,
+         case when v_i % 2 = 0 then v_branch_district::district end)
+      returning id into v_vehicle;
     else
       select v.id into v_vehicle from public.vehicles v order by random() limit 1;
     end if;

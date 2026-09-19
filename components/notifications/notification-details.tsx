@@ -54,16 +54,9 @@ export function NotificationDetails({
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 py-5">
           {/* Metadata — single, quiet line, no icons */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground/70">
-              {notification.isRead ? "Read" : "Unread"}
-            </span>
-            <span aria-hidden="true" className="text-muted-foreground/40">
-              &middot;
-            </span>
-            <span>{formatDateTime(notification.createdAt)}</span>
-          </div>
-
+          <span className="mt-1.5 text-xs text-muted-foreground">
+            {formatDateTime(notification.createdAt)}
+          </span>
           {/* Divider separating metadata from the message */}
           <div className="mt-4 border-t" />
 

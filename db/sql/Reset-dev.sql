@@ -75,6 +75,12 @@ drop function if exists public.trace_payment_insert() cascade;
 drop function if exists public.trace_citation_update() cascade;
 drop function if exists public.trace_custody_insert() cascade;
 drop function if exists public.trace_custody_update() cascade;
+drop function if exists public.trace_users_in_scope(text, text, text) cascade;
+drop function if exists public.trace_open_assignees(uuid) cascade;
+drop function if exists public.trace_live_liaisons(uuid) cascade;
+drop function if exists public.trace_vehicle_insert() cascade;
+drop function if exists public.trace_vehicle_verify() cascade;
+drop function if exists public.trace_policy_write() cascade;
 
 -- Legacy functions from the previous (medical records) app.
 drop function if exists public.redeem_access_code(text, text, text, text, text) cascade;
