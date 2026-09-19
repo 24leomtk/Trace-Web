@@ -20,6 +20,14 @@ import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
+
+type ComplianceTab = "waivers" | "ledger"
+
+const TABS: { value: ComplianceTab; label: string }[] = [
+  { value: "waivers", label: "Waivers" },
+  { value: "ledger", label: "Ledger" },
+]
 
 /**
  * Tax compliance home — read-only oversight plus the one power this role
@@ -27,6 +35,7 @@ import { Textarea } from "@/components/ui/textarea"
  */
 export function TaxComplianceHome() {
   const queryClient = useQueryClient()
+  const [tab, setTab] = useState<ComplianceTab>("waivers")
   const pending = useQuery({
     queryKey: ["pending-waivers"],
     queryFn: listPendingWaivers,
@@ -56,34 +65,63 @@ export function TaxComplianceHome() {
         </p>
       </header>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Waivers awaiting decision ({pending.data?.length ?? 0})
-        </h2>
-        {pending.isLoading ? (
-          <Skeleton className="h-20 w-full" />
-        ) : pending.isError ? (
-          <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-            Could not load waivers.
-          </p>
-        ) : !pending.data || pending.data.length === 0 ? (
-          <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-            Queue clear — no pending waivers.
-          </p>
-        ) : (
-          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-            {pending.data.map((row) => (
-              <WaiverRow key={row.id} row={row} onDone={refresh} />
-            ))}
-          </ul>
-        )}
-      </section>
+      <div
+        role="tablist"
+        aria-label="Compliance view"
+        className="flex gap-1 rounded-none border bg-muted/40 p-1"
+      >
+        {TABS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={tab === option.value}
+            onClick={() => setTab(option.value)}
+            className={cn(
+              "flex-1 rounded-none px-3 py-1.5 text-sm font-medium transition-colors",
+              tab === option.value
+                ? "bg-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {option.label}
+            {option.value === "waivers" &&
+              (pending.data?.length ?? 0) > 0 &&
+              ` (${pending.data?.length})`}
+          </button>
+        ))}
+      </div>
 
-      <LedgerReadOnly
-        data={ledger.data}
-        isLoading={ledger.isLoading}
-        isError={ledger.isError}
-      />
+      {tab === "waivers" ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Waivers awaiting decision ({pending.data?.length ?? 0})
+          </h2>
+          {pending.isLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : pending.isError ? (
+            <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+              Could not load waivers.
+            </p>
+          ) : !pending.data || pending.data.length === 0 ? (
+            <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+              Queue clear — no pending waivers.
+            </p>
+          ) : (
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {pending.data.map((row) => (
+                <WaiverRow key={row.id} row={row} onDone={refresh} />
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : (
+        <LedgerReadOnly
+          data={ledger.data}
+          isLoading={ledger.isLoading}
+          isError={ledger.isError}
+        />
+      )}
     </div>
   )
 }

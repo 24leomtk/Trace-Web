@@ -107,11 +107,6 @@ export function TaxHome() {
         </p>
       </header>
 
-      <div>
-        <Button type="button" onClick={() => setAssessOpen(true)}>
-          New assessment
-        </Button>
-      </div>
       <AssessDialog
         open={assessOpen}
         onOpenChange={setAssessOpen}
@@ -122,12 +117,12 @@ export function TaxHome() {
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Ledger
         </h2>
-        <div className="flex items-start gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           <SearchInput
             value={query}
             onChange={setQuery}
             placeholder="Search plate, tax type, reference…"
-            className="flex-1"
+            className="min-w-48 flex-1"
           />
           <ListFilter
             title="Filter ledger"
@@ -139,6 +134,9 @@ export function TaxHome() {
             onChange={setStatus}
             showBadges={false}
           />
+          <Button type="button" onClick={() => setAssessOpen(true)}>
+            New assessment
+          </Button>
         </div>
         <ListFilterBadges
           heading="Status"
