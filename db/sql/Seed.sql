@@ -29,7 +29,10 @@
 --   * One scenario pack per feature: fine ledger (paid/part/unpaid +
 --     court dates), e-Brief (tranches + viewed + outcome), tasking
 --     (open/overdue/done/cancelled), GPS pins, PDF + video attachments,
---     merge candidates, revocation/expiry fixtures, org isolation.
+--     merge candidates, revocation/expiry fixtures, org isolation,
+--     cross-branch receipt (Blantyre counter), voided ticket, locate chain
+--     (reported/confirmed + property disposition), custody chain
+--     (hold/notice/release), access-review sessions + guard friction.
 --   * The seeded machine key below is DEV-ONLY (plaintext shown in the
 --     summary). Never seed production; rotate before any shared staging.
 --
@@ -38,9 +41,10 @@
 --   regular officer +265997000003 · traffic officer +265997000004
 --   district monitor +265997000005 · country monitor (traffic) +265997000006
 --   court liaison +265997000007 · insurer +265997000008 · registrar +265997000009
---   Blantyre traffic officer +265997000018
+--   Blantyre traffic officer +265997000018 · Lilongwe traffic monitor +265997000011
 -- Demo key (plate:read, traffic officer): trace_seed_demo_anpr_001
--- Demo plates: LL 4242 (3 citations, mixed payment), flagged plates TBA in
+-- Demo plates: LL 4242 (T-26-DEMO-01 overdue / -02 cross-branch part-paid /
+-- -03 paid+scheduled, T-26-DEMO-09 voided); flagged plates TBA in
 -- the end-of-run summary.
 -- ============================================================================
 
@@ -88,6 +92,7 @@ truncate public.actions,
   public.notifications,
   public.idempotency_keys,
   public.api_keys,
+  public.sessions,
   public.case_reviews,
   public.case_assignments,
   public.court_case_access,
@@ -99,6 +104,7 @@ truncate public.actions,
   public.accident_vehicles,
   public.traffic_citations,
   public.citation_payments,
+  public.impound_custody,
   public.record_attachments,
   public.insurance_policies,
   public.records,
@@ -152,6 +158,8 @@ declare
   v_auditor          text;
   v_officer_regular  text;
   v_officer_traffic  text;
+  v_officer_bt_traffic text;
+  v_monitor_traffic  text;
   v_monitor_district text;
   v_monitor_country  text;
   v_liaison          text;
@@ -273,6 +281,8 @@ begin
   select id into v_auditor          from public.users where phone_number = '+265997000002';
   select id into v_officer_regular  from public.users where phone_number = '+265997000003';
   select id into v_officer_traffic  from public.users where phone_number = '+265997000004';
+  select id into v_officer_bt_traffic from public.users where phone_number = '+265997000018';
+  select id into v_monitor_traffic  from public.users where phone_number = '+265997000011';
   select id into v_monitor_district from public.users where phone_number = '+265997000005';
   select id into v_monitor_country  from public.users where phone_number = '+265997000006';
   select id into v_liaison          from public.users where phone_number = '+265997000007';
@@ -489,7 +499,13 @@ begin
                       from generate_series(1, 1 + floor(random() * 2)::int)),
         'arrest_location', initcap(v_branch_district) || ' roadblock',
         'arrest_date', to_char(v_rdate, 'YYYY-MM-DD'),
-        'arresting_officer', 'Cst. ' || pg_temp.pick(v_last));
+        'arresting_officer', 'Cst. ' || pg_temp.pick(v_last),
+        -- Phase 5 demo depth: custody trail on ~40% of arrests.
+        'booking_no', case when random() < 0.4 then 'BK-26-' || (50000 + v_seq) end,
+        'custody_status', case when random() < 0.4
+          then pg_temp.pick(array['in_custody','released_on_bail','handed_to_court']) end,
+        'prosecutor_decision', case when random() < 0.3
+          then pg_temp.pick(array['pending','accepted','declined']) end);
       when 'missing_vehicle' then v_data := jsonb_build_object(
         'plate_number', v_plate,
         'last_seen_location', initcap(v_branch_district) || ' filling station',
@@ -499,6 +515,10 @@ begin
       when 'vehicle_offense' then v_data := jsonb_build_object(
         'plate_number', v_plate,
         'offense_type', pg_temp.pick(array['Speeding','No driving license','Overloading','Drunk driving','No insurance']),
+        -- Phase 5 demo depth: statute coding on ~50%; criminal flag rarely.
+        'statute_code', case when random() < 0.5 then pg_temp.pick(array['s.316.074','s.316.075','s.322.065']) end,
+        'is_criminal', random() < 0.1,
+        'court_appearance_required', random() < 0.15,
         'description', 'Offense recorded at checkpoint.',
         'location', 'M1, ' || initcap(v_branch_district),
         'date_occurred', to_char(v_rdate, 'YYYY-MM-DD'));
@@ -507,7 +527,15 @@ begin
         'accident_date', to_char(v_rdate, 'YYYY-MM-DD'),
         'description', 'Collision under investigation.',
         'cause', pg_temp.pick(array['Speeding','Brake failure','Poor visibility','Drunk driving']),
-        'vehicles_involved', (select jsonb_agg(jsonb_build_object('plate_number', x.plate_number, 'role', pg_temp.pick(array['at_fault','involved'])))
+        -- Phase 5 demo depth: severity + road/weather on ~60%.
+        'severity', case when random() < 0.6 then pg_temp.pick(array['minor','minor','serious','fatal']) end,
+        'road_condition', case when random() < 0.6 then pg_temp.pick(array['Dry','Wet','Potholes','Gravel']) end,
+        'weather', case when random() < 0.6 then pg_temp.pick(array['Clear','Rain','Fog']) end,
+        'vehicles_involved', (select jsonb_agg(
+                                jsonb_build_object('plate_number', x.plate_number, 'role', pg_temp.pick(array['at_fault','involved']))
+                                || case when random() < 0.5
+                                     then jsonb_build_object('driver_name', pg_temp.pick(v_first) || ' ' || pg_temp.pick(v_last))
+                                     else '{}'::jsonb end)
                                 from (select plate_number from public.vehicles order by random() limit 1 + floor(random() * 3)::int) x),
         'fatalities', case when random() < 0.85 then 0 else 1 + floor(random() * 2)::int end,
         'injuries', floor(random() * 5)::int);
@@ -529,6 +557,12 @@ begin
     if v_lat is not null then
       v_data := v_data || jsonb_build_object('latitude', v_lat, 'longitude', v_lng);
     end if;
+
+    -- Strip top-level nulls: conditional demo fields above use CASE … END
+    -- (null when skipped), but the app never stores nulls — Zod optional()
+    -- rejects them on re-validation, so keep the payload clean.
+    select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) into v_data
+      from jsonb_each(v_data) as e(k, v) where v <> 'null';
 
     v_record := gen_random_uuid();
     insert into public.records
@@ -579,14 +613,22 @@ begin
                      else 0 end;
       insert into public.traffic_citations
         (record_id, vehicle_id, violation_type, fine_amount,
-         is_paid, district)
+         is_paid, district, ticket_number, statute_code, due_date)
       values (v_record, v_vehicle, v_data ->> 'violation_type',
               v_fine, v_paid >= v_fine,
-              v_branch_district::district);
+              v_branch_district::district,
+              'T-26-' || lpad(v_seq::text, 6, '0'),
+              case when random() < 0.5 then pg_temp.pick(array['s.318.18','s.316.074','s.322.065']) end,
+              (v_rdate + 30)::date);
       if v_paid > 0 then
         insert into public.citation_payments
-          (record_id, amount, receipt_no, received_by)
-        values (v_record, v_paid, 'R-SEED-' || (70000 + v_seq), v_officer);
+          (record_id, amount, receipt_no, note, payer_name, payment_method,
+           channel, receiving_branch_id, received_by)
+        values (v_record, v_paid, 'R-SEED-' || (70000 + v_seq),
+          case when random() < 0.5 then 'Paid at counter.' end,
+          pg_temp.pick(v_first) || ' ' || pg_temp.pick(v_last),
+          pg_temp.pick(array['cash','cash','mobile','bank']),
+          'counter', v_branch, v_officer);
       end if;
       if random() < 0.3 then -- scheduled court appearance (F3 demo depth)
         update public.traffic_citations
@@ -708,9 +750,11 @@ begin
   -- H. SCENARIO PACKS (stable natural keys — the demo script)
   -- ════════════════════════════════════════════════════════════════════════
 
-  -- H1. LL 4242: three citations (unpaid / part-paid / paid+scheduled) plus
-  -- one real offense — citations alone never flag a vehicle in app logic,
-  -- so the offense row is what legitimately keeps LL 4242 flagged.
+  -- H1. LL 4242: three citations (overdue-unpaid / cross-branch part-paid /
+  -- paid+scheduled) plus one real offense — citations alone never flag a
+  -- vehicle in app logic, so the offense row is what legitimately keeps
+  -- LL 4242 flagged. Ticket numbers are stable handles for the receipt demo:
+  -- search T-26-DEMO-01 from any counter.
   insert into public.vehicles (id, plate_number, make, model, color, is_flagged, is_verified)
   values (gen_random_uuid(), 'LL 4242', 'Toyota', 'Hilux', 'White', true, true)
   returning id into v_vehicle;
@@ -718,6 +762,9 @@ begin
     v_fine := 10000 * v_n;
     v_paid := case v_n when 1 then 0 when 2 then 5000 else v_fine end;
     v_record := gen_random_uuid();
+    -- v_n = 1 is the overdue demo: issued 40 days ago, due 10 days ago.
+    v_rdate := case v_n when 1 then current_date - 40
+               else (now() - v_n * interval '4 days')::date end;
     insert into public.records
       (id, record_type, domain, reported_by, branch_id, district,
        vehicle_id, person_id, access_level, status, data, created_at)
@@ -726,23 +773,32 @@ begin
        'lilongwe', v_vehicle, null, 'branch', 'active',
        jsonb_build_object('plate_number', 'LL 4242',
          'violation_type', case v_n when 1 then 'Speeding' when 2 then 'Overloading' else 'Drunk driving' end,
+         'statute_code', 's.318.18',
          'fine_amount', v_fine, 'location', 'M1, Lilongwe',
-         'date_issued', (now() - v_n * interval '4 days')::date::text,
+         'date_issued', to_char(v_rdate, 'YYYY-MM-DD'),
          'latitude', -13.9833, 'longitude', 33.7833),
-        now() - v_n * interval '4 days');
+        v_rdate);
     insert into public.traffic_citations
       (record_id, vehicle_id, violation_type, fine_amount, is_paid, district,
-       court_date, court_id)
+       ticket_number, statute_code, due_date, court_date, court_id)
     values (v_record, v_vehicle,
       case v_n when 1 then 'Speeding' when 2 then 'Overloading' else 'Drunk driving' end,
       v_fine, v_paid >= v_fine, 'lilongwe',
+      'T-26-DEMO-0' || v_n, 's.318.18', (v_rdate + 30)::date,
       case when v_n = 3 then current_date + 21 end, case when v_n = 3 then v_org_court_ll end);
     if v_paid > 0 then
+      -- v_n = 2 is the cross-branch demo: Lilongwe ticket, Blantyre counter,
+      -- received by a different officer than the issuer.
       insert into public.citation_payments
-        (record_id, amount, receipt_no, note, received_by)
+        (record_id, amount, receipt_no, note, payer_name, payment_method,
+         channel, receiving_branch_id, received_by)
       values (v_record, v_paid, 'R-SEED-10' || v_n,
-        case when v_paid >= v_fine then 'Paid in full.' else 'Part-payment.' end,
-        v_officer_traffic);
+        case when v_paid >= v_fine then 'Paid in full.' else 'Part-payment at Blantyre counter.' end,
+        'Demo Driver ' || v_n,
+        case v_n when 2 then 'mobile' else 'cash' end,
+        'counter',
+        case v_n when 2 then v_br_bt_traffic else v_br_lw_traffic end,
+        case v_n when 2 then v_officer_bt_traffic else v_officer_traffic end);
     end if;
   end loop;
   -- The flag-maintaining offense (see note above).
@@ -870,6 +926,124 @@ begin
     encode(digest('trace_seed_demo_anpr_001', 'sha256'), 'hex'),
     'trace_seed_', array['plate:read']);
 
+  -- H8. Voided ticket demo (spoiled duplicate — stays queryable, takes no
+  -- payments, resolves only via close).
+  v_record := gen_random_uuid();
+  insert into public.records
+    (id, record_type, domain, reported_by, branch_id, district,
+     vehicle_id, person_id, access_level, status, data, created_at)
+  values
+    (v_record, 'traffic_citation', 'traffic', v_officer_traffic, v_br_lw_traffic,
+     'lilongwe', v_vehicle, null, 'branch', 'active',
+     jsonb_build_object('plate_number', 'LL 4242', 'violation_type', 'Speeding',
+       'statute_code', 's.318.18', 'fine_amount', 10000, 'location', 'M1, Lilongwe',
+       'date_issued', to_char(current_date - 2, 'YYYY-MM-DD')),
+     now() - interval '2 days');
+  insert into public.traffic_citations
+    (record_id, vehicle_id, violation_type, fine_amount, is_paid, district,
+     ticket_number, statute_code, due_date, voided_at, void_reason, void_by)
+  values (v_record, v_vehicle, 'Speeding', 10000, false, 'lilongwe',
+    'T-26-DEMO-09', 's.318.18', (current_date + 28)::date,
+    now() - interval '1 day', 'Duplicate of T-26-DEMO-01 (demo).', v_monitor_traffic);
+  insert into public.actions (actor_id, action_type, record_id, reason)
+  values (v_monitor_traffic, 'citation_voided', v_record, 'Seeded void demo.');
+
+  -- H9. Locate chain demo (Phase 3): one wanted located-but-unconfirmed
+  -- (reported cross-branch by Blantyre), one confirmed by the originator,
+  -- plus a stolen-property recovery with custodian disposition.
+  select id into v_record from public.records
+   where record_type = 'wanted_person' and status = 'active'
+     and district = 'lilongwe' order by random() limit 1;
+  if v_record is not null then
+    update public.records
+       set locate_state = 'located', locate_by = v_officer_bt_traffic,
+           locate_at = now() - interval '2 days',
+           locate_place = 'Blantyre market', locate_note = 'Spotted at the market; verify before acting (demo).'
+     where id = v_record;
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_officer_bt_traffic, 'locate_reported', v_record, 'Seeded locate demo.');
+  end if;
+  select id, reported_by into v_record, v_officer from public.records
+   where record_type = 'wanted_person' and status = 'active'
+     and district = 'lilongwe' and locate_state = 'none'
+     order by random() limit 1;
+  if v_record is not null then
+    update public.records
+       set locate_state = 'confirmed', locate_by = v_officer_bt_traffic,
+           locate_at = now() - interval '3 days',
+           locate_place = 'Lilongwe bus depot', locate_note = 'Arrested at depot (demo).'
+     where id = v_record;
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_officer_bt_traffic, 'locate_reported', v_record, 'Seeded locate demo.'),
+           (v_officer, 'locate_confirmed', v_record, 'Seeded confirm demo.');
+  end if;
+  select id into v_record from public.records
+   where record_type = 'stolen_property' and status = 'active'
+     order by random() limit 1;
+  if v_record is not null then
+    update public.records
+       set locate_state = 'confirmed', locate_by = v_officer_regular,
+           locate_at = now() - interval '4 days',
+           locate_place = 'Lilongwe Central exhibit room',
+           locate_note = 'Recovered during patrol (demo).',
+           disposition = 'held'
+     where id = v_record;
+  end if;
+
+  -- H10. Custody chain demo (Phase 4): one hold + owner notice (Lilongwe),
+  -- one full hold → release (Blantyre, dual-signed).
+  select id, reported_by into v_record, v_officer from public.records
+   where record_type = 'vehicle_impoundment' and status = 'active'
+     and district = 'lilongwe' order by random() limit 1;
+  if v_record is not null then
+    insert into public.impound_custody
+      (record_id, tow_company, lot_location, bay, hold_authority_id,
+       hold_basis, hold_placed_at, owner_notified_at, owner_notified_by)
+    values (v_record, 'Demo Towing', 'Lilongwe police yard', 'B-04',
+      v_monitor_traffic, 'Held pending ownership verification (demo).',
+      now() - interval '3 days', now() - interval '2 days', v_officer)
+    on conflict (record_id) do nothing;
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_monitor_traffic, 'hold_placed', v_record, 'Seeded hold demo.'),
+           (v_officer, 'owner_notified', v_record, 'Seeded notice demo.');
+  end if;
+  select id into v_record from public.records
+   where record_type = 'vehicle_impoundment' and status = 'active'
+     and district = 'blantyre' order by random() limit 1;
+  if v_record is not null then
+    insert into public.impound_custody
+      (record_id, tow_company, lot_location, bay, hold_authority_id,
+       hold_basis, hold_placed_at, owner_notified_at, owner_notified_by,
+       release_auth_id, release_at, recipient_name, recipient_id_checked,
+       fees_snapshot)
+    values (v_record, 'Demo Towing', 'Blantyre police yard', 'A-01',
+      v_monitor_country, 'Held for unlicensed operation (demo).',
+      now() - interval '6 days', now() - interval '5 days', v_officer_bt_traffic,
+      v_monitor_country, now() - interval '1 day',
+      'Demo Owner', 'National ID MW-010203', 15000)
+    on conflict (record_id) do nothing;
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_monitor_country, 'hold_placed', v_record, 'Seeded hold demo.'),
+           (v_monitor_country, 'hold_released', v_record, 'Seeded release demo.');
+  end if;
+
+  -- H11. Access-review demo (Phase 6): recent sessions for a handful of
+  -- anchors (the rest read as dormant), plus blocked-transition friction.
+  insert into public.sessions
+    (id, expires_at, token, user_id, updated_at)
+  values
+    (gen_random_uuid(), now() + interval '7 days', 'seed-sess-sysadmin', v_sysadmin, now() - interval '2 hours'),
+    (gen_random_uuid(), now() + interval '7 days', 'seed-sess-officer', v_officer_regular, now() - interval '1 day'),
+    (gen_random_uuid(), now() + interval '7 days', 'seed-sess-traffic', v_officer_traffic, now() - interval '3 hours'),
+    (gen_random_uuid(), now() + interval '7 days', 'seed-sess-monitor', v_monitor_district, now() - interval '5 days');
+  select id into v_record from public.records
+   where record_type = 'traffic_citation' order by random() limit 1;
+  if v_record is not null then
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_officer_traffic, 'status_rejected', v_record, 'Seeded guard friction: resolve with balance outstanding.'),
+           (v_officer_traffic, 'payment_received', v_record, 'Seeded payment audit.');
+  end if;
+
   -- ════════════════════════════════════════════════════════════════════════
   -- I. NOTIFICATIONS + AUDIT TRAIL
   -- ════════════════════════════════════════════════════════════════════════
@@ -892,7 +1066,8 @@ begin
     insert into public.actions (actor_id, action_type, record_id, reason)
     values (v_officer_regular,
       pg_temp.pick(array['record_created','record_viewed','record_updated',
-        'status_changed','cross_branch_access','report_generated'])::audit_action_type,
+        'status_changed','cross_branch_access','report_generated',
+        'payment_received','locate_reported','hold_placed'])::audit_action_type,
       v_record, 'Generated audit trail row.');
   end loop;
   insert into public.actions (actor_id, action_type, reason)
@@ -925,6 +1100,8 @@ begin
     v_cases, v_districts, v_flagged, v_open_tasks;
   raise notice 'Logins (OTP, no passwords): sysadmin +265997000001 · auditor +265997000002 · officer +265997000003 · traffic +265997000004 · monitor +265997000005 · liaison +265997000007 · insurer +265997000008 · registrar +265997000009.';
   raise notice 'Demo plates: LL 4242 (3 citations: unpaid/part/paid+scheduled) · % (flagged).', coalesce(v_plate, 'none');
+  raise notice 'Receipt demo: T-26-DEMO-01 overdue-unpaid · T-26-DEMO-02 part-paid at Blantyre counter · T-26-DEMO-09 voided.';
+  raise notice 'Locate demo: one wanted located (Blantyre report), one confirmed; custody demo: one hold+notice, one released.';
   raise notice 'Expiring referrals (renew demo): %.', v_overdue_refs;
   raise notice 'DEV-ONLY ANPR key: trace_seed_demo_anpr_001 (plate:read). Never use outside dev.';
 end $$;

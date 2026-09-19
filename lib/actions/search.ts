@@ -1,5 +1,6 @@
 "use server"
 
+import { searchCitations, type CitationSearchHit } from "@/lib/actions/citations"
 import { searchPersons } from "@/lib/actions/persons"
 import { getViewerScope } from "@/lib/actions/records"
 import { searchVehicles } from "@/lib/actions/vehicles"
@@ -10,6 +11,10 @@ import { searchVehicles } from "@/lib/actions/vehicles"
  * `searchVehicles` / `searchPersons` so authorization, RLS scoping, and
  * audit behaviour stay identical; this only normalises the query once and
  * runs both in parallel.
+ *
+ * Phase 6: police results also carry citation hits (ticket / violation /
+ * plate) so a counter finds the ticket to receipt without branch-feed
+ * access.
  */
 export async function unifiedSearch(query: string, limit = 10) {
   const scope = await getViewerScope()
@@ -21,9 +26,14 @@ export async function unifiedSearch(query: string, limit = 10) {
     scope.role === "VEHICLE_REGISTRAR"
   if (!allowed) throw new Error("Your role can't search.")
   const q = query.trim()
-  if (!q) return { vehicles: [], persons: [] }
+  if (!q) return { vehicles: [], persons: [], citations: [] }
 
-  const [vehicles, persons] = await Promise.all([
+  const isPolice =
+    scope.role === "OFFICER" ||
+    scope.role === "DISTRICT_MONITOR" ||
+    scope.role === "COUNTRY_MONITOR"
+
+  const [vehicles, persons, citations] = await Promise.all([
     scope.role === "VEHICLE_REGISTRAR" || scope.role === "INSURANCE_PORTAL_USER"
       ? searchVehicles(q, limit)
       : searchVehicles(q, limit).catch(() => []),
@@ -32,6 +42,11 @@ export async function unifiedSearch(query: string, limit = 10) {
     scope.role === "COUNTRY_MONITOR"
       ? searchPersons(q, limit).catch(() => [])
       : Promise.resolve([]),
+    isPolice
+      ? searchCitations(q, limit).catch(
+          (): CitationSearchHit[] => []
+        )
+      : Promise.resolve([]),
   ])
-  return { vehicles, persons }
+  return { vehicles, persons, citations }
 }

@@ -14,6 +14,10 @@
 --      vehicle_offense / vehicle_impoundment rows.
 --   3. Resyncs traffic_citations.is_paid from the citation_payments ledger
 --      (the flag is derived at runtime; this heals any drift).
+--   4. Backfills ticket_number for rows that predate Phase 1 (stable,
+--      derived from the record id — never touches minted numbers).
+--   Locate state, disposition, custody rows, and void flags are point-in-time
+--   facts, so they are deliberately NOT recomputed here.
 -- ============================================================================
 
 begin;
@@ -70,5 +74,12 @@ set is_paid = coalesce((
   where p.record_id = c.record_id
 ), 0) >= c.fine_amount
 where c.fine_amount is not null;
+
+-- ---------------------------------------------------------------------------
+-- 4. Backfill uniform ticket numbers (Phase 1) for pre-migration rows only
+-- ---------------------------------------------------------------------------
+update public.traffic_citations
+set ticket_number = 'T-26-' || upper(substr(record_id::text, 1, 8))
+where ticket_number is null;
 
 commit;

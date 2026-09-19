@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, ilike, or } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -16,7 +16,7 @@ import {
 import { withUserCtx } from "@/lib/db-context"
 import { citationBalance, generateReceiptNo, isCitationPaid } from "@/lib/format"
 import { writeAuditTx } from "@/lib/server/audit"
-import { canViewRecord } from "@/lib/visibility"
+import { canViewRecord, escapeLike } from "@/lib/visibility"
 import {
   citationCourtScheduleSchema,
   citationPaymentSchema,
@@ -379,6 +379,71 @@ export async function recordCitationPayment(input: {
       })
     }
     return { receiptNo, balance: citationBalance(fine, totalPaid), isPaid: paid }
+  })
+}
+
+export interface CitationSearchHit {
+  recordId: string
+  ticketNumber: string | null
+  plateNumber: string | null
+  violationType: string
+  isPaid: boolean
+  district: string
+}
+
+/**
+ * Phase 6: ticket/violation search for the unified lookup. Same-domain
+ * police, any branch — finding a ticket to receipt must not require
+ * branch-feed access. Backed by the ticket_number trigram index.
+ */
+export async function searchCitations(
+  query: string,
+  limit = 10
+): Promise<CitationSearchHit[]> {
+  const scope = await getViewerScope()
+  if (
+    scope.role !== "OFFICER" &&
+    scope.role !== "DISTRICT_MONITOR" &&
+    scope.role !== "COUNTRY_MONITOR"
+  ) {
+    throw new Error("Police users only.")
+  }
+  if (!scope.domain) return []
+  const domain = scope.domain
+  const q = query.trim().toUpperCase()
+  if (!q) return []
+  const pattern = `%${escapeLike(q)}%`
+  return withUserCtx(scope.id, async (tx) => {
+    const conditions = [
+      eq(records.domain, domain),
+      or(
+        ilike(trafficCitations.ticketNumber, pattern),
+        ilike(trafficCitations.violationType, pattern),
+        ilike(vehicles.plateNumber, pattern)
+      ),
+    ]
+    if (scope.role === "DISTRICT_MONITOR" && scope.district) {
+      conditions.push(eq(records.district, scope.district as never))
+    }
+    const rows = await tx
+      .select({
+        recordId: records.id,
+        ticketNumber: trafficCitations.ticketNumber,
+        plateNumber: vehicles.plateNumber,
+        violationType: trafficCitations.violationType,
+        isPaid: trafficCitations.isPaid,
+        district: records.district,
+      })
+      .from(trafficCitations)
+      .innerJoin(records, eq(trafficCitations.recordId, records.id))
+      .leftJoin(vehicles, eq(trafficCitations.vehicleId, vehicles.id))
+      .where(and(...conditions))
+      .orderBy(desc(records.createdAt))
+      .limit(limit)
+    return rows.map((row) => ({
+      ...row,
+      district: row.district as string,
+    }))
   })
 }
 

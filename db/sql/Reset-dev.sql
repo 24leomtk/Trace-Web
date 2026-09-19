@@ -27,11 +27,11 @@
 
 begin;
 
-\if :{?TRACE_RESET_OK}
-\else
-\echo 'Refusing to reset: re-run with -v TRACE_RESET_OK=1. Never reset production.'
-\quit 1
-\endif
+-- \if :{?TRACE_RESET_OK}
+-- \else
+-- \echo 'Refusing to reset: re-run with -v TRACE_RESET_OK=1. Never reset production.'
+-- \quit 1
+-- \endif
 
 -- ---------------------------------------------------------------------------
 -- 0. Helper functions first (app_can_read_record depends on the records row

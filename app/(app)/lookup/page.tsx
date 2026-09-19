@@ -311,7 +311,7 @@ export default function LookupPage() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Plate, name, or national ID…"
+              placeholder="Plate, name, national ID, or ticket…"
             />
             <Button type="submit" disabled={busy}>
               Search
@@ -409,6 +409,10 @@ function UnifiedResultsView({
   const combined = [
     ...results.vehicles.map((vehicle) => ({ kind: "vehicle" as const, vehicle })),
     ...results.persons.map((person) => ({ kind: "person" as const, person })),
+    ...(results.citations ?? []).map((citation) => ({
+      kind: "citation" as const,
+      citation,
+    })),
   ]
   const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
     usePaginatedSearch({
@@ -418,15 +422,21 @@ function UnifiedResultsView({
           ? `${item.vehicle.plateNumber} ${item.vehicle.make ?? ""} ${item.vehicle.model ?? ""}`
               .toLowerCase()
               .includes(q)
-          : `${item.person.fullName} ${item.person.nationalId ?? ""}`
-              .toLowerCase()
-              .includes(q),
+          : item.kind === "person"
+            ? `${item.person.fullName} ${item.person.nationalId ?? ""}`
+                .toLowerCase()
+                .includes(q)
+            : `${item.citation.ticketNumber ?? ""} ${item.citation.violationType} ${item.citation.plateNumber ?? ""}`
+                .toLowerCase()
+                .includes(q),
     })
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted-foreground">
         {results.vehicles.length} vehicle(s) · {results.persons.length} person(s)
+        {(results.citations ?? []).length > 0 &&
+          ` · ${results.citations.length} ticket(s)`}
         — exact matches first, then partial.
       </p>
       {combined.length > 12 && (
@@ -457,6 +467,30 @@ function UnifiedResultsView({
                 {item.vehicle.isFlagged && (
                   <span className="ml-2 text-xs font-semibold text-red-600">
                     FLAGGED
+                  </span>
+                )}
+              </Link>
+            ) : item.kind === "citation" ? (
+              <Link
+                key={item.citation.recordId}
+                href={`/records/${item.citation.recordId}`}
+                className="rounded-none border px-3 py-2 text-sm hover:bg-accent"
+              >
+                <span className="font-medium">
+                  {item.citation.ticketNumber ?? "No ticket no."}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {item.citation.violationType} ·{" "}
+                  {item.citation.plateNumber ?? "No plate"}
+                </span>
+                {item.citation.isPaid ? (
+                  <span className="ml-2 text-xs font-semibold text-emerald-600">
+                    PAID
+                  </span>
+                ) : (
+                  <span className="ml-2 text-xs font-medium text-muted-foreground">
+                    Open to receipt →
                   </span>
                 )}
               </Link>

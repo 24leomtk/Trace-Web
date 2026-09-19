@@ -4,6 +4,7 @@ import {
   KeyRoundIcon,
   LandmarkIcon,
   ScrollTextIcon,
+  ShieldCheckIcon,
   UsersIcon,
 } from "lucide-react"
 
@@ -13,6 +14,12 @@ const LINKS = [
     label: "Manage users",
     detail: "Provision accounts across all 8 roles.",
     icon: UsersIcon,
+  },
+  {
+    href: "/admin/access-review",
+    label: "Access review",
+    detail: "Recertify accounts — dormant users, blocked transitions.",
+    icon: ShieldCheckIcon,
   },
   {
     href: "/admin/branches",

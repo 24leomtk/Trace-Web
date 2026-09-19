@@ -23,6 +23,13 @@ create index if not exists persons_of_interest_national_id_trgm_idx
 create index if not exists vehicles_plate_number_trgm_idx
   on public.vehicles using gin (plate_number gin_trgm_ops);
 
+-- Phase 6: ticket/violation search backing the unified lookup's citation
+-- hits (ILIKE %…% on ticket + violation, same-domain police, any branch).
+create index if not exists traffic_citations_ticket_number_trgm_idx
+  on public.traffic_citations using gin (ticket_number gin_trgm_ops);
+create index if not exists traffic_citations_violation_type_trgm_idx
+  on public.traffic_citations using gin (violation_type gin_trgm_ops);
+
 -- 2. Per-role scope rules on users (mirrors the scoping comment on users in
 --    db/schema/auth.ts; app code enforces first, this is the backstop).
 --    If this fails, an existing row violates the rules — find it with:
@@ -52,6 +59,37 @@ begin
       or (role::text in ('court_liaison', 'insurance_portal_user', 'vehicle_registrar')
         and organization_id is not null
         and domain is null and branch_id is null and district is null)
+    );
+  end if;
+end $$;
+
+-- 2b. Phase 6: money + lifecycle vocab backstops (app validates first).
+--     Legacy rows predate these columns, so every check permits NULL.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'citation_payments_method_chk') then
+    alter table public.citation_payments add constraint citation_payments_method_chk check (
+      payment_method is null or payment_method in ('cash', 'mobile', 'bank')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'citation_payments_channel_chk') then
+    alter table public.citation_payments add constraint citation_payments_channel_chk check (
+      channel is null or channel in ('counter', 'mobile', 'clerk')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'records_locate_state_chk') then
+    alter table public.records add constraint records_locate_state_chk check (
+      locate_state in ('none', 'located', 'confirmed')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'records_disposition_chk') then
+    alter table public.records add constraint records_disposition_chk check (
+      disposition is null or disposition in ('held', 'returned', 'destroyed', 'auctioned')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'traffic_citations_void_chk') then
+    alter table public.traffic_citations add constraint traffic_citations_void_chk check (
+      voided_at is null or void_reason is not null
     );
   end if;
 end $$;
@@ -271,6 +309,7 @@ alter table public.case_reviews enable row level security;
 alter table public.notifications enable row level security;
 alter table public.idempotency_keys enable row level security;
 alter table public.citation_payments enable row level security;
+alter table public.impound_custody enable row level security;
 alter table public.referral_documents enable row level security;
 alter table public.case_assignments enable row level security;
 alter table public.api_keys enable row level security;
@@ -556,6 +595,20 @@ create policy assignments_update on public.case_assignments for update to app_us
   using (assignee_id = public.app_user_id() or public.app_is_monitor())
   with check (assignee_id = public.app_user_id() or public.app_is_monitor());
 
+-- impound_custody (Phase 4): readable wherever the parent impoundment is
+-- readable; hold/release/notice written by police (app checks filer vs hold
+-- authority vs monitor — the lot executes but never authorizes).
+drop policy if exists impound_custody_read on public.impound_custody;
+create policy impound_custody_read on public.impound_custody for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists impound_custody_write on public.impound_custody;
+create policy impound_custody_write on public.impound_custody for insert to app_user
+  with check (public.app_is_police());
+drop policy if exists impound_custody_update on public.impound_custody;
+create policy impound_custody_update on public.impound_custody for update to app_user
+  using (public.app_is_police())
+  with check (public.app_is_police());
+
 -- api_keys: system admins only (verification runs as the schema owner and
 -- bypasses RLS, like the sign-in flow).
 drop policy if exists api_keys_admin on public.api_keys;
@@ -583,6 +636,7 @@ revoke delete on public.records from app_user;
 revoke update, delete on public.citation_payments from app_user;
 revoke update on public.referral_documents from app_user;
 revoke delete on public.case_assignments from app_user;
+revoke delete on public.impound_custody from app_user;
 revoke delete on public.missing_person_cases,
   public.wanted_person_cases,
   public.vehicle_cases,

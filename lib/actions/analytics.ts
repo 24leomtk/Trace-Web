@@ -1,6 +1,6 @@
 "use server"
 
-import { and, count, desc, eq, sql } from "drizzle-orm"
+import { and, count, eq, sql } from "drizzle-orm"
 
 import { accidents, citationPayments, courtCaseAccess, records, trafficCitations } from "@/db/schema"
 import { withUserCtx } from "@/lib/db-context"
@@ -188,43 +188,83 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
         severity: fatalities > 0 ? "critical" : injuries > 5 ? "warning" : "info",
       })
 
-      // 4. Citations: totals + collection.
+      // 4. Citations: totals + collection (Phase 6: money view).
       const citationRows = await tx
         .select({
+          recordId: trafficCitations.recordId,
           isPaid: trafficCitations.isPaid,
           fine: trafficCitations.fineAmount,
+          dueDate: trafficCitations.dueDate,
+          voidedAt: trafficCitations.voidedAt,
         })
         .from(trafficCitations)
         .innerJoin(records, eq(trafficCitations.recordId, records.id))
         .where(and(...scopedConditions(scope, records)))
-      const paid = citationRows.filter((row) => row.isPaid).length
-      // U6 trend: citations issued per week, last 12 weeks.
-      const weeklyCitations = await tx
+      const live = citationRows.filter((row) => !row.voidedAt)
+      const paid = live.filter((row) => row.isPaid).length
+      const voids = citationRows.length - live.length
+      const assessed = live.reduce(
+        (sum, row) => sum + (row.fine != null ? Number(row.fine) : 0),
+        0
+      )
+      const liveIds = new Set(live.map((row) => row.recordId))
+      const moneyRows =
+        liveIds.size === 0
+          ? []
+          : await tx
+              .select({
+                recordId: citationPayments.recordId,
+                amount: citationPayments.amount,
+              })
+              .from(citationPayments)
+              .innerJoin(records, eq(citationPayments.recordId, records.id))
+              .where(and(...scopedConditions(scope, records)))
+              .limit(5000)
+      const collected = moneyRows
+        .filter((row) => liveIds.has(row.recordId))
+        .reduce((sum, row) => sum + Number(row.amount), 0)
+      const rate =
+        assessed > 0 ? Math.round((collected / assessed) * 100) : 0
+      const overdue = live.filter(
+        (row) => !row.isPaid && row.dueDate != null && row.dueDate < today
+      ).length
+      // U6 trend: kwacha collected per week, last 12 weeks.
+      const weeklyCollected = await tx
         .select({
-          week: sql<string>`to_char(date_trunc('week', ${records.createdAt}), 'YYYY-MM-DD')`,
-          total: sql<number>`count(*)::int`,
+          week: sql<string>`to_char(date_trunc('week', ${citationPayments.createdAt}), 'YYYY-MM-DD')`,
+          total: sql<number>`coalesce(sum(${citationPayments.amount}), 0)::int`,
         })
-        .from(records)
+        .from(citationPayments)
+        .innerJoin(records, eq(citationPayments.recordId, records.id))
         .where(
           and(
             ...scopedConditions(scope, records),
-            eq(records.recordType, "traffic_citation"),
-            sql`${records.createdAt} >= current_date - interval '84 days'`
+            sql`${citationPayments.createdAt} >= current_date - interval '84 days'`
           )
         )
-        .groupBy(sql`date_trunc('week', ${records.createdAt})`)
+        .groupBy(sql`date_trunc('week', ${citationPayments.createdAt})`)
       entries.push({
         id: "citations",
         date: today,
         scopeLabel: scopeLabel(scope),
-        title: "Traffic citations",
-        description: `${citationRows.length} citations issued, ${paid} paid.`,
+        title: "Traffic citations & collection",
+        description: `${live.length} live citations (${voids} voided) · ${paid} paid · ${overdue} overdue.`,
         metrics: [
-          { label: "Issued", value: String(citationRows.length) },
+          { label: "Issued", value: String(live.length) },
           { label: "Paid", value: String(paid) },
+          {
+            label: "Assessed MWK",
+            value: assessed.toLocaleString(),
+          },
+          {
+            label: "Collected MWK",
+            value: `${Math.round(collected).toLocaleString()} (${rate}%)`,
+          },
+          { label: "Overdue", value: String(overdue) },
+          { label: "Voided", value: String(voids) },
         ],
-        series: toWeeklySeries(weeklyCitations),
-        severity: "info",
+        series: toWeeklySeries(weeklyCollected),
+        severity: overdue > 0 ? "warning" : "info",
       })
     }
 

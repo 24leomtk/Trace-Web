@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const strict_1 = __importDefault(require("node:assert/strict"));
+const node_fs_1 = require("node:fs");
+const node_path_1 = __importDefault(require("node:path"));
 const visibility_1 = require("../lib/visibility");
 const format_1 = require("../lib/format");
 const sms_1 = require("../lib/sms");
@@ -369,6 +371,33 @@ function record(overrides) {
             severity: "catastrophic",
             vehicles_involved: [],
         }).success, false);
+    });
+});
+(0, node_test_1.describe)("Phase 6 hardening artifacts", () => {
+    const hardeningSql = (0, node_fs_1.readFileSync)(node_path_1.default.join(__dirname, "..", "..", "..", "db", "sql", "Functions&Policies.sql"), "utf8");
+    (0, node_test_1.it)("indexes ticket search + constrains money/lifecycle vocab", () => {
+        for (const needle of [
+            "traffic_citations_ticket_number_trgm_idx",
+            "traffic_citations_violation_type_trgm_idx",
+            "citation_payments_method_chk",
+            "citation_payments_channel_chk",
+            "records_locate_state_chk",
+            "records_disposition_chk",
+            "traffic_citations_void_chk",
+        ]) {
+            strict_1.default.ok(hardeningSql.includes(needle), `missing ${needle}`);
+        }
+    });
+    (0, node_test_1.it)("gates the custody table behind RLS", () => {
+        for (const needle of [
+            "alter table public.impound_custody enable row level security",
+            "impound_custody_read",
+            "impound_custody_write",
+            "impound_custody_update",
+            "revoke delete on public.impound_custody from app_user",
+        ]) {
+            strict_1.default.ok(hardeningSql.includes(needle), `missing ${needle}`);
+        }
     });
 });
 (0, node_test_1.describe)("referralSla", () => {

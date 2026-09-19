@@ -1,5 +1,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 
 import {
   canViewRecord,
@@ -580,6 +582,39 @@ describe("Phase 5 record completion", () => {
       }).success,
       false
     )
+  })
+})
+
+describe("Phase 6 hardening artifacts", () => {
+  const hardeningSql = readFileSync(
+    path.join(__dirname, "..", "..", "..", "db", "sql", "Functions&Policies.sql"),
+    "utf8"
+  )
+
+  it("indexes ticket search + constrains money/lifecycle vocab", () => {
+    for (const needle of [
+      "traffic_citations_ticket_number_trgm_idx",
+      "traffic_citations_violation_type_trgm_idx",
+      "citation_payments_method_chk",
+      "citation_payments_channel_chk",
+      "records_locate_state_chk",
+      "records_disposition_chk",
+      "traffic_citations_void_chk",
+    ]) {
+      assert.ok(hardeningSql.includes(needle), `missing ${needle}`)
+    }
+  })
+
+  it("gates the custody table behind RLS", () => {
+    for (const needle of [
+      "alter table public.impound_custody enable row level security",
+      "impound_custody_read",
+      "impound_custody_write",
+      "impound_custody_update",
+      "revoke delete on public.impound_custody from app_user",
+    ]) {
+      assert.ok(hardeningSql.includes(needle), `missing ${needle}`)
+    }
   })
 })
 

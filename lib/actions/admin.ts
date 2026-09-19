@@ -1,9 +1,9 @@
 "use server"
 
-import { and, asc, eq, ilike, or } from "drizzle-orm"
+import { and, asc, count, eq, gte, ilike, or, sql } from "drizzle-orm"
 
 import { db } from "@/db"
-import { branches, organizations, users } from "@/db/schema"
+import { actions, branches, organizations, sessions, users } from "@/db/schema"
 import { requireUser } from "@/lib/session"
 import { toDbRole, toUiRole } from "@/lib/roles"
 import {
@@ -553,5 +553,109 @@ export async function getUserDetail(id: string): Promise<ManagedUserRow | null> 
     phone: row.phone ?? "",
     role: toUiRole(row.role),
     createdAt: row.createdAt.toISOString(),
+  }
+}
+
+export interface AccessReviewRow {
+  id: string
+  name: string
+  role: string
+  scope: string
+  isActive: boolean
+  lastActiveAt: string | null
+  dormant: boolean
+  rejectedTransitions: number
+}
+
+export interface AccessReview {
+  generatedAt: string
+  users: AccessReviewRow[]
+  dormantCount: number
+  rejectedTotal: number
+}
+
+/**
+ * Phase 6: periodic access recertification (Mark43 Scottsdale lesson).
+ * Every account with last activity, plus friction signals: dormant active
+ * accounts (>90 days) and blocked status transitions (status_rejected)
+ * in the last 30 days. System admins only; no case data.
+ */
+export async function getAccessReview(): Promise<AccessReview> {
+  await requireSystemAdmin()
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      role: users.role,
+      domain: users.domain,
+      branchName: branches.name,
+      district: users.district,
+      organizationName: organizations.name,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .leftJoin(branches, eq(users.branchId, branches.id))
+    .leftJoin(organizations, eq(users.organizationId, organizations.id))
+    .orderBy(asc(users.name))
+    .limit(500)
+
+  const sessionRows = await db
+    .select({
+      userId: sessions.userId,
+      lastActive: sql<string>`max(${sessions.updatedAt})::text`,
+    })
+    .from(sessions)
+    .groupBy(sessions.userId)
+  const lastActiveByUser = new Map(
+    sessionRows.map((row) => [row.userId, row.lastActive])
+  )
+
+  const rejectedRows = await db
+    .select({
+      actorId: actions.actorId,
+      total: count(),
+    })
+    .from(actions)
+    .where(
+      and(
+        eq(actions.actionType, "status_rejected" as never),
+        gte(actions.createdAt, sql`now() - interval '30 days'`)
+      )
+    )
+    .groupBy(actions.actorId)
+  const rejectedByUser = new Map(
+    rejectedRows.map((row) => [row.actorId, row.total])
+  )
+
+  const now = Date.now()
+  const NINETY_DAYS = 90 * 86_400_000
+  const usersOut: AccessReviewRow[] = rows.map((row) => {
+    const lastActive = lastActiveByUser.get(row.id) ?? null
+    const lastActiveMs = lastActive ? new Date(lastActive).getTime() : null
+    const dormant =
+      row.isActive &&
+      (lastActiveMs == null || Number.isNaN(lastActiveMs) || now - lastActiveMs > NINETY_DAYS)
+    const scope =
+      row.branchName ??
+      (row.district ? row.district.replace(/_/g, " ") : null) ??
+      row.organizationName ??
+      (row.domain ? `${row.domain} · national` : null) ??
+      "platform"
+    return {
+      id: row.id,
+      name: row.name,
+      role: toUiRole(row.role),
+      scope,
+      isActive: row.isActive,
+      lastActiveAt: lastActiveMs ? new Date(lastActiveMs).toISOString() : null,
+      dormant,
+      rejectedTransitions: rejectedByUser.get(row.id) ?? 0,
+    }
+  })
+  return {
+    generatedAt: new Date().toISOString(),
+    users: usersOut,
+    dormantCount: usersOut.filter((u) => u.dormant).length,
+    rejectedTotal: [...rejectedByUser.values()].reduce((a, b) => a + b, 0),
   }
 }
