@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -11,7 +11,9 @@ import {
   courtCaseAccess,
   idempotencyKeys,
   impoundCustody,
+  insurancePolicies,
   missingPersonCases,
+  organizations,
   recordAttachments,
   records,
   trafficCitations,
@@ -31,6 +33,7 @@ import {
   defaultRetentionUntil,
   fileKindFromMime,
 } from "@/lib/format"
+import { isPolicyLive } from "@/lib/visibility"
 import { writeAudit, writeAuditTx } from "@/lib/server/audit"
 import {
   canViewRecord,
@@ -223,8 +226,71 @@ async function refreshVehicleFlag(
 }
 
 /** Write the coded projection rows for a record (kept in app code, not triggers). */
-async function writeCodedProjections(
+/**
+ * Phase 5: freeze each crash vehicle's insurance position into the payload.
+ * Policies lapse after the crash, so the case keeps what was true that day.
+ * Skips vehicles that already carry a snapshot (e.g. mobile clients that
+ * captured one roadside). Never throws — filing must survive registry gaps.
+ */
+async function attachInsuranceSnapshots(
   tx: DbTransaction,
+  payload: Record<string, unknown>
+): Promise<void> {
+  const involved = payload["vehicles_involved"]
+  if (!Array.isArray(involved) || involved.length === 0) return
+  const accidentDate =
+    typeof payload["accident_date"] === "string" && payload["accident_date"]
+      ? (payload["accident_date"] as string)
+      : new Date().toISOString().slice(0, 10)
+  for (const entry of involved) {
+    if (typeof entry !== "object" || entry === null) continue
+    const row = entry as Record<string, unknown>
+    if (row["insurance_snapshot"] != null) continue
+    if (typeof row["plate_number"] !== "string" || !row["plate_number"].trim()) {
+      continue
+    }
+    try {
+      const vehicle = await resolveVehicleByPlate(tx, row["plate_number"])
+      if (!vehicle) continue
+      const policies = await tx
+        .select({
+          policyNumber: insurancePolicies.policyNumber,
+          coverageType: insurancePolicies.coverageType,
+          startDate: insurancePolicies.startDate,
+          endDate: insurancePolicies.endDate,
+          isActive: insurancePolicies.isActive,
+          insurerId: insurancePolicies.insurerId,
+        })
+        .from(insurancePolicies)
+        .where(eq(insurancePolicies.vehicleId, vehicle.id))
+      const live = policies.filter((policy) =>
+        isPolicyLive({
+          isActive: policy.isActive,
+          startDate: policy.startDate,
+          endDate: policy.endDate,
+          today: accidentDate,
+        })
+      )
+      if (live.length === 0) continue
+      live.sort((a, b) => b.startDate.localeCompare(a.startDate))
+      const best = live[0]
+      const [insurer] = await tx
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, best.insurerId))
+        .limit(1)
+      row["insurance_snapshot"] = {
+        policy_number: best.policyNumber ?? undefined,
+        insurer_name: insurer?.name ?? undefined,
+        coverage_type: best.coverageType ?? undefined,
+      }
+    } catch {
+      // Registry gaps must never block filing.
+    }
+  }
+}
+
+async function writeCodedProjections(  tx: DbTransaction,
   record: RecordRow,
   data: Record<string, unknown>
 ): Promise<void> {
@@ -829,6 +895,10 @@ export async function createRecord({
   }
 
   return withUserCtx(scope.id, async (tx) => {
+    // Phase 5: freeze crash-time insurance before the payload is stored.
+    if (type === "road_accident") {
+      await attachInsuranceSnapshots(tx, payload)
+    }
     // Link person when the payload references a known profile.
     const personId =
       typeof payload.person_id === "string" && payload.person_id
@@ -956,6 +1026,12 @@ export async function updateRecord({
     const schema = recordSchemas[record.recordType as RecordType]
     const parsed = schema.safeParse(data)
     if (!parsed.success) throw new Error("The record payload didn't pass validation.")
+
+    // Phase 5: refresh crash-time insurance for newly added vehicles
+    // (existing snapshots are preserved, never overwritten).
+    if (record.recordType === "road_accident") {
+      await attachInsuranceSnapshots(tx, parsed.data as Record<string, unknown>)
+    }
 
     await tx
       .update(records)
@@ -1097,6 +1173,20 @@ export async function getTransitionHints(
         blocks.set(target, await transitionBlockReason(tx, record, target))
       }
     }
+    // Phase 5: Axon-style warn — resolving a want with no linked arrest
+    // on file should name the warrant-recall basis in the reason.
+    let wantedAdvisory: string | null = null
+    if (record.recordType === "wanted_person" && !blocks.get("resolved")) {
+      const [linkedArrest] = await tx
+        .select({ id: records.id })
+        .from(records)
+        .where(sql`${records.data}->>'linked_wanted_record_id' = ${record.id}`)
+        .limit(1)
+      if (!linkedArrest) {
+        wantedAdvisory =
+          "No linked arrest on file — record the warrant recall basis in your reason."
+      }
+    }
     return {
       current: record.status as CaseStatus,
       hints: targets.map((target) => {
@@ -1106,6 +1196,9 @@ export async function getTransitionHints(
         const block = blocks.get(target)
         if (block) {
           return { status: target, allowed: false, message: block }
+        }
+        if (target === "resolved" && wantedAdvisory) {
+          return { status: target, allowed: true, message: wantedAdvisory }
         }
         if ((target === "resolved" || target === "closed") && advisory) {
           return { status: target, allowed: true, message: advisory }

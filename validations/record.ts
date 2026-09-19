@@ -2,6 +2,25 @@ import * as z from "zod"
 
 export const dangerLevelOptions = ["low", "medium", "high", "extreme"] as const
 
+// Phase 5 record-completion vocab (review §1.3). All optional during
+// transition — filing must never hard-gate on data the officer can't know
+// roadside.
+export const custodyStatusOptions = [
+  "in_custody",
+  "released_on_bail",
+  "handed_to_court",
+  "released_unconditionally",
+] as const
+
+export const prosecutorDecisionOptions = [
+  "pending",
+  "accepted",
+  "declined",
+  "diverted",
+] as const
+
+export const accidentSeverityOptions = ["minor", "serious", "fatal"] as const
+
 // F10 GPS capture: optional precise coordinates alongside the free-text
 // location. Never required — filing must work without a GPS fix.
 const geoFields = {
@@ -53,11 +72,37 @@ export const stolenPropertySchema = z.object({
 
 export const crimeIncidentSchema = z.object({
   incident_type: z.string().min(1),
+  // Phase 5: statute/section coding drives court + fine tables downstream.
+  offense_code: z.string().trim().max(32).optional(),
   description: z.string().min(1),
   location: z.string().min(1),
   date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  victims: z.array(z.string().min(1)).default([]),
-  witnesses: z.array(z.string().min(1)).default([]),
+  // Phase 5: structured parties (name + contact + statement ref) accepted
+  // alongside legacy bare strings — read-compatibly, never a hard gate.
+  victims: z
+    .array(
+      z.union([
+        z.string().min(1),
+        z.object({
+          name: z.string().min(1).max(200),
+          contact: z.string().max(64).optional(),
+          statement_ref: z.string().max(64).optional(),
+        }),
+      ])
+    )
+    .default([]),
+  witnesses: z
+    .array(
+      z.union([
+        z.string().min(1),
+        z.object({
+          name: z.string().min(1).max(200),
+          contact: z.string().max(64).optional(),
+          statement_ref: z.string().max(64).optional(),
+        }),
+      ])
+    )
+    .default([]),
   linked_person_ids: z.array(z.uuid()).default([]),
   ...geoFields,
 })
@@ -70,6 +115,13 @@ export const arrestRecordSchema = z.object({
   arrest_location: z.string().min(1),
   arrest_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   arresting_officer: z.string().min(1),
+  // Phase 5: link the officer account (set via the case tab, not typed) —
+  // free text stays as fallback display. Booking/custody/prosecutor ride in
+  // the payload (full F8 booking remains partner-gated).
+  arresting_officer_id: z.uuid().optional(),
+  booking_no: z.string().trim().max(64).optional(),
+  custody_status: z.enum(custodyStatusOptions).optional(),
+  prosecutor_decision: z.enum(prosecutorDecisionOptions).optional(),
   linked_wanted_record_id: z.uuid().optional(),
   ...geoFields,
 })
@@ -93,6 +145,10 @@ export const missingVehicleSchema = z.object({
 export const vehicleOffenseSchema = z.object({
   plate_number: z.string().min(1),
   offense_type: z.string().min(1),
+  // Phase 5: statute coding + criminal/court flags drive scheduling.
+  statute_code: z.string().trim().max(32).optional(),
+  is_criminal: z.boolean().default(false),
+  court_appearance_required: z.boolean().default(false),
   description: z.string().min(1),
   location: z.string().min(1),
   date_occurred: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -105,10 +161,25 @@ export const roadAccidentSchema = z.object({
   accident_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   description: z.string().min(1),
   cause: z.string().optional(),
+  // Phase 5: crash-report minimums. Never required — filing works with
+  // location + date + description alone.
+  severity: z.enum(accidentSeverityOptions).optional(),
+  road_condition: z.string().trim().max(120).optional(),
+  weather: z.string().trim().max(120).optional(),
   vehicles_involved: z.array(
     z.object({
       plate_number: z.string().min(1),
       role: z.string().optional(), // e.g. "at_fault", "involved"
+      driver_name: z.string().trim().max(120).optional(),
+      policy_number: z.string().trim().max(64).optional(),
+      // Frozen at filing by the server (policies lapse after the crash).
+      insurance_snapshot: z
+        .object({
+          policy_number: z.string().max(64).optional(),
+          insurer_name: z.string().max(200).optional(),
+          coverage_type: z.string().max(64).optional(),
+        })
+        .optional(),
     })
   ),
   fatalities: z.number().int().min(0).default(0),

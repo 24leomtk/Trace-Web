@@ -1,11 +1,16 @@
-import { dangerLevelOptions } from "@/validations/record"
+import {
+  accidentSeverityOptions,
+  custodyStatusOptions,
+  dangerLevelOptions,
+  prosecutorDecisionOptions,
+} from "@/validations/record"
 import type { Domain } from "@/lib/types"
 
 export interface PlainFieldDef {
   kind?: undefined
   path: string
   label: string
-  type?: "text" | "textarea" | "date" | "datetime-local" | "number"
+  type?: "text" | "textarea" | "date" | "datetime-local" | "number" | "checkbox"
   options?: readonly string[]
   placeholder?: string
   required?: boolean
@@ -89,6 +94,7 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
   ],
   crime_incident: [
     f("incident_type", "Incident type", { placeholder: "Burglary, assault…" }),
+    o("offense_code", "Offense code", { half: true, placeholder: "Statute/section…" }),
     f("location", "Location"),
     f("date_occurred", "Date occurred", { type: "date", half: true }),
     f("description", "Description", { type: "textarea" }),
@@ -102,6 +108,9 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
     f("arrest_location", "Arrest location"),
     f("arrest_date", "Arrest date", { type: "date", half: true }),
     f("arresting_officer", "Arresting officer", { half: true }),
+    o("booking_no", "Booking number", { half: true, placeholder: "Station booking ref…" }),
+    o("custody_status", "Custody status", { options: custodyStatusOptions, half: true }),
+    o("prosecutor_decision", "Prosecutor decision", { options: prosecutorDecisionOptions, half: true }),
   ],
   missing_vehicle: [
     f("plate_number", "Plate number", { half: true, placeholder: "e.g. MH 1234" }),
@@ -116,6 +125,9 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
   vehicle_offense: [
     f("plate_number", "Plate number", { half: true }),
     f("offense_type", "Offense type", { half: true, placeholder: "Speeding, no license…" }),
+    o("statute_code", "Statute code", { half: true, placeholder: "e.g. s.316.074" }),
+    o("is_criminal", "Criminal offense", { type: "checkbox", half: true }),
+    o("court_appearance_required", "Court appearance required", { type: "checkbox", half: true }),
     f("location", "Location"),
     f("date_occurred", "Date occurred", { type: "date", half: true }),
     f("description", "Description", { type: "textarea" }),
@@ -124,6 +136,9 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
     f("location", "Location"),
     f("accident_date", "Accident date", { type: "date", half: true }),
     o("cause", "Cause", { half: true, placeholder: "Speeding, brake failure…" }),
+    o("severity", "Severity", { options: accidentSeverityOptions, half: true }),
+    o("road_condition", "Road condition", { half: true, placeholder: "Wet, potholes…" }),
+    o("weather", "Weather", { half: true, placeholder: "Rain, clear…" }),
     {
       kind: "rowlist",
       path: "vehicles_involved",
@@ -132,6 +147,8 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
       fields: [
         f("plate_number", "Plate number"),
         o("role", "Role", { placeholder: "at_fault, involved…" }),
+        o("driver_name", "Driver name"),
+        o("policy_number", "Policy no. (if known)"),
       ],
     },
     f("description", "Description", { type: "textarea" }),

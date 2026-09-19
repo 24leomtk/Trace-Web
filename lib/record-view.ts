@@ -16,6 +16,24 @@ function list(data: Data, key: string): string[] {
     : []
 }
 
+/** Victim/witness names — Phase 5 accepts structured parties or legacy strings. */
+function partyNames(data: Data, key: string): string[] {
+  const value = data[key]
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): string[] => {
+    if (typeof item === "string" && item.trim()) return [item.trim()]
+    if (
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as Record<string, unknown>).name === "string" &&
+      ((item as Record<string, unknown>).name as string).trim()
+    ) {
+      return [((item as Record<string, unknown>).name as string).trim()]
+    }
+    return []
+  })
+}
+
 function sentence(parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ")
 }
@@ -89,9 +107,9 @@ export function describeRecord(type: RecordType, data: Data): RecordView {
       }
 
     case "crime_incident": {
-      const victims = list(data, "victims")
+      const victims = partyNames(data, "victims")
       return {
-        title: str(data, "incident_type") || meta.label,
+        title: sentence([str(data, "offense_code"), str(data, "incident_type")]) || meta.label,
         summary: sentence([
           str(data, "description"),
           str(data, "location") && `Location: ${str(data, "location")}.`,
@@ -103,6 +121,8 @@ export function describeRecord(type: RecordType, data: Data): RecordView {
 
     case "arrest_record": {
       const charges = list(data, "charges")
+      const custody = str(data, "custody_status")
+      const prosecutor = str(data, "prosecutor_decision")
       return {
         title: str(data, "full_name") || meta.label,
         summary: sentence([
@@ -110,8 +130,25 @@ export function describeRecord(type: RecordType, data: Data): RecordView {
           str(data, "arrest_location") &&
             `Arrested at ${str(data, "arrest_location")}`,
           str(data, "arrest_date") && `on ${str(data, "arrest_date")}.`,
+          str(data, "booking_no") && `Booking: ${str(data, "booking_no")}.`,
+          prosecutor &&
+            prosecutor !== "pending" &&
+            `Prosecutor: ${prosecutor.replace(/_/g, " ")}.`,
         ]),
-        badges: [{ label: "Arrest", tone: "violet" }],
+        badges: [
+          {
+            label:
+              custody && custody !== "released_unconditionally"
+                ? `Custody: ${custody.replace(/_/g, " ")}`
+                : "Arrest",
+            tone:
+              custody === "in_custody"
+                ? "red"
+                : custody === "released_on_bail"
+                  ? "amber"
+                  : "violet",
+          },
+        ],
       }
     }
 
@@ -132,23 +169,38 @@ export function describeRecord(type: RecordType, data: Data): RecordView {
         title: sentence([str(data, "plate_number"), str(data, "offense_type")]) ||
           meta.label,
         summary: sentence([
+          str(data, "statute_code") && `[${str(data, "statute_code")}]`,
+          data["is_criminal"] === true && "Criminal matter.",
+          data["court_appearance_required"] === true &&
+            "Court appearance required.",
           str(data, "description"),
           str(data, "location") && `Location: ${str(data, "location")}.`,
         ]),
-        badges: [{ label: "Offense", tone: "orange" }],
+        badges: [
+          data["is_criminal"] === true
+            ? { label: "Criminal offense", tone: "red" }
+            : { label: "Offense", tone: "orange" },
+        ],
       }
 
     case "road_accident": {
       const vehicles = data["vehicles_involved"]
       const count = Array.isArray(vehicles) ? vehicles.length : 0
+      const severity = str(data, "severity")
       return {
         title: str(data, "location") || meta.label,
         summary: sentence([
+          severity && `Severity: ${severity}.`,
           str(data, "description"),
           count > 0 && `${count} vehicle${count === 1 ? "" : "s"} involved.`,
           str(data, "cause") && `Cause: ${str(data, "cause")}.`,
         ]),
-        badges: [{ label: "Accident", tone: "red" }],
+        badges: [
+          {
+            label: severity === "fatal" ? "Fatal accident" : "Accident",
+            tone: severity === "fatal" ? "red" : "orange",
+          },
+        ],
       }
     }
 

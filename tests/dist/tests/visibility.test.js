@@ -306,6 +306,71 @@ function record(overrides) {
         strict_1.default.equal(admin_1.custodyReleaseSchema.safeParse({ recordId: id, recipientName: "X", recipientIdChecked: "" }).success, false);
     });
 });
+(0, node_test_1.describe)("Phase 5 record completion", () => {
+    (0, node_test_1.it)("arrest accepts booking, custody, and prosecutor fields", () => {
+        const base = {
+            full_name: "John Banda",
+            charges: ["theft"],
+            arrest_location: "Limbe",
+            arrest_date: "2026-09-01",
+            arresting_officer: "Ofc. Phiri",
+        };
+        strict_1.default.equal(record_1.arrestRecordSchema.safeParse(base).success, true);
+        strict_1.default.equal(record_1.arrestRecordSchema.safeParse(Object.assign(Object.assign({}, base), { booking_no: "BK-12/26", custody_status: "handed_to_court", prosecutor_decision: "accepted" })).success, true);
+        strict_1.default.equal(record_1.arrestRecordSchema.safeParse(Object.assign(Object.assign({}, base), { custody_status: "jailed" }))
+            .success, false);
+    });
+    (0, node_test_1.it)("offense defaults to non-criminal, no appearance", () => {
+        const parsed = record_1.vehicleOffenseSchema.safeParse({
+            plate_number: "MH 1234",
+            offense_type: "speeding",
+            description: "80 in a 60 zone",
+            location: "M1",
+            date_occurred: "2026-09-01",
+        });
+        strict_1.default.equal(parsed.success, true);
+        if (parsed.success) {
+            strict_1.default.equal(parsed.data.is_criminal, false);
+            strict_1.default.equal(parsed.data.court_appearance_required, false);
+        }
+    });
+    (0, node_test_1.it)("incident accepts structured victims alongside legacy strings", () => {
+        const base = {
+            incident_type: "burglary",
+            description: "Shop break-in",
+            location: "Zomba",
+            date_occurred: "2026-09-01",
+        };
+        strict_1.default.equal(record_1.crimeIncidentSchema.safeParse(Object.assign(Object.assign({}, base), { offense_code: "s.363", victims: ["Amina", { name: "Banda", contact: "+265991234567" }], witnesses: [] })).success, true);
+    });
+    (0, node_test_1.it)("accident accepts severity plus per-vehicle driver and snapshot", () => {
+        strict_1.default.equal(record_1.roadAccidentSchema.safeParse({
+            location: "M1",
+            accident_date: "2026-09-01",
+            description: "Rear-end collision",
+            severity: "serious",
+            weather: "rain",
+            vehicles_involved: [
+                {
+                    plate_number: "MH 1234",
+                    driver_name: "Chifundo",
+                    insurance_snapshot: {
+                        policy_number: "POL-1",
+                        insurer_name: "NICO",
+                        coverage_type: "comprehensive",
+                    },
+                },
+            ],
+        }).success, true);
+        strict_1.default.equal(record_1.roadAccidentSchema.safeParse({
+            location: "M1",
+            accident_date: "2026-09-01",
+            description: "x",
+            severity: "catastrophic",
+            vehicles_involved: [],
+        }).success, false);
+    });
+});
 (0, node_test_1.describe)("referralSla", () => {
     const referred = "2026-09-01T12:00:00Z";
     const now = new Date("2026-09-17T12:00:00Z").getTime();

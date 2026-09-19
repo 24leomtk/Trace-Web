@@ -49,7 +49,9 @@ function initialValues(fields: AnyFieldDef[]): FormValues {
   for (const field of fields) {
     if (field.kind === "stringlist") values[field.path] = []
     else if (field.kind === "rowlist") values[field.path] = []
-    else values[field.path] = ""
+    else if (field.kind === undefined && field.type === "checkbox") {
+      values[field.path] = false
+    } else values[field.path] = ""
   }
   return values
 }
@@ -155,7 +157,9 @@ export default function NewRecordPage() {
 
   function isPristine(formValues: FormValues): boolean {
     return Object.values(formValues).every((value) =>
-      Array.isArray(value) ? value.length === 0 : value === "" || value == null
+      Array.isArray(value)
+        ? value.length === 0
+        : value === "" || value == null || value === false
     )
   }
 

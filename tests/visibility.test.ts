@@ -33,7 +33,7 @@ import {
   shortFileHash,
 } from "../lib/format"
 import { otpMessage, resolveSmsConfig } from "../lib/sms"
-import { crimeIncidentSchema, wantedPersonSchema } from "../validations/record"
+import { crimeIncidentSchema, wantedPersonSchema, arrestRecordSchema, vehicleOffenseSchema, roadAccidentSchema } from "../validations/record"
 import { apiKeySchema, citationPaymentSchema, citationVoidSchema, custodyHoldSchema, custodyReleaseSchema, dispositionSchema, locateReportSchema } from "../validations/admin"
 
 const officer: VisibilityScope = {
@@ -484,6 +484,100 @@ describe("custodyHoldSchema + custodyReleaseSchema (Phase 4)", () => {
     )
     assert.equal(
       custodyReleaseSchema.safeParse({ recordId: id, recipientName: "X", recipientIdChecked: "" }).success,
+      false
+    )
+  })
+})
+
+describe("Phase 5 record completion", () => {
+  it("arrest accepts booking, custody, and prosecutor fields", () => {
+    const base = {
+      full_name: "John Banda",
+      charges: ["theft"],
+      arrest_location: "Limbe",
+      arrest_date: "2026-09-01",
+      arresting_officer: "Ofc. Phiri",
+    }
+    assert.equal(arrestRecordSchema.safeParse(base).success, true)
+    assert.equal(
+      arrestRecordSchema.safeParse({
+        ...base,
+        booking_no: "BK-12/26",
+        custody_status: "handed_to_court",
+        prosecutor_decision: "accepted",
+      }).success,
+      true
+    )
+    assert.equal(
+      arrestRecordSchema.safeParse({ ...base, custody_status: "jailed" })
+        .success,
+      false
+    )
+  })
+
+  it("offense defaults to non-criminal, no appearance", () => {
+    const parsed = vehicleOffenseSchema.safeParse({
+      plate_number: "MH 1234",
+      offense_type: "speeding",
+      description: "80 in a 60 zone",
+      location: "M1",
+      date_occurred: "2026-09-01",
+    })
+    assert.equal(parsed.success, true)
+    if (parsed.success) {
+      assert.equal(parsed.data.is_criminal, false)
+      assert.equal(parsed.data.court_appearance_required, false)
+    }
+  })
+
+  it("incident accepts structured victims alongside legacy strings", () => {
+    const base = {
+      incident_type: "burglary",
+      description: "Shop break-in",
+      location: "Zomba",
+      date_occurred: "2026-09-01",
+    }
+    assert.equal(
+      crimeIncidentSchema.safeParse({
+        ...base,
+        offense_code: "s.363",
+        victims: ["Amina", { name: "Banda", contact: "+265991234567" }],
+        witnesses: [],
+      }).success,
+      true
+    )
+  })
+
+  it("accident accepts severity plus per-vehicle driver and snapshot", () => {
+    assert.equal(
+      roadAccidentSchema.safeParse({
+        location: "M1",
+        accident_date: "2026-09-01",
+        description: "Rear-end collision",
+        severity: "serious",
+        weather: "rain",
+        vehicles_involved: [
+          {
+            plate_number: "MH 1234",
+            driver_name: "Chifundo",
+            insurance_snapshot: {
+              policy_number: "POL-1",
+              insurer_name: "NICO",
+              coverage_type: "comprehensive",
+            },
+          },
+        ],
+      }).success,
+      true
+    )
+    assert.equal(
+      roadAccidentSchema.safeParse({
+        location: "M1",
+        accident_date: "2026-09-01",
+        description: "x",
+        severity: "catastrophic",
+        vehicles_involved: [],
+      }).success,
       false
     )
   })

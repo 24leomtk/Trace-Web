@@ -151,6 +151,33 @@ function FieldRenderer({
 
   const spanClass = field.type === "textarea" ? "sm:col-span-2" : ""
 
+  if (field.type === "checkbox") {
+    return (
+      <div
+        id={fieldAnchorId(field.path)}
+        className={cn("flex scroll-mt-28 flex-col gap-1.5", spanClass)}
+      >
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={value === true}
+            onChange={(event) => setValue(event.target.checked)}
+            aria-label={field.label}
+            className="size-4 accent-current"
+          />
+          <span className="text-xs font-medium tracking-wide text-muted-foreground">
+            {field.label}
+            {!field.required && (
+              <span className="ml-1 font-normal normal-case opacity-60">
+                optional
+              </span>
+            )}
+          </span>
+        </label>
+      </div>
+    )
+  }
+
   if (field.options) {
     return (
       <div

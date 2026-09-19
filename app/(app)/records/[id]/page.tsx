@@ -43,6 +43,7 @@ import { EntityPicker } from "@/components/app/entity-picker"
 import { formatCoords, openStreetMapUrl } from "@/components/app/geo-capture"
 import { LinkedEntities } from "@/components/app/linked-entities"
 import { ListPagination } from "@/components/app/list-pagination"
+import { ArrestDetail } from "@/components/app/arrest-detail"
 import { ImpoundCustody } from "@/components/app/impound-custody"
 import { LocateCard } from "@/components/app/locate-card"
 import { SearchInput } from "@/components/app/search-input"
@@ -210,7 +211,11 @@ export default function RecordDetailPage({
         const raw = payload[field.path]
         values[field.path] =
           raw ??
-          (field.kind === "stringlist" || field.kind === "rowlist" ? [] : "")
+          (field.kind === "stringlist" || field.kind === "rowlist"
+            ? []
+            : field.kind === undefined && field.type === "checkbox"
+              ? false
+              : "")
       }
       // F10: carry the GPS fix (not a rendered field) so edits don't drop it.
       if (typeof payload.latitude === "number")
@@ -463,6 +468,14 @@ export default function RecordDetailPage({
             />
           )}
 
+          {record.recordType === "arrest_record" && (
+            <ArrestDetail
+              recordId={record.id}
+              canManage={record.reportedBy === user.id || isMonitor}
+              isActive={record.status === "active"}
+            />
+          )}
+
           {record.recordType === "vehicle_impoundment" && isPolice && (
             <ImpoundCustody recordId={record.id} />
           )}
@@ -674,6 +687,15 @@ export default function RecordDetailPage({
               <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Tasking
               </h2>
+              {record.recordType === "crime_incident" &&
+                record.status === "active" &&
+                (assignmentsQuery.data ?? []).length === 0 &&
+                isMonitor && (
+                  <p className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                    No investigator assigned yet — assign one below so this
+                    incident has an owner.
+                  </p>
+                )}
               {(assignmentsQuery.data ?? []).length > 4 && (
                 <SearchInput
                   value={tasksSearch.query}
