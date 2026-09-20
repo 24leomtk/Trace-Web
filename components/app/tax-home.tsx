@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { formatCurrency, formatDateShort } from "@/lib/format"
+import { formatCurrency, formatDateKey, formatDateShort } from "@/lib/format"
 
 const STATUS_OPTIONS = [
   { value: "unpaid", label: "Unpaid", icon: ClockIcon },
@@ -406,7 +406,7 @@ function TaxRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
         {formatCurrency(row.amountDue)}
         {row.referenceNo ? ` · ref ${row.referenceNo}` : ""}
         {row.periodStart
-          ? ` · ${row.periodStart} → ${row.periodEnd ?? ""}`
+          ? ` · ${formatDateKey(row.periodStart)} → ${row.periodEnd ? formatDateKey(row.periodEnd) : ""}`
           : ""}
       </p>
       {collectable && row.waiverStatus === "none" && (

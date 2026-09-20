@@ -9,7 +9,7 @@ import type { ZodType } from "zod"
 
 import { createRecord, type UploadedAttachment } from "@/lib/actions/records"
 import { getUploadCredentials } from "@/lib/actions/uploads"
-import { normalizePlate } from "@/lib/format"
+import { formatDateShortWithTime, normalizePlate } from "@/lib/format"
 import { uploadFileToCloudinary } from "@/lib/upload"
 import { domainForRecordType } from "@/lib/record-meta"
 import { recordSchemas } from "@/validations/record"
@@ -421,7 +421,7 @@ export default function NewRecordPage() {
             <span className="font-medium">Unfinished draft</span>
             <span className="text-muted-foreground">
               {" "}
-              · saved {new Date(draftSavedAt).toLocaleString()} on this device.
+              · saved {formatDateShortWithTime(draftSavedAt)} on this device.
               Photos are not kept in drafts.
             </span>
           </p>

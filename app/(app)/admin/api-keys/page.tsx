@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/actions/apikeys"
 import { listManagedUsers } from "@/lib/actions/admin"
+import { formatDateKey } from "@/lib/format"
 import { AdminField, AdminSection } from "@/components/app/admin-section"
 import { EntityPicker } from "@/components/app/entity-picker"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
@@ -277,7 +278,7 @@ export default function AdminApiKeysPage() {
                     <p className="text-xs text-muted-foreground">
                       {key.userName} · {key.scopes.join(", ")}
                       {key.expiresAt
-                        ? ` · expires ${key.expiresAt.slice(0, 10)}`
+                        ? ` · expires ${formatDateKey(key.expiresAt.slice(0, 10))}`
                         : " · no expiry"}
                       {!key.isActive && " · revoked"}
                     </p>

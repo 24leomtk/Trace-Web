@@ -7,6 +7,7 @@ import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { getVehicle, setVehicleStatus, updateVehicle, verifyVehicle } from "@/lib/actions/vehicles"
+import { formatDateShort } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { ListPagination } from "@/components/app/list-pagination"
@@ -253,7 +254,7 @@ export default function VehicleDetailPage({
                   <span className="text-xs font-medium text-muted-foreground">
                     {state}
                     {tax.waiverStatus !== "none" ? ` (${tax.waiverStatus})` : ""} ·
-                    due {tax.dueDate}
+                    due {formatDateShort(tax.dueDate)}
                   </span>
                 </li>
               )

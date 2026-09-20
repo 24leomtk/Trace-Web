@@ -33,7 +33,12 @@ import {
 } from "@/lib/actions/assignments"
 import { addReview, listReviews } from "@/lib/actions/reviews"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
-import { assignmentDue, formatDateShort, referralSla } from "@/lib/format"
+import {
+  assignmentDue,
+  formatDateKey,
+  formatDateShort,
+  referralSla,
+} from "@/lib/format"
 import { formatDistrict } from "@/lib/roles"
 import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -757,7 +762,7 @@ export default function RecordDetailPage({
                                 {[
                                   task.note,
                                   task.dueAt
-                                    ? `due ${task.dueAt.slice(0, 10)}`
+                                    ? `due ${formatDateKey(task.dueAt.slice(0, 10))}`
                                     : null,
                                 ]
                                   .filter(Boolean)
