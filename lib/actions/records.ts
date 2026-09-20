@@ -15,6 +15,7 @@ import {
   missingPersonCases,
   organizations,
   personCaseMatches,
+  personsOfInterest,
   recordAttachments,
   records,
   trafficCitations,
@@ -1125,9 +1126,77 @@ export async function updateRecord({
 }
 
 /**
- * Append evidence files to an active case. Same gate as updateRecord —
- * filing officer or an in-scope monitor, active records only.
+ * Link (or unlink, with null) a person profile to an active case. Same gate
+ * as updateRecord — filing officer or an in-scope monitor, active records
+ * only. Only person-centred types carry a link; projections are rewritten
+ * so missing/wanted/unclaimed lookups follow the new link.
  */
+export async function linkCasePerson({
+  id,
+  personId,
+}: {
+  id: string
+  personId: string | null
+}): Promise<void> {
+  const scope = await getViewerScope()
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+    if (!canViewRecord(scope, record)) {
+      await writeAudit({
+        actorId: scope.id,
+        actionType: "record_viewed",
+        recordId: id,
+        reason: "DENIED: attempted person link outside own scope.",
+      })
+      throw new Error("You don't have access to this record.")
+    }
+    if (
+      record.recordType !== "missing_person" &&
+      record.recordType !== "wanted_person" &&
+      record.recordType !== "arrest_record" &&
+      record.recordType !== "unclaimed_person"
+    ) {
+      throw new Error("This record type doesn't link a person profile.")
+    }
+
+    const isFiler = record.reportedBy === scope.id
+    const monitorInScope =
+      isMonitor(scope) &&
+      record.domain === scope.domain &&
+      (scope.role === "COUNTRY_MONITOR"
+        ? record.accessLevel === "country"
+        : record.district === scope.district)
+
+    if (record.status !== "active") {
+      throw new Error("Only active records can be edited. Change status or add a follow-up note instead.")
+    }
+    if (!isFiler && !monitorInScope) {
+      throw new Error("Only the filing officer or a monitor in scope can edit this record.")
+    }
+
+    if (personId) {
+      const [person] = await tx
+        .select({ id: personsOfInterest.id })
+        .from(personsOfInterest)
+        .where(eq(personsOfInterest.id, personId))
+        .limit(1)
+      if (!person) throw new Error("Person not found.")
+    }
+    await tx
+      .update(records)
+      .set({ personId: personId ?? null, updatedAt: new Date() })
+      .where(eq(records.id, id))
+    const [updated] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    await writeCodedProjections(tx, updated, (updated.data ?? {}) as Record<string, unknown>)
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: id,
+      reason: personId ? "Person profile linked to case." : "Person profile unlinked from case.",
+    })
+  })
+}
 export async function addRecordAttachments({
   id,
   attachments,

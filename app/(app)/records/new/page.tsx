@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import type { ZodType } from "zod"
 
 import { createRecord, type UploadedAttachment } from "@/lib/actions/records"
+import { searchPersons } from "@/lib/actions/persons"
 import { getUploadCredentials } from "@/lib/actions/uploads"
 import { formatDateShortWithTime, normalizePlate } from "@/lib/format"
 import { uploadFileToCloudinary } from "@/lib/upload"
@@ -28,6 +29,7 @@ import {
 import { RecordTypeSelector } from "@/components/app/record-form/record-type-selector"
 import { RECORD_TYPE_META } from "@/lib/record-meta"
 import { AttachmentsField } from "@/components/app/record-form/attachments-field"
+import { EntityPicker } from "@/components/app/entity-picker"
 import { GeoCapture } from "@/components/app/geo-capture"
 import { ScanSheet } from "@/components/app/scan-sheet"
 import { Button } from "@/components/ui/button"
@@ -86,6 +88,30 @@ function normalizeValue(path: string, value: unknown): unknown {
     return Number.isNaN(num) ? value : num
   }
   return value
+}
+
+// Person-centred types can link an existing person profile at filing —
+// the link travels as payload.person_id (validated uuid, server links it).
+const PERSON_LINKABLE: RecordType[] = [
+  "missing_person",
+  "wanted_person",
+  "arrest_record",
+  "unclaimed_person",
+]
+
+async function fetchPersonOptions(query: string, page: number, pageSize: number) {
+  const rows = await searchPersons(query, (page + 1) * pageSize)
+  return {
+    items: rows.slice(page * pageSize).map((row) => ({
+      value: row.id,
+      label: row.fullName,
+      detail:
+        [row.nationalId, row.homeDistrict?.replace(/_/g, " ")]
+          .filter(Boolean)
+          .join(" · ") || undefined,
+    })),
+    hasMore: rows.length > (page + 1) * pageSize,
+  }
 }
 
 export default function NewRecordPage() {
@@ -295,6 +321,9 @@ export default function NewRecordPage() {
       const normalized = normalizeValue(path, raw)
       if (normalized !== undefined) setDeep(payload, path, normalized)
     }
+    // Person links only travel on person-centred types (a draft restored
+    // under another type must not attach a stale profile).
+    if (!PERSON_LINKABLE.includes(recordType)) delete payload.person_id
 
     const schema = recordSchemas[recordType] as unknown as ZodType
     const parsed = schema.safeParse(payload)
@@ -503,6 +532,46 @@ export default function NewRecordPage() {
             setValue={setValue}
             errors={errors}
           />
+
+          {PERSON_LINKABLE.includes(recordType) && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium tracking-wide text-muted-foreground">
+                Link person profile
+                <span className="ml-1 font-normal opacity-60">optional</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <EntityPicker
+                    label="Person profile"
+                    placeholder="Search name or national ID…"
+                    value={
+                      typeof values.person_id === "string"
+                        ? values.person_id
+                        : ""
+                    }
+                    onChange={(next) => setValue("person_id", next)}
+                    source={{
+                      mode: "server",
+                      queryKey: "link-person",
+                      fetchPage: fetchPersonOptions,
+                    }}
+                  />
+                </div>
+                {typeof values.person_id === "string" &&
+                  values.person_id !== "" && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-none"
+                      onClick={() => setValue("person_id", "")}
+                    >
+                      Clear
+                    </Button>
+                  )}
+              </div>
+            </div>
+          )}
 
           {scannablePath && (
             <div>

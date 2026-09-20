@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useMemo, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -23,10 +23,12 @@ import {
   getRecord,
   getRecordData,
   getTransitionHints,
+  linkCasePerson,
   reassignRecord,
   setAccessLevel,
   updateRecord,
 } from "@/lib/actions/records"
+import { searchPersons } from "@/lib/actions/persons"
 import {
   getRecordAuditLog,
   listCourtLiaisons,
@@ -37,6 +39,7 @@ import {
   revokeCourtAccess,
 } from "@/lib/actions/access"
 import { branchOptions } from "@/lib/actions/admin"
+import { listBranchOptions } from "@/lib/actions/catalog"
 import {
   assignCase,
   cancelAssignment,
@@ -66,6 +69,7 @@ import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { ArrestDetail } from "@/components/app/arrest-detail"
 import { ImpoundCustody } from "@/components/app/impound-custody"
 import { LocateCard } from "@/components/app/locate-card"
+import { MatchSection } from "@/components/app/match-section"
 import { EntityPicker } from "@/components/app/entity-picker"
 import { SearchInput } from "@/components/app/search-input"
 import { ReferralBundle } from "@/components/app/referral-bundle"
@@ -114,6 +118,15 @@ const LOCATABLE = [
   "stolen_property",
 ]
 
+// Person-centred types can carry a linked person profile (filing +
+// detail link/unlink); other types never show the control.
+const PERSON_LINKABLE = [
+  "missing_person",
+  "wanted_person",
+  "arrest_record",
+  "unclaimed_person",
+]
+
 function setDeep(
   target: Record<string, unknown>,
   path: string,
@@ -129,8 +142,19 @@ function setDeep(
   node[segments[segments.length - 1]] = value
 }
 
-function formatFieldValue(field: AnyFieldDef, raw: unknown): string | null {
+function formatFieldValue(
+  field: AnyFieldDef,
+  raw: unknown,
+  labels?: Map<string, string>
+): string | null {
   if (raw == null) return null
+  // Reference fields store row IDs (e.g. custodial_branch_id) — resolve to
+  // the display label fetched alongside, falling back to the raw value.
+  if (field.kind === "ref" && typeof raw === "string") {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    return labels?.get(trimmed) ?? trimmed
+  }
   if (typeof raw === "boolean") return raw ? "Yes" : "No"
   if (typeof raw === "number") return String(raw)
   if (typeof raw === "string") {
@@ -188,6 +212,8 @@ export default function RecordDetailPage({
   const [statusSaving, setStatusSaving] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [reassignOpen, setReassignOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkSaving, setLinkSaving] = useState(false)
 
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
@@ -219,6 +245,26 @@ export default function RecordDetailPage({
       branchOptions(user.domain === "traffic" ? "traffic" : "regular"),
     enabled: user.role === "DISTRICT_MONITOR" && !!recordQuery.data,
   })
+  // Catalog labels for ref fields (e.g. custodial branch) — RLS-scoped,
+  // so officers see names here too, unlike branchesQuery above.
+  const catalogBranchesQuery = useQuery({
+    queryKey: ["catalog-branches", recordQuery.data?.domain],
+    queryFn: () =>
+      listBranchOptions(
+        recordQuery.data?.domain === "traffic" ? "traffic" : "regular"
+      ),
+    enabled: !!recordQuery.data,
+  })
+  const branchLabels = useMemo(
+    () =>
+      new Map(
+        (catalogBranchesQuery.data ?? []).map((branch) => [
+          branch.id,
+          branch.name,
+        ])
+      ),
+    [catalogBranchesQuery.data]
+  )
   const assignmentsQuery = useQuery({
     queryKey: ["assignments", id],
     queryFn: () => listRecordAssignments(id),
@@ -265,6 +311,19 @@ export default function RecordDetailPage({
         .toLowerCase()
         .includes(q),
   })
+
+  async function unlinkPerson() {
+    setLinkSaving(true)
+    try {
+      await linkCasePerson({ id, personId: null })
+      toast.success("Person unlinked.")
+      await refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setLinkSaving(false)
+    }
+  }
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["record", id] })
@@ -386,13 +445,17 @@ export default function RecordDetailPage({
     user.role === "COUNTRY_MONITOR"
   const isFiler = record.reportedBy === user.id
   const showPeople = isPolice && (record.personId || record.vehicleId)
+  // Link/unlink person: same people who may edit (filer or monitor),
+  // active records of person-centred types only.
+  const canLinkPerson =
+    canEdit && PERSON_LINKABLE.includes(record.recordType)
   const showLocate = isPolice && LOCATABLE.includes(record.recordType)
   const showManage = isMonitor || (user.role === "OFFICER" && isFiler)
   const payload = (recordDataQuery.data ?? {}) as Record<string, unknown>
   const detailFields = (RECORD_FORM_FIELDS[record.recordType] ?? [])
     .map((field) => ({
       field,
-      display: formatFieldValue(field, payload[field.path]),
+      display: formatFieldValue(field, payload[field.path], branchLabels),
     }))
     .filter((entry) => entry.display)
   // Reassign targets: in-district, in-domain branches excluding the current
@@ -618,13 +681,55 @@ export default function RecordDetailPage({
         <ImpoundCustody recordId={record.id} />
       )}
 
-      {showPeople && (
-        <Section title="People & vehicles">
-          <LinkedEntities
-            personId={record.personId}
-            vehicleId={record.vehicleId}
-          />
+      {(showPeople || (canLinkPerson && !record.personId)) && (
+        <Section
+          title="People & vehicles"
+          action={
+            canLinkPerson ? (
+              <div className="flex items-center gap-2 print:hidden">
+                {!record.personId ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-none"
+                    onClick={() => setLinkOpen(true)}
+                  >
+                    Link person
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-none"
+                    disabled={linkSaving}
+                    onClick={unlinkPerson}
+                  >
+                    Unlink person
+                  </Button>
+                )}
+              </div>
+            ) : undefined
+          }
+        >
+          {showPeople ? (
+            <LinkedEntities
+              personId={record.personId}
+              vehicleId={record.vehicleId}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No linked profiles yet — link the person this case concerns.
+            </p>
+          )}
         </Section>
+      )}
+      {canLinkPerson && !record.personId && (
+        <LinkPersonDialog
+          open={linkOpen}
+          onOpenChange={setLinkOpen}
+          recordId={record.id}
+          onDone={refresh}
+        />
       )}
 
       {showLocate && (
@@ -636,6 +741,14 @@ export default function RecordDetailPage({
           />
         </Section>
       )}
+
+      {isPolice &&
+        (record.recordType === "missing_person" ||
+          record.recordType === "unclaimed_person") && (
+          <Section title="Case matches">
+            <MatchSection recordId={record.id} />
+          </Section>
+        )}
 
       {/* Reviews */}
       <Section
@@ -1400,8 +1513,94 @@ function ReviewDialog({
   )
 }
 
-function TaskDialog({
+function LinkPersonDialog({
   open,
+  onOpenChange,
+  recordId,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  recordId: string
+  onDone: () => Promise<void>
+}) {
+  const [personId, setPersonId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (!personId) {
+      toast.error("Choose a person profile.")
+      return
+    }
+    setSaving(true)
+    try {
+      await linkCasePerson({ id: recordId, personId })
+      toast.success("Person linked.")
+      setPersonId("")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next)
+      }}
+      title="Link person"
+      description="Attach the person profile this case concerns — descriptions, marks, and biometrics follow the link."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <EntityPicker
+          label="Person profile"
+          placeholder="Search name or national ID…"
+          value={personId}
+          onChange={setPersonId}
+          triggerClassName="h-9"
+          source={{
+            mode: "server",
+            queryKey: "link-person",
+            fetchPage: async (query, page, pageSize) => {
+              const rows = await searchPersons(query, (page + 1) * pageSize)
+              return {
+                items: rows.slice(page * pageSize).map((row) => ({
+                  value: row.id,
+                  label: row.fullName,
+                  detail:
+                    [row.nationalId, row.homeDistrict?.replace(/_/g, " ")]
+                      .filter(Boolean)
+                      .join(" · ") || undefined,
+                })),
+                hasMore: rows.length > (page + 1) * pageSize,
+              }
+            },
+          }}
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving || !personId}>
+            {saving ? "Linking…" : "Link person"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
+  )
+}
+
+function TaskDialog({  open,
   onOpenChange,
   recordId,
   onDone,

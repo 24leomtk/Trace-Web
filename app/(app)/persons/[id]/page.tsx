@@ -7,8 +7,23 @@ import { useDebounce } from "use-debounce"
 import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import { getPerson, mergePersons, searchPersons } from "@/lib/actions/persons"
+import {
+  addPersonFeature,
+  getPerson,
+  mergePersons,
+  removePersonFeature,
+  searchPersons,
+  updatePerson,
+} from "@/lib/actions/persons"
+import {
+  recordDnaSample,
+  recordFingerprint,
+  removeDnaSample,
+  removeFingerprint,
+  updateDnaStatus,
+} from "@/lib/actions/biometrics"
 import { formatDateShort } from "@/lib/format"
+import { DISTRICT_OPTIONS, formatDistrict } from "@/lib/roles"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
@@ -16,7 +31,18 @@ import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/providers/user-context"
+import { personFeatureTypeOptions } from "@/validations/admin"
+import {
+  dnaSampleTypeOptions,
+  dnaStatusOptions,
+  fingerprintQualityOptions,
+} from "@/validations/biometrics"
+
+type PersonDetail = Awaited<ReturnType<typeof getPerson>>
+
+const SELECT_CLASS = "h-9 w-full rounded-none border bg-background px-2 text-sm"
 
 export default function PersonDetailPage({
   params,
@@ -35,6 +61,7 @@ export default function PersonDetailPage({
   const [mergeSearched, setMergeSearched] = useState(false)
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
+  const canEdit = user.role === "OFFICER" || isMonitor
 
   const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ["person", id],
@@ -63,6 +90,10 @@ export default function PersonDetailPage({
     }
   }
 
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: ["person", id] })
+  }
+
   if (isLoading)
     return (
       <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading person">
@@ -80,6 +111,11 @@ export default function PersonDetailPage({
             ))}
           </div>
         </div>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
       </div>
     )
   if (isError || !data) {
@@ -95,9 +131,14 @@ export default function PersonDetailPage({
 
   return (
     <PersonDetailView
+      personId={id}
       person={data.person}
       linkedCases={data.linkedCases}
+      physicalFeatures={data.physicalFeatures}
+      fingerprints={data.fingerprints}
+      dnaSamples={data.dnaSamples}
       isMonitor={isMonitor}
+      canEdit={canEdit}
       mergeQuery={mergeQuery}
       setMergeQuery={setMergeQuery}
       candidates={candidates}
@@ -105,17 +146,37 @@ export default function PersonDetailPage({
       onFindDuplicates={findDuplicates}
       onMerge={merge}
       refreshing={isFetching}
-      onRefresh={() =>
-        queryClient.invalidateQueries({ queryKey: ["person", id] })
-      }
+      onRefresh={refresh}
     />
   )
 }
 
+function range(
+  from: number | null | undefined,
+  to: number | null | undefined,
+  unit: string
+): string | null {
+  if (from == null && to == null) return null
+  const core =
+    from != null && to != null
+      ? from === to
+        ? `${from}`
+        : `${from}–${to}`
+      : from != null
+        ? `${from}+`
+        : `up to ${to}`
+  return `${core} ${unit}`
+}
+
 function PersonDetailView({
+  personId,
   person,
   linkedCases,
+  physicalFeatures,
+  fingerprints,
+  dnaSamples,
   isMonitor,
+  canEdit,
   mergeQuery,
   setMergeQuery,
   candidates,
@@ -125,19 +186,14 @@ function PersonDetailView({
   refreshing,
   onRefresh,
 }: {
-  person: {
-    fullName: string
-    nationalId?: string | null
-    homeDistrict?: string | null
-    distinguishingFeatures?: string | null
-  }
-  linkedCases: {
-    id: string
-    recordType: string
-    status: string
-    createdAt: string
-  }[]
+  personId: string
+  person: PersonDetail["person"]
+  linkedCases: PersonDetail["linkedCases"]
+  physicalFeatures: PersonDetail["physicalFeatures"]
+  fingerprints: PersonDetail["fingerprints"]
+  dnaSamples: PersonDetail["dnaSamples"]
   isMonitor: boolean
+  canEdit: boolean
   mergeQuery: string
   setMergeQuery: (value: string) => void
   candidates: Awaited<ReturnType<typeof searchPersons>>
@@ -164,13 +220,38 @@ function PersonDetailView({
         .includes(q),
   })
 
+  const description: [string, string | null][] = [
+    ["Sex", person.sex ?? null],
+    ["Date of birth", person.dateOfBirth ?? null],
+    [
+      "Age",
+      person.ageYears != null
+        ? String(person.ageYears)
+        : range(person.ageFrom, person.ageTo, "yrs"),
+    ],
+    ["Height", range(person.heightCmFrom, person.heightCmTo, "cm")],
+    ["Weight", range(person.weightKgFrom, person.weightKgTo, "kg")],
+    [
+      "Hair",
+      [person.hairColor, person.hairLength].filter(Boolean).join(" · ") ||
+        null,
+    ],
+    ["Eyes", person.eyeColor ?? null],
+    ["Complexion", person.complexion ?? null],
+    ["Build", person.build ?? null],
+    ["Clothing", person.clothingDescription ?? null],
+    ["Jewelry", person.jewelryDescription ?? null],
+    ["Medical notes", person.medicalNotes ?? null],
+  ]
+  const shownDescription = description.filter(([, value]) => value)
+
   return (
     <div className="flex flex-col gap-5">
       <BackLink />
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">{person.fullName}</h1>
         <p className="text-sm text-muted-foreground">
-          {[person.nationalId, person.homeDistrict?.replace(/_/g, " ")]
+          {[person.nationalId, formatDistrict(person.homeDistrict)]
             .filter(Boolean)
             .join(" · ") || "No identifiers on file"}
         </p>
@@ -180,6 +261,54 @@ function PersonDetailView({
           </p>
         )}
       </header>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Physical description
+          </h2>
+          {canEdit && (
+            <EditDescriptionButton personId={personId} person={person} onDone={onRefresh} />
+          )}
+        </div>
+        {shownDescription.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No physical description on file — edit to add one.
+          </p>
+        ) : (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            {shownDescription.map(([label, value]) => (
+              <div key={label} className="flex flex-col gap-0.5 border-b pb-2">
+                <dt className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                  {label}
+                </dt>
+                <dd className="text-sm">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
+
+      <MarksSection
+        personId={personId}
+        features={physicalFeatures}
+        canEdit={canEdit}
+        onDone={onRefresh}
+      />
+
+      <FingerprintsSection
+        personId={personId}
+        fingerprints={fingerprints}
+        canEdit={canEdit}
+        onDone={onRefresh}
+      />
+
+      <DnaSection
+        personId={personId}
+        dnaSamples={dnaSamples}
+        canEdit={canEdit}
+        onDone={onRefresh}
+      />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -287,6 +416,670 @@ function PersonDetailView({
         </section>
       )}
     </div>
+  )
+}
+
+function numOrUndefined(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const num = Number(trimmed)
+  return Number.isNaN(num) ? undefined : num
+}
+
+function EditDescriptionButton({
+  personId,
+  person,
+  onDone,
+}: {
+  personId: string
+  person: PersonDetail["person"]
+  onDone?: () => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    fullName: person.fullName,
+    nationalId: person.nationalId ?? "",
+    dateOfBirth: person.dateOfBirth ?? "",
+    sex: person.sex ?? "",
+    homeDistrict: person.homeDistrict ?? "",
+    distinguishingFeatures: person.distinguishingFeatures ?? "",
+    ageYears: person.ageYears != null ? String(person.ageYears) : "",
+    ageFrom: person.ageFrom != null ? String(person.ageFrom) : "",
+    ageTo: person.ageTo != null ? String(person.ageTo) : "",
+    heightCmFrom: person.heightCmFrom != null ? String(person.heightCmFrom) : "",
+    heightCmTo: person.heightCmTo != null ? String(person.heightCmTo) : "",
+    weightKgFrom: person.weightKgFrom != null ? String(person.weightKgFrom) : "",
+    weightKgTo: person.weightKgTo != null ? String(person.weightKgTo) : "",
+    hairColor: person.hairColor ?? "",
+    hairLength: person.hairLength ?? "",
+    eyeColor: person.eyeColor ?? "",
+    complexion: person.complexion ?? "",
+    build: person.build ?? "",
+    clothingDescription: person.clothingDescription ?? "",
+    jewelryDescription: person.jewelryDescription ?? "",
+    medicalNotes: person.medicalNotes ?? "",
+  })
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((prev) => ({ ...prev, [key]: event.target.value }))
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (form.fullName.trim().length < 2) {
+      toast.error("Full name needs at least 2 characters.")
+      return
+    }
+    setSaving(true)
+    try {
+      await updatePerson(personId, {
+        fullName: form.fullName,
+        nationalId: form.nationalId,
+        dateOfBirth: form.dateOfBirth,
+        sex: (["male", "female", "other"] as const).includes(form.sex as "male") ? (form.sex as "male" | "female" | "other") : undefined,
+        homeDistrict: form.homeDistrict,
+        distinguishingFeatures: form.distinguishingFeatures,
+        ageYears: numOrUndefined(form.ageYears),
+        ageFrom: numOrUndefined(form.ageFrom),
+        ageTo: numOrUndefined(form.ageTo),
+        heightCmFrom: numOrUndefined(form.heightCmFrom),
+        heightCmTo: numOrUndefined(form.heightCmTo),
+        weightKgFrom: numOrUndefined(form.weightKgFrom),
+        weightKgTo: numOrUndefined(form.weightKgTo),
+        hairColor: form.hairColor,
+        hairLength: form.hairLength,
+        eyeColor: form.eyeColor,
+        complexion: form.complexion,
+        build: form.build,
+        clothingDescription: form.clothingDescription,
+        jewelryDescription: form.jewelryDescription,
+        medicalNotes: form.medicalNotes,
+      })
+      toast.success("Description updated.")
+      setOpen(false)
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" className="rounded-none" onClick={() => setOpen(true)}>
+        Edit description
+      </Button>
+    )
+  }
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-2 rounded-none border bg-card p-4"
+    >
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Input value={form.fullName} onChange={set("fullName")} placeholder="Full name*" aria-label="Full name" />
+        <Input value={form.nationalId} onChange={set("nationalId")} placeholder="National ID" aria-label="National ID" />
+        <Input type="date" value={form.dateOfBirth} onChange={set("dateOfBirth")} aria-label="Date of birth" />
+        <select value={form.sex} onChange={set("sex")} aria-label="Sex" className={SELECT_CLASS}>
+          <option value="">Sex…</option>
+          <option value="male">male</option>
+          <option value="female">female</option>
+          <option value="other">other</option>
+        </select>
+        <select value={form.homeDistrict} onChange={set("homeDistrict")} aria-label="Home district" className={SELECT_CLASS}>
+          <option value="">Home district…</option>
+          {DISTRICT_OPTIONS.map((district) => (
+            <option key={district} value={district}>
+              {formatDistrict(district)}
+            </option>
+          ))}
+        </select>
+        <Input value={form.ageYears} onChange={set("ageYears")} placeholder="Age (exact)" inputMode="numeric" aria-label="Age" />
+        <Input value={form.ageFrom} onChange={set("ageFrom")} placeholder="Age from" inputMode="numeric" aria-label="Age from" />
+        <Input value={form.ageTo} onChange={set("ageTo")} placeholder="Age to" inputMode="numeric" aria-label="Age to" />
+        <Input value={form.heightCmFrom} onChange={set("heightCmFrom")} placeholder="Height from (cm)" inputMode="numeric" aria-label="Height from" />
+        <Input value={form.heightCmTo} onChange={set("heightCmTo")} placeholder="Height to (cm)" inputMode="numeric" aria-label="Height to" />
+        <Input value={form.weightKgFrom} onChange={set("weightKgFrom")} placeholder="Weight from (kg)" inputMode="numeric" aria-label="Weight from" />
+        <Input value={form.weightKgTo} onChange={set("weightKgTo")} placeholder="Weight to (kg)" inputMode="numeric" aria-label="Weight to" />
+        <Input value={form.hairColor} onChange={set("hairColor")} placeholder="Hair color" aria-label="Hair color" />
+        <Input value={form.hairLength} onChange={set("hairLength")} placeholder="Hair length" aria-label="Hair length" />
+        <Input value={form.eyeColor} onChange={set("eyeColor")} placeholder="Eye color" aria-label="Eye color" />
+        <Input value={form.complexion} onChange={set("complexion")} placeholder="Complexion" aria-label="Complexion" />
+        <Input value={form.build} onChange={set("build")} placeholder="Build" aria-label="Build" />
+      </div>
+      <Textarea value={form.distinguishingFeatures} onChange={set("distinguishingFeatures")} placeholder="Distinguishing features…" rows={2} />
+      <Textarea value={form.clothingDescription} onChange={set("clothingDescription")} placeholder="Clothing…" rows={2} />
+      <Textarea value={form.jewelryDescription} onChange={set("jewelryDescription")} placeholder="Jewelry…" rows={2} />
+      <Textarea value={form.medicalNotes} onChange={set("medicalNotes")} placeholder="Medical notes…" rows={2} />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving}>
+          {saving ? "Saving…" : "Save description"}
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function MarksSection({
+  personId,
+  features,
+  canEdit,
+  onDone,
+}: {
+  personId: string
+  features: PersonDetail["physicalFeatures"]
+  canEdit: boolean
+  onDone?: () => Promise<void>
+}) {
+  const [featureType, setFeatureType] = useState("")
+  const [bodyLocation, setBodyLocation] = useState("")
+  const [description, setDescription] = useState("")
+  const [size, setSize] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (!featureType) {
+      toast.error("Choose a mark type.")
+      return
+    }
+    setSaving(true)
+    try {
+      await addPersonFeature({
+        personId,
+        featureType,
+        bodyLocation,
+        description,
+        approximateSize: size,
+      })
+      toast.success("Mark added.")
+      setFeatureType("")
+      setBodyLocation("")
+      setDescription("")
+      setSize("")
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove(featureId: string) {
+    setRemoving(featureId)
+    try {
+      await removePersonFeature(featureId)
+      toast.success("Mark removed.")
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setRemoving(null)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Distinguishing marks ({features.length})
+      </h2>
+      {features.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No marks recorded — tattoos, scars, piercings go here.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {features.map((feature) => (
+            <li
+              key={feature.id}
+              className="flex items-start justify-between gap-2 rounded-none border px-3 py-2 text-sm"
+            >
+              <span>
+                <span className="font-medium">{feature.featureType}</span>
+                {feature.bodyLocation && (
+                  <span className="text-muted-foreground"> · {feature.bodyLocation}</span>
+                )}
+                {feature.description && (
+                  <span className="block text-muted-foreground">{feature.description}</span>
+                )}
+                {feature.approximateSize && (
+                  <span className="block text-xs text-muted-foreground">
+                    Size: {feature.approximateSize}
+                  </span>
+                )}
+              </span>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={removing === feature.id}
+                  onClick={() => remove(feature.id)}
+                >
+                  Remove
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <form onSubmit={submit} className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              value={featureType}
+              onChange={(event) => setFeatureType(event.target.value)}
+              aria-label="Mark type"
+              className={SELECT_CLASS}
+            >
+              <option value="">Mark type…</option>
+              {personFeatureTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={bodyLocation}
+              onChange={(event) => setBodyLocation(event.target.value)}
+              placeholder="Body location"
+              aria-label="Body location"
+            />
+          </div>
+          <Input
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Description"
+            aria-label="Mark description"
+          />
+          <div className="flex gap-2">
+            <Input
+              value={size}
+              onChange={(event) => setSize(event.target.value)}
+              placeholder="Approximate size (optional)"
+              aria-label="Approximate size"
+              className="flex-1"
+            />
+            <Button type="submit" size="sm" disabled={saving || !featureType}>
+              {saving ? "Adding…" : "Add mark"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
+function FingerprintsSection({
+  personId,
+  fingerprints,
+  canEdit,
+  onDone,
+}: {
+  personId: string
+  fingerprints: PersonDetail["fingerprints"]
+  canEdit: boolean
+  onDone?: () => Promise<void>
+}) {
+  const [referenceNo, setReferenceNo] = useState("")
+  const [quality, setQuality] = useState("")
+  const [dateProcessed, setDateProcessed] = useState("")
+  const [afisReference, setAfisReference] = useState("")
+  const [notes, setNotes] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      await recordFingerprint({
+        personId,
+        referenceNo,
+        quality: (fingerprintQualityOptions as readonly string[]).includes(quality)
+          ? (quality as (typeof fingerprintQualityOptions)[number])
+          : undefined,
+        dateProcessed,
+        afisReference,
+        notes,
+      })
+      toast.success("Fingerprint set recorded.")
+      setReferenceNo("")
+      setQuality("")
+      setDateProcessed("")
+      setAfisReference("")
+      setNotes("")
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove(fingerprintId: string) {
+    setRemoving(fingerprintId)
+    try {
+      await removeFingerprint(fingerprintId)
+      toast.success("Fingerprint set removed (correction logged).")
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setRemoving(null)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Fingerprints ({fingerprints.length})
+      </h2>
+      {fingerprints.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No fingerprint sets on file.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {fingerprints.map((fp) => (
+            <li
+              key={fp.id}
+              className="flex items-start justify-between gap-2 rounded-none border px-3 py-2 text-sm"
+            >
+              <span>
+                <span className="font-medium">
+                  {fp.referenceNo || "Unnumbered set"}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {[
+                    fp.quality,
+                    fp.dateProcessed,
+                    fp.afisReference ? `AFIS ${fp.afisReference}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "no processing detail"}
+                </span>
+                {fp.notes && (
+                  <span className="block text-muted-foreground">{fp.notes}</span>
+                )}
+              </span>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={removing === fp.id}
+                  onClick={() => remove(fp.id)}
+                >
+                  Remove
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <form onSubmit={submit} className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input
+              value={referenceNo}
+              onChange={(event) => setReferenceNo(event.target.value)}
+              placeholder="Reference no."
+              aria-label="Fingerprint reference number"
+            />
+            <select
+              value={quality}
+              onChange={(event) => setQuality(event.target.value)}
+              aria-label="Print quality"
+              className={SELECT_CLASS}
+            >
+              <option value="">Quality…</option>
+              {fingerprintQualityOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <Input
+              type="date"
+              value={dateProcessed}
+              onChange={(event) => setDateProcessed(event.target.value)}
+              aria-label="Date processed"
+            />
+            <Input
+              value={afisReference}
+              onChange={(event) => setAfisReference(event.target.value)}
+              placeholder="AFIS reference (if searched)"
+              aria-label="AFIS reference"
+            />
+          </div>
+          <Input
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Notes (optional)"
+            aria-label="Fingerprint notes"
+          />
+          <div>
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? "Recording…" : "Record fingerprints"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
+function DnaSection({
+  personId,
+  dnaSamples,
+  canEdit,
+  onDone,
+}: {
+  personId: string
+  dnaSamples: PersonDetail["dnaSamples"]
+  canEdit: boolean
+  onDone?: () => Promise<void>
+}) {
+  const [sampleType, setSampleType] = useState("")
+  const [labName, setLabName] = useState("")
+  const [labReference, setLabReference] = useState("")
+  const [relationship, setRelationship] = useState("")
+  const [collectedAt, setCollectedAt] = useState("")
+  const [notes, setNotes] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      await recordDnaSample({
+        personId,
+        sampleType: (dnaSampleTypeOptions as readonly string[]).includes(sampleType)
+          ? (sampleType as (typeof dnaSampleTypeOptions)[number])
+          : undefined,
+        labName,
+        labReference,
+        relationshipToSubject: relationship,
+        collectedAt,
+        notes,
+      })
+      toast.success("DNA sample recorded.")
+      setSampleType("")
+      setLabName("")
+      setLabReference("")
+      setRelationship("")
+      setCollectedAt("")
+      setNotes("")
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function advance(sampleId: string, status: string) {
+    if (!(dnaStatusOptions as readonly string[]).includes(status)) return
+    setBusyId(sampleId)
+    try {
+      await updateDnaStatus({
+        sampleId,
+        status: status as (typeof dnaStatusOptions)[number],
+      })
+      toast.success(`DNA sample → ${status}.`)
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(sampleId: string) {
+    setBusyId(sampleId)
+    try {
+      await removeDnaSample(sampleId)
+      toast.success("DNA sample removed (correction logged).")
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        DNA samples ({dnaSamples.length})
+      </h2>
+      {dnaSamples.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No DNA samples on file.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {dnaSamples.map((sample) => (
+            <li
+              key={sample.id}
+              className="flex flex-col gap-2 rounded-none border px-3 py-2 text-sm"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span>
+                  <span className="font-medium">
+                    {sample.sampleType ?? "Sample"}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    ·{" "}
+                    {[
+                      sample.labName,
+                      sample.labReference,
+                      sample.relationshipToSubject,
+                      sample.collectedAt,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "no lab detail"}
+                  </span>
+                  {sample.notes && (
+                    <span className="block text-muted-foreground">
+                      {sample.notes}
+                    </span>
+                  )}
+                </span>
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyId === sample.id}
+                    onClick={() => remove(sample.id)}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Status: {sample.status}
+                </span>
+                {canEdit && (
+                  <select
+                    value={sample.status}
+                    onChange={(event) => advance(sample.id, event.target.value)}
+                    disabled={busyId === sample.id}
+                    aria-label="DNA sample status"
+                    className="h-8 w-auto rounded-none border bg-background px-2 text-xs"
+                  >
+                    {dnaStatusOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <form onSubmit={submit} className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <select
+              value={sampleType}
+              onChange={(event) => setSampleType(event.target.value)}
+              aria-label="Sample type"
+              className={SELECT_CLASS}
+            >
+              <option value="">Sample type…</option>
+              {dnaSampleTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={labName}
+              onChange={(event) => setLabName(event.target.value)}
+              placeholder="Lab name"
+              aria-label="Lab name"
+            />
+            <Input
+              value={labReference}
+              onChange={(event) => setLabReference(event.target.value)}
+              placeholder="Lab reference"
+              aria-label="Lab reference"
+            />
+            <Input
+              value={relationship}
+              onChange={(event) => setRelationship(event.target.value)}
+              placeholder="Relationship (family ref only)"
+              aria-label="Relationship to subject"
+            />
+            <Input
+              type="date"
+              value={collectedAt}
+              onChange={(event) => setCollectedAt(event.target.value)}
+              aria-label="Date collected"
+            />
+          </div>
+          <Input
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Notes (optional)"
+            aria-label="DNA notes"
+          />
+          <div>
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? "Recording…" : "Record DNA sample"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
   )
 }
 

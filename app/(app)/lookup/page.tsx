@@ -13,7 +13,10 @@ import {
 } from "@/lib/actions/access"
 import { findCitationByTicket } from "@/lib/actions/citations"
 import { unifiedSearch } from "@/lib/actions/search"
+import type { PersonSearchFilters } from "@/lib/actions/persons"
 import { daysSince, normalizePlate } from "@/lib/format"
+import { DISTRICT_OPTIONS, formatDistrict } from "@/lib/roles"
+import { personFeatureTypeOptions } from "@/validations/admin"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListEmptyState } from "@/components/app/list-empty-state"
 import { ListPagination } from "@/components/app/list-pagination"
@@ -50,6 +53,11 @@ export default function LookupPage() {
     isPaid: boolean
   }>(null)
   const [query, setQuery] = useState("")
+  const [personDistrict, setPersonDistrict] = useState("")
+  const [personSex, setPersonSex] = useState("")
+  const [personAgeMin, setPersonAgeMin] = useState("")
+  const [personAgeMax, setPersonAgeMax] = useState("")
+  const [personFeature, setPersonFeature] = useState("")
   const [results, setResults] = useState<Awaited<
     ReturnType<typeof unifiedSearch>
   > | null>(null)
@@ -134,13 +142,43 @@ export default function LookupPage() {
     if (!query.trim()) return
     setBusy(true)
     try {
-      setResults(await unifiedSearch(query))
+      const filters: PersonSearchFilters = {}
+      if (personDistrict) filters.district = personDistrict
+      if (personSex === "male" || personSex === "female" || personSex === "other") {
+        filters.sex = personSex
+      }
+      const ageMin = Number(personAgeMin)
+      if (personAgeMin.trim() !== "" && Number.isFinite(ageMin)) filters.ageMin = ageMin
+      const ageMax = Number(personAgeMax)
+      if (personAgeMax.trim() !== "" && Number.isFinite(ageMax)) filters.ageMax = ageMax
+      if (
+        (personFeatureTypeOptions as readonly string[]).includes(personFeature)
+      ) {
+        filters.featureType =
+          personFeature as PersonSearchFilters["featureType"]
+      }
+      setResults(await unifiedSearch(query, 10, filters))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Search failed.")
     } finally {
       setBusy(false)
     }
   }
+
+  function clearPersonFilters() {
+    setPersonDistrict("")
+    setPersonSex("")
+    setPersonAgeMin("")
+    setPersonAgeMax("")
+    setPersonFeature("")
+  }
+
+  const personFiltersActive =
+    personDistrict !== "" ||
+    personSex !== "" ||
+    personAgeMin.trim() !== "" ||
+    personAgeMax.trim() !== "" ||
+    personFeature !== ""
 
   return (
     <div className="flex flex-col gap-6">
@@ -317,15 +355,87 @@ export default function LookupPage() {
           <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Vehicle & person search
           </h2>
-          <form onSubmit={runSearch} className="flex gap-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Plate, name, national ID, or ticket…"
-            />
-            <Button type="submit" disabled={busy}>
-              Search
-            </Button>
+          <form onSubmit={runSearch} className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Plate, name, national ID, or ticket…"
+              />
+              <Button type="submit" disabled={busy}>
+                Search
+              </Button>
+            </div>
+            <details className="flex flex-col gap-2 rounded-none border px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Person filters
+                {personFiltersActive ? " · on" : ""}
+              </summary>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <select
+                  value={personDistrict}
+                  onChange={(e) => setPersonDistrict(e.target.value)}
+                  aria-label="Person district"
+                  className="h-9 w-full rounded-none border bg-background px-2 text-sm"
+                >
+                  <option value="">Any district</option>
+                  {DISTRICT_OPTIONS.map((district) => (
+                    <option key={district} value={district}>
+                      {formatDistrict(district)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={personSex}
+                  onChange={(e) => setPersonSex(e.target.value)}
+                  aria-label="Person sex"
+                  className="h-9 w-full rounded-none border bg-background px-2 text-sm"
+                >
+                  <option value="">Any sex</option>
+                  <option value="male">male</option>
+                  <option value="female">female</option>
+                  <option value="other">other</option>
+                </select>
+                <select
+                  value={personFeature}
+                  onChange={(e) => setPersonFeature(e.target.value)}
+                  aria-label="Physical mark"
+                  className="h-9 w-full rounded-none border bg-background px-2 text-sm"
+                >
+                  <option value="">Any mark</option>
+                  {personFeatureTypeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  value={personAgeMin}
+                  onChange={(e) => setPersonAgeMin(e.target.value)}
+                  placeholder="Age from"
+                  inputMode="numeric"
+                  aria-label="Age from"
+                />
+                <Input
+                  value={personAgeMax}
+                  onChange={(e) => setPersonAgeMax(e.target.value)}
+                  placeholder="Age to"
+                  inputMode="numeric"
+                  aria-label="Age to"
+                />
+                {personFiltersActive && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-none"
+                    onClick={clearPersonFilters}
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+            </details>
           </form>
           {results && <UnifiedResultsView results={results} />}
         </section>

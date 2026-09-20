@@ -1,7 +1,7 @@
 "use server"
 
 import { searchCitations, type CitationSearchHit } from "@/lib/actions/citations"
-import { searchPersons } from "@/lib/actions/persons"
+import { searchPersons, type PersonSearchFilters } from "@/lib/actions/persons"
 import { getViewerScope } from "@/lib/actions/records"
 import { searchVehicles } from "@/lib/actions/vehicles"
 
@@ -16,7 +16,11 @@ import { searchVehicles } from "@/lib/actions/vehicles"
  * plate) so a counter finds the ticket to receipt without branch-feed
  * access.
  */
-export async function unifiedSearch(query: string, limit = 10) {
+export async function unifiedSearch(
+  query: string,
+  limit = 10,
+  personFilters: PersonSearchFilters = {}
+) {
   const scope = await getViewerScope()
   const allowed =
     scope.role === "OFFICER" ||
@@ -40,7 +44,7 @@ export async function unifiedSearch(query: string, limit = 10) {
     scope.role === "OFFICER" ||
     scope.role === "DISTRICT_MONITOR" ||
     scope.role === "COUNTRY_MONITOR"
-      ? searchPersons(q, limit).catch(() => [])
+      ? searchPersons(q, limit, personFilters).catch(() => [])
       : Promise.resolve([]),
     isPolice
       ? searchCitations(q, limit).catch(
