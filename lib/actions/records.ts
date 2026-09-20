@@ -1068,6 +1068,71 @@ export async function updateRecord({
   })
 }
 
+/**
+ * Append evidence files to an active case. Same gate as updateRecord —
+ * filing officer or an in-scope monitor, active records only.
+ */
+export async function addRecordAttachments({
+  id,
+  attachments,
+}: {
+  id: string
+  attachments: UploadedAttachment[]
+}): Promise<void> {
+  if (attachments.length === 0) throw new Error("Choose at least one file.")
+  if (attachments.length > 6) throw new Error("Up to 6 files at a time.")
+  for (const attachment of attachments) {
+    if (!fileKindFromMime(attachment.fileType)) {
+      throw new Error(
+        `Files of type "${attachment.fileType || "unknown"}" are not accepted.`
+      )
+    }
+  }
+  const scope = await getViewerScope()
+  await withUserCtx(scope.id, async (tx) => {
+    const [record] = await tx.select().from(records).where(eq(records.id, id)).limit(1)
+    if (!record) throw new Error("Record not found.")
+    if (!canViewRecord(scope, record)) {
+      throw new Error("You don't have access to this record.")
+    }
+    const isFiler = record.reportedBy === scope.id
+    const monitorInScope =
+      isMonitor(scope) &&
+      record.domain === scope.domain &&
+      (scope.role === "COUNTRY_MONITOR"
+        ? record.accessLevel === "country"
+        : record.district === scope.district)
+    if (record.status !== "active") {
+      throw new Error("Only active records accept new files.")
+    }
+    if (!isFiler && !monitorInScope) {
+      throw new Error("Only the filing officer or a monitor in scope can add files.")
+    }
+    const retainedUntil = new Date(defaultRetentionUntil())
+    await tx.insert(recordAttachments).values(
+      attachments.map((attachment) => ({
+        recordId: id,
+        url: attachment.url,
+        storagePath: attachment.publicId,
+        fileType: attachment.fileType,
+        fileHash: attachment.fileHash,
+        fileSizeBytes:
+          Number.isFinite(attachment.fileSizeBytes) && attachment.fileSizeBytes >= 0
+            ? Math.floor(attachment.fileSizeBytes)
+            : undefined,
+        retentionUntil: retainedUntil,
+        uploadedBy: scope.id,
+      }))
+    )
+    await writeAuditTx(tx, {
+      actorId: scope.id,
+      actionType: "record_updated",
+      recordId: id,
+      reason: `Added ${attachments.length} file${attachments.length === 1 ? "" : "s"}.`,
+    })
+  })
+}
+
 const DISMISSAL_OUTCOMES = ["dismissed", "withdrawn", "acquitted"] as const
 
 /**

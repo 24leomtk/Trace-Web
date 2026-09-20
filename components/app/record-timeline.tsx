@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useDebounce } from "use-debounce"
-import { ArrowRightIcon, PaperclipIcon, TriangleAlertIcon } from "lucide-react"
+import { ArrowRightIcon, TriangleAlertIcon } from "lucide-react"
 
 import { listRecords } from "@/lib/actions/records"
 import { formatDateShort } from "@/lib/format"
@@ -17,14 +17,12 @@ import type { RecordType } from "@/validations/record"
 import { useInfiniteList } from "@/hooks/use-infinite-list"
 import { useHomeView } from "@/providers/home-view-context"
 import { cn } from "@/lib/utils"
-import { AttachmentsModal } from "@/components/app/attachments-modal"
 import {
   CaseFilterBadges,
   CaseFiltersCommand,
 } from "@/components/app/case-filters-command"
 import { SearchInput } from "@/components/app/search-input"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -57,9 +55,6 @@ function previewImage(record: TraceRecord): string | null {
 /** The case feed: records visible to the current police user, newest first. */
 export function RecordTimeline() {
   const { caseFilters, feedScope } = useHomeView()
-  const [attachmentRecord, setAttachmentRecord] = useState<TraceRecord | null>(
-    null
-  )
   const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const [debouncedQuery] = useDebounce(query.trim(), 350)
@@ -128,11 +123,7 @@ export function RecordTimeline() {
       ) : (
         <Timeline>
           {items.map((record) => (
-            <CaseTimelineItem
-              key={record.id}
-              record={record}
-              onOpenAttachments={() => setAttachmentRecord(record)}
-            />
+            <CaseTimelineItem key={record.id} record={record} />
           ))}
         </Timeline>
       )}
@@ -150,26 +141,11 @@ export function RecordTimeline() {
           <span className="text-xs">End of cases</span>
         )}
       </div>
-
-      <AttachmentsModal
-        open={!!attachmentRecord}
-        onOpenChange={(open) => {
-          if (!open) setAttachmentRecord(null)
-        }}
-        recordTitle={attachmentRecord?.title ?? ""}
-        attachments={attachmentRecord?.attachments ?? []}
-      />
     </div>
   )
 }
 
-function CaseTimelineItem({
-  record,
-  onOpenAttachments,
-}: {
-  record: TraceRecord
-  onOpenAttachments: () => void
-}) {
+function CaseTimelineItem({ record }: { record: TraceRecord }) {
   const meta = RECORD_TYPE_META[record.recordType]
   const Icon = meta.icon
   const imageUrl = previewImage(record)
@@ -191,7 +167,6 @@ function CaseTimelineItem({
           {imageUrl && (
             <button
               type="button"
-              onClick={onOpenAttachments}
               aria-label={`View photo for ${record.title}`}
               className="relative hidden w-36 shrink-0 self-stretch overflow-hidden bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:block lg:w-44"
             >
@@ -238,7 +213,6 @@ function CaseTimelineItem({
             {imageUrl && (
               <button
                 type="button"
-                onClick={onOpenAttachments}
                 aria-label={`View photo for ${record.title}`}
                 className="relative -mx-3.5 block aspect-[16/9] overflow-hidden bg-muted sm:hidden"
               >
@@ -286,28 +260,7 @@ function CaseTimelineItem({
               ))}
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {record.attachments.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onOpenAttachments}
-                  className="h-7 w-fit gap-1.5 rounded-none text-xs"
-                >
-                  <PaperclipIcon
-                    data-icon="inline-start"
-                    className="size-3.5"
-                  />
-                  {record.attachments.length} file
-                  {record.attachments.length === 1 ? "" : "s"}
-                  <Badge
-                    variant="secondary"
-                    className="h-5 min-w-5 px-1.5 text-[11px] font-semibold tabular-nums"
-                  >
-                    {record.attachments.length}
-                  </Badge>
-                </Button>
-              )}
+            <div className="mt-2">
               <Button
                 asChild
                 variant="ghost"

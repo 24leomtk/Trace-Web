@@ -7,7 +7,7 @@ export default function RecordDetailLoading() {
       aria-busy="true"
       aria-label="Loading case"
     >
-      <DetailHeaderSkeleton withTabs tabCount={4} />
+      <DetailHeaderSkeleton withTabs={false} />
     </div>
   )
 }
