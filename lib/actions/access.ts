@@ -737,6 +737,65 @@ export async function getAuditLog(limit = 50): Promise<AccessLogEntry[]> {
   })
 }
 
+/** Per-record activity trail for the case detail view. Same role gate as the
+ * global audit log; the record itself must also be visible to the viewer
+ * (district monitors stay within their district). */
+export async function getRecordAuditLog(
+  recordId: string
+): Promise<AccessLogEntry[]> {
+  const user = await requireUser()
+  const scope = await getViewerScope()
+  const allowed =
+    scope.role === "DISTRICT_MONITOR" ||
+    scope.role === "COUNTRY_MONITOR" ||
+    scope.role === "SYSTEM_ADMIN" ||
+    scope.role === "COMPLIANCE_AUDITOR"
+  if (!allowed) throw new Error("Your role can't view the audit log.")
+
+  const [record] = await db
+    .select()
+    .from(records)
+    .where(eq(records.id, recordId))
+    .limit(1)
+  if (!record) throw new Error("Record not found.")
+  if (!canViewRecord(scope, record)) {
+    throw new Error("You don't have access to this record.")
+  }
+
+  return withUserCtx(user.id, async (tx) => {
+    const rows = await tx
+      .select({
+        id: actions.id,
+        actorId: actions.actorId,
+        actionType: actions.actionType,
+        reason: actions.reason,
+        createdAt: actions.createdAt,
+      })
+      .from(actions)
+      .where(eq(actions.recordId, recordId))
+      .orderBy(desc(actions.createdAt))
+      .limit(100)
+
+    const names = new Map<string, string>()
+    for (const actorId of [...new Set(rows.map((row) => row.actorId))]) {
+      const [found] = await tx
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, actorId))
+        .limit(1)
+      names.set(actorId, found?.name ?? "Unknown")
+    }
+
+    return rows.map((row) => ({
+      id: row.id,
+      actorName: names.get(row.actorId) ?? "Unknown",
+      action: row.actionType,
+      at: row.createdAt.toISOString(),
+      detail: row.reason ?? undefined,
+    }))
+  })
+}
+
 /** Court liaison: outcome history on their own referrals. */
 export async function getMyReferralOutcomes() {
   const scope = await getViewerScope()

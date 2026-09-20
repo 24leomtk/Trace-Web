@@ -28,6 +28,7 @@ import {
   updateRecord,
 } from "@/lib/actions/records"
 import {
+  getRecordAuditLog,
   listCourtLiaisons,
   liveCourtReferralsFor,
   recordCourtOutcome,
@@ -248,6 +249,22 @@ export default function RecordDetailPage({
 
   const isLiaison = user.role === "COURT_LIAISON"
   const canReview = isMonitor || recordQuery.data?.reportedBy === user.id
+  // Audit trail: monitors are the only roles that can both open a record
+  // and pass the audit-log gate.
+  const canViewAudit = isMonitor
+  const recordAuditQuery = useQuery({
+    queryKey: ["record-audit", id],
+    queryFn: () => getRecordAuditLog(id),
+    enabled: !!recordQuery.data && canViewAudit,
+  })
+  const auditSearch = usePaginatedSearch({
+    items: recordAuditQuery.data ?? [],
+    pageSize: 5,
+    search: (entry, q) =>
+      `${entry.actorName} ${entry.action.replace(/_/g, " ")} ${entry.detail ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["record", id] })
@@ -255,6 +272,7 @@ export default function RecordDetailPage({
     await queryClient.invalidateQueries({ queryKey: ["referrals", id] })
     await queryClient.invalidateQueries({ queryKey: ["reviews", id] })
     await queryClient.invalidateQueries({ queryKey: ["assignments", id] })
+    await queryClient.invalidateQueries({ queryKey: ["record-audit", id] })
     await queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
     await queryClient.invalidateQueries({ queryKey: ["custody", id] })
     await queryClient.invalidateQueries({ queryKey: ["locate", id] })
@@ -936,6 +954,71 @@ export default function RecordDetailPage({
           recordId={record.id}
           attachmentCount={record.attachments.length}
         />
+      )}
+
+      {/* Activity — append-only audit trail for this case */}
+      {canViewAudit && (
+        <Section
+          title={`Activity (${(recordAuditQuery.data ?? []).length})`}
+          action={
+            <ListRefreshButton
+              onRefresh={refresh}
+              loading={recordAuditQuery.isFetching}
+            />
+          }
+        >
+          {(recordAuditQuery.data ?? []).length > 4 && (
+            <SearchInput
+              value={auditSearch.query}
+              onChange={auditSearch.setQuery}
+              placeholder="Search actor, action, detail…"
+            />
+          )}
+          {recordAuditQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading activity…</p>
+          ) : recordAuditQuery.isError ? (
+            <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+              Could not load the activity trail.
+            </p>
+          ) : (recordAuditQuery.data ?? []).length === 0 ? (
+            <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+              No recorded activity yet.
+            </p>
+          ) : auditSearch.visible.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No entries match “{auditSearch.debouncedQuery}”.
+            </p>
+          ) : (
+            <>
+              <ul className="flex flex-col gap-2">
+                {auditSearch.visible.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="rounded-none border px-3 py-2 text-sm"
+                  >
+                    <p className="font-medium">
+                      {entry.actorName} · {entry.action.replace(/_/g, " ")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatDateShort(entry.at)}
+                    </p>
+                    {entry.detail && (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {entry.detail}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <ListPagination
+                page={auditSearch.page}
+                pageCount={auditSearch.pageCount}
+                onPage={auditSearch.setPage}
+                total={auditSearch.total}
+              />
+            </>
+          )}
+        </Section>
       )}
 
       {/* Manage */}
