@@ -447,7 +447,11 @@ export default function NewRecordPage() {
             Case type · {user.domain === "traffic" ? "Traffic" : "Regular"}{" "}
             domain
           </span>
-          <RecordTypeSelector value={recordType} onChange={chooseType} />
+          <RecordTypeSelector
+            value={recordType}
+            onChange={chooseType}
+            domain={user.domain ?? undefined}
+          />
           <div className="flex justify-end">
             <Button type="button" onClick={() => setStep(1)}>
               Continue
