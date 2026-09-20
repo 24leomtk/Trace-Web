@@ -27,6 +27,7 @@ import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { SearchInput } from "@/components/app/search-input"
+import { TabGroup } from "@/components/app/tab-group"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -137,7 +138,13 @@ export function RegistrarHome() {
             Verification enriches the row — case links never break.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <TabGroup
+            label="Registry sections"
+            options={tabs}
+            value={tab}
+            onChange={setTab}
+          />
           <Button
             type="button"
             variant="outline"
@@ -180,31 +187,6 @@ export function RegistrarHome() {
           ))}
         </ul>
       )}
-
-      <div
-        role="tablist"
-        aria-label="Registry sections"
-        className="flex gap-1 overflow-x-auto rounded-none border bg-muted/40 p-1"
-      >
-        {tabs.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={tab === option.value}
-            onClick={() => setTab(option.value)}
-            className={cn(
-              "flex-1 rounded-none px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
-              tab === option.value
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {option.label}
-            {option.count != null && ` (${option.count})`}
-          </button>
-        ))}
-      </div>
 
       {tab === "queue" && (
         <RegistryTab

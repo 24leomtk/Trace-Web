@@ -58,7 +58,7 @@ export function ScopeTabBarSkeleton({ tabs = 4 }: { tabs?: number }) {
       className="flex gap-1 overflow-hidden rounded-none border bg-muted/40 p-1"
     >
       {Array.from({ length: tabs }).map((_, i) => (
-        <Skeleton key={i} className="h-8 flex-1" />
+        <Skeleton key={i} className="h-7 w-20" />
       ))}
     </div>
   )

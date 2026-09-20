@@ -15,11 +15,11 @@ import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
+import { TabGroup } from "@/components/app/tab-group"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
 import { formatCurrency, formatDateShort } from "@/lib/format"
 
 type ComplianceTab = "waivers" | "ledger"
@@ -57,40 +57,28 @@ export function TaxComplianceHome() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Compliance review</h1>
-        <p className="text-sm text-muted-foreground">
-          Read-only ledger oversight. Waiver decisions are yours alone.
-          {overdueCount > 0 ? ` ${overdueCount} overdue right now.` : ""}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-lg font-semibold">Compliance review</h1>
+          <p className="text-sm text-muted-foreground">
+            Read-only ledger oversight. Waiver decisions are yours alone.
+            {overdueCount > 0 ? ` ${overdueCount} overdue right now.` : ""}
+          </p>
+        </div>
+        <TabGroup
+          label="Compliance view"
+          options={TABS.map((option) => ({
+            ...option,
+            count:
+              option.value === "waivers" &&
+              (pending.data?.length ?? 0) > 0
+                ? (pending.data?.length ?? null)
+                : null,
+          }))}
+          value={tab}
+          onChange={setTab}
+        />
       </header>
-
-      <div
-        role="tablist"
-        aria-label="Compliance view"
-        className="flex gap-1 rounded-none border bg-muted/40 p-1"
-      >
-        {TABS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={tab === option.value}
-            onClick={() => setTab(option.value)}
-            className={cn(
-              "flex-1 rounded-none px-3 py-1.5 text-sm font-medium transition-colors",
-              tab === option.value
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {option.label}
-            {option.value === "waivers" &&
-              (pending.data?.length ?? 0) > 0 &&
-              ` (${pending.data?.length})`}
-          </button>
-        ))}
-      </div>
 
       {tab === "waivers" ? (
         <section className="flex flex-col gap-3">

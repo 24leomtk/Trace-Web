@@ -11,12 +11,15 @@ import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import {
+  PageHeaderSkeleton,
   RowListSkeleton,
   ScopeTabBarSkeleton,
   StatChipsSkeleton,
 } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
+import { TabGroup } from "@/components/app/tab-group"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useUser } from "@/providers/user-context"
 
 function mwk(value: number): string {
   return `MWK ${value.toLocaleString()}`
@@ -29,6 +32,7 @@ type BoardTab = "takings" | "unpaid" | "paid" | "voids"
  * per-tab search + pagination + refresh and an explicit paid vs unpaid split.
  */
 export function ReconciliationBoard() {
+  const { user } = useUser()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<BoardTab>("takings")
   const summaryQuery = useQuery({
@@ -43,6 +47,7 @@ export function ReconciliationBoard() {
   if (summaryQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
+        <PageHeaderSkeleton titleWidth="w-48" subWidth="w-64" />
         <StatChipsSkeleton count={3} />
         <ScopeTabBarSkeleton tabs={4} />
         <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
@@ -87,6 +92,22 @@ export function ReconciliationBoard() {
 
   return (
     <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-lg font-semibold">Fine reconciliation</h1>
+          <p className="text-sm text-muted-foreground">
+            {user.role === "DISTRICT_MONITOR"
+              ? "Takings and exceptions in your district."
+              : "Takings and exceptions nationwide in your domain."}
+          </p>
+        </div>
+        <TabGroup
+          label="Reconciliation sections"
+          options={tabs}
+          value={tab}
+          onChange={setTab}
+        />
+      </header>
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-none border bg-card px-2 py-1 font-medium">
           Collected {mwk(collected)}
@@ -97,30 +118,6 @@ export function ReconciliationBoard() {
         <span className="rounded-none border px-2 py-1 font-medium text-muted-foreground">
           {undeposited.length} never deposited
         </span>
-      </div>
-
-      <div
-        role="tablist"
-        aria-label="Reconciliation sections"
-        className="flex gap-1 overflow-x-auto rounded-none border bg-muted/40 p-1"
-      >
-        {tabs.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={tab === option.value}
-            onClick={() => setTab(option.value)}
-            className={cn(
-              "flex-1 rounded-none px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
-              tab === option.value
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {option.label} ({option.count})
-          </button>
-        ))}
       </div>
 
       {tab === "takings" && (

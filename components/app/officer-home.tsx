@@ -1,10 +1,10 @@
 "use client"
 
-import { cn } from "@/lib/utils"
 import { AnalyticsFeed } from "@/components/app/analytics-feed"
 import { AssignmentQueue } from "@/components/app/assignment-queue"
 import { LocateQueue } from "@/components/app/locate-queue"
 import { RecordTimeline } from "@/components/app/record-timeline"
+import { TabGroup } from "@/components/app/tab-group"
 import {
   useHomeView,
   type FeedScope,
@@ -82,46 +82,6 @@ export function OfficerHome() {
       <LocateQueue />
 
       {tab === "reports" && isMonitor ? <AnalyticsFeed /> : <RecordTimeline />}
-    </div>
-  )
-}
-
-/** Compact tab bar for the header row — small buttons, no stretching, so
- * title + tabs share one row on wide screens and wrap on small ones. */
-function TabGroup<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string
-  options: { value: T; label: string }[]
-  value: T
-  onChange: (value: T) => void
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label={label}
-      className="flex gap-1 rounded-none border bg-muted/40 p-1"
-    >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="tab"
-          aria-selected={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "rounded-none px-2 py-1 text-xs font-medium whitespace-nowrap transition-colors",
-            value === option.value
-              ? "bg-background shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
     </div>
   )
 }
