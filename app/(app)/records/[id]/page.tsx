@@ -336,7 +336,7 @@ export default function RecordDetailPage({
     for (const [path, raw] of Object.entries(editValues)) {
       if (typeof raw === "string") {
         if (raw.trim() === "") continue
-        const numeric = ["age", "estimated_value", "fine_amount"].includes(path)
+        const numeric = ["age", "age_from", "age_to", "height_cm_from", "height_cm_to", "weight_kg_from", "weight_kg_to", "estimated_value", "fine_amount"].includes(path)
           ? Number(raw)
           : raw
         setDeep(payload, path, numeric)

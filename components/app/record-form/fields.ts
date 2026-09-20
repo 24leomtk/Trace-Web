@@ -60,6 +60,26 @@ function o(path: string, label: string, extra: Partial<PlainFieldDef> = {}): Pla
   return { path, label, required: false, ...extra }
 }
 
+// N1 NamUs-inspired description block — shared optional physical-description
+// fields for person-centred filings. All o() so roadside filing (minimum
+// payload) keeps working; mirrors personDescriptionFields in
+// validations/record.ts.
+const personDescriptionFields: AnyFieldDef[] = [
+  o("age_from", "Age from", { type: "number", half: true }),
+  o("age_to", "Age to", { type: "number", half: true }),
+  o("height_cm_from", "Height from (cm)", { type: "number", half: true }),
+  o("height_cm_to", "Height to (cm)", { type: "number", half: true }),
+  o("weight_kg_from", "Weight from (kg)", { type: "number", half: true }),
+  o("weight_kg_to", "Weight to (kg)", { type: "number", half: true }),
+  o("hair_color", "Hair color", { half: true }),
+  o("hair_length", "Hair length", { half: true }),
+  o("eye_color", "Eye color", { half: true }),
+  o("complexion", "Complexion", { half: true }),
+  o("build", "Build", { half: true }),
+  o("clothing_description", "Clothing", { type: "textarea" }),
+  o("jewelry_description", "Jewelry", { type: "textarea" }),
+]
+
 export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
   missing_person: [
     f("full_name", "Full name"),
@@ -69,6 +89,7 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
     f("last_seen_location", "Last seen location"),
     f("last_seen_date", "Last seen date", { type: "date", half: true }),
     o("distinguishing_features", "Distinguishing features", { type: "textarea" }),
+    ...personDescriptionFields,
     f("reporter_name", "Reporter name", { half: true }),
     f("reporter_relationship", "Reporter relationship", { half: true }),
     f("reporter_contact", "Reporter contact", { half: true }),
@@ -81,6 +102,35 @@ export const RECORD_FORM_FIELDS: Record<string, AnyFieldDef[]> = {
     o("warrant_number", "Warrant number", { half: true }),
     o("last_known_location", "Last known location"),
     f("description", "Description", { type: "textarea" }),
+    ...personDescriptionFields,
+  ],
+  // N2 unclaimed person — only deceased_name + place_of_death required
+  // (mirrors unclaimedPersonSchema); custodial branch reuses the generic
+  // branch CatalogField (kind: "ref"), same as monitor filing pickers.
+  unclaimed_person: [
+    f("deceased_name", "Deceased name"),
+    o("national_id", "National ID", { half: true }),
+    o("age", "Age", { type: "number", half: true }),
+    o("sex", "Sex", { options: ["male", "female", "other"], half: true }),
+    o("date_of_death", "Date of death", { type: "date", half: true }),
+    f("place_of_death", "Place of death"),
+    o("identification_method", "Identification method", {
+      half: true,
+      placeholder: "Visual, fingerprints, dental, DNA…",
+    }),
+    o("reason_unclaimed", "Reason unclaimed", { type: "textarea" }),
+    {
+      kind: "ref",
+      ref: "branch",
+      domain: "regular",
+      path: "custodial_branch_id",
+      label: "Custodial branch",
+      placeholder: "Branch holding the remains…",
+      required: false,
+      half: true,
+    },
+    o("description", "Description", { type: "textarea" }),
+    ...personDescriptionFields,
   ],
   stolen_property: [
     f("item_description", "Item description"),

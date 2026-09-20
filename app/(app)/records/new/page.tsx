@@ -36,6 +36,12 @@ import { useUser } from "@/providers/user-context"
 
 const NUMERIC_PATHS = new Set([
   "age",
+  "age_from",
+  "age_to",
+  "height_cm_from",
+  "height_cm_to",
+  "weight_kg_from",
+  "weight_kg_to",
   "estimated_value",
   "fine_amount",
   "fatalities",
@@ -123,9 +129,10 @@ export default function NewRecordPage() {
     : fields.some((field) => field.path === "national_id")
       ? "national_id"
       : null
-  // F10: types with a free-text place also accept an optional GPS fix.
+  // F10: types with a free-text place also accept an optional GPS fix
+  // (place_of_death counts — unclaimed_person accepts geo).
   const hasLocationField = fields.some((field) =>
-    field.path.includes("location")
+    field.path.includes("location") || field.path === "place_of_death"
   )
   const [scanOpen, setScanOpen] = useState(false)
 
