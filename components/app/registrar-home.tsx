@@ -5,7 +5,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useDebounce } from "use-debounce"
 import Link from "next/link"
 import ExcelJS from "exceljs"
-import { PencilLineIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react"
+import {
+  PencilLineIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  Trash2Icon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -17,7 +22,12 @@ import {
   updateVehicle,
   type RegistrarVehicleRow,
 } from "@/lib/actions/vehicles"
-import { daysSince, normalizePlate, parseVehicleCsv, VEHICLE_CSV_TEMPLATE } from "@/lib/format"
+import {
+  daysSince,
+  normalizePlate,
+  parseVehicleCsv,
+  VEHICLE_CSV_TEMPLATE,
+} from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { AdminField, AdminToggle } from "@/components/app/admin-section"
@@ -28,6 +38,7 @@ import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { SearchInput } from "@/components/app/search-input"
 import { TabGroup } from "@/components/app/tab-group"
+import { ListEmptyState } from "@/components/app/list-empty-state"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -57,14 +68,18 @@ export function RegistrarHome() {
   })
 
   const [lookup, setLookup] = useState("")
-  const [results, setResults] = useState<Awaited<ReturnType<typeof searchVehicles>>>([])
+  const [results, setResults] = useState<
+    Awaited<ReturnType<typeof searchVehicles>>
+  >([])
   const [searching, setSearching] = useState(false)
   const [debouncedLookup] = useDebounce(lookup.trim(), 350)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<RegistrarVehicleRow | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  const [statusTarget, setStatusTarget] = useState<RegistrarVehicleRow | null>(null)
+  const [statusTarget, setStatusTarget] = useState<RegistrarVehicleRow | null>(
+    null
+  )
   const [statusBusy, setStatusBusy] = useState(false)
 
   const registry = useMemo(() => registryQuery.data ?? [], [registryQuery.data])
@@ -101,9 +116,21 @@ export function RegistrarHome() {
   }
 
   const tabs: { value: RegistrarTab; label: string; count: number | null }[] = [
-    { value: "queue", label: "Awaiting verification", count: registryQuery.data ? queue.length : null },
-    { value: "registry", label: "Registry", count: registryQuery.data ? active.length : null },
-    { value: "out_of_service", label: "Out of service", count: registryQuery.data ? outOfService.length : null },
+    {
+      value: "queue",
+      label: "Awaiting verification",
+      count: registryQuery.data ? queue.length : null,
+    },
+    {
+      value: "registry",
+      label: "Registry",
+      count: registryQuery.data ? active.length : null,
+    },
+    {
+      value: "out_of_service",
+      label: "Out of service",
+      count: registryQuery.data ? outOfService.length : null,
+    },
   ]
 
   async function confirmStatusChange(restore: boolean) {
@@ -122,7 +149,9 @@ export function RegistrarHome() {
       setStatusTarget(null)
       await refresh()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Status change failed.")
+      toast.error(
+        error instanceof Error ? error.message : "Status change failed."
+      )
     } finally {
       setStatusBusy(false)
     }
@@ -271,9 +300,17 @@ export function RegistrarHome() {
             ? `${statusTarget?.plateNumber} returns to the active registry. Case links are untouched.`
             : `${statusTarget?.plateNumber} leaves active queues but stays on file — case links and history are kept. This is the registry soft-delete.`
         }
-        confirmLabel={statusBusy ? "Saving…" : statusTarget?.status === "out_of_service" ? "Restore" : "Mark out of service"}
+        confirmLabel={
+          statusBusy
+            ? "Saving…"
+            : statusTarget?.status === "out_of_service"
+              ? "Restore"
+              : "Mark out of service"
+        }
         destructive={statusTarget?.status !== "out_of_service"}
-        onConfirm={() => void confirmStatusChange(statusTarget?.status === "out_of_service")}
+        onConfirm={() =>
+          void confirmStatusChange(statusTarget?.status === "out_of_service")
+        }
       />
     </div>
   )
@@ -300,14 +337,22 @@ function RegistryTab({
   onStatus: (vehicle: RegistrarVehicleRow) => void
   restoreMode?: boolean
 }) {
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items,
-      search: (vehicle, q) =>
-        `${vehicle.plateNumber} ${vehicle.make ?? ""} ${vehicle.model ?? ""} ${vehicle.color ?? ""}`
-          .toLowerCase()
-          .includes(q),
-    })
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items,
+    search: (vehicle, q) =>
+      `${vehicle.plateNumber} ${vehicle.make ?? ""} ${vehicle.model ?? ""} ${vehicle.color ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
 
   return (
     <section className="flex flex-col gap-3">
@@ -323,13 +368,9 @@ function RegistryTab({
       {isLoading ? (
         <GridCardListSkeleton count={4} />
       ) : items.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-          {emptyTitle}
-        </p>
+        <ListEmptyState message={emptyTitle} />
       ) : visible.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-          No plates match “{debouncedQuery}”.
-        </p>
+        <ListEmptyState message={`No plates match “${debouncedQuery}”.`} />
       ) : (
         <>
           <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -343,7 +384,12 @@ function RegistryTab({
               />
             ))}
           </ul>
-          <ListPagination page={page} pageCount={pageCount} onPage={setPage} total={total} />
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
         </>
       )}
     </section>
@@ -381,7 +427,8 @@ function VehicleRow({
           )}
         </p>
         <p className="text-sm text-muted-foreground">
-          {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "No details yet"}
+          {[vehicle.make, vehicle.model].filter(Boolean).join(" ") ||
+            "No details yet"}
         </p>
       </Link>
     </li>
@@ -427,8 +474,9 @@ function VehicleCard({
         )}
       </p>
       <p className="text-sm text-muted-foreground">
-        {[vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(" · ") ||
-          "No details yet"}
+        {[vehicle.make, vehicle.model, vehicle.color]
+          .filter(Boolean)
+          .join(" · ") || "No details yet"}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onEdit}>
@@ -440,7 +488,9 @@ function VehicleCard({
           variant="outline"
           size="sm"
           onClick={onStatus}
-          className={restoreMode ? undefined : "text-destructive hover:text-destructive"}
+          className={
+            restoreMode ? undefined : "text-destructive hover:text-destructive"
+          }
         >
           {restoreMode ? (
             <>
@@ -501,7 +551,9 @@ function VehicleDialog({
   async function submit(event: React.SubmitEvent) {
     event.preventDefault()
     if (!editing && duplicate) {
-      toast.error("That plate is already on file — search it and verify instead.")
+      toast.error(
+        "That plate is already on file — search it and verify instead."
+      )
       return
     }
     if (!normalizePlate(editing ? editing.plateNumber : form.plateNumber)) {
@@ -529,7 +581,9 @@ function VehicleDialog({
       } else {
         await registerVehicle({ ...payload, isVerified })
         toast.success(
-          isVerified ? `${normalizedPlate} registered as verified.` : `${normalizedPlate} queued as unverified.`
+          isVerified
+            ? `${normalizedPlate} registered as verified.`
+            : `${normalizedPlate} queued as unverified.`
         )
       }
       await onSaved()
@@ -555,7 +609,12 @@ function VehicleDialog({
       }
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
-        <AdminField label="Plate number" hint={editing ? "Locked — plate corrections need an admin." : undefined}>
+        <AdminField
+          label="Plate number"
+          hint={
+            editing ? "Locked — plate corrections need an admin." : undefined
+          }
+        >
           <Input
             value={editing ? editing.plateNumber : form.plateNumber}
             onChange={(event) => set("plateNumber", event.target.value)}
@@ -566,39 +625,77 @@ function VehicleDialog({
         </AdminField>
         {duplicate && (
           <p className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-            That plate is already on file — verify it instead of creating a duplicate.
+            That plate is already on file — verify it instead of creating a
+            duplicate.
           </p>
         )}
         <div className="grid grid-cols-2 gap-2">
           <AdminField label="Make">
-            <Input value={form.make} onChange={(e) => set("make", e.target.value)} placeholder="Toyota" />
+            <Input
+              value={form.make}
+              onChange={(e) => set("make", e.target.value)}
+              placeholder="Toyota"
+            />
           </AdminField>
           <AdminField label="Model">
-            <Input value={form.model} onChange={(e) => set("model", e.target.value)} placeholder="Corolla" />
+            <Input
+              value={form.model}
+              onChange={(e) => set("model", e.target.value)}
+              placeholder="Corolla"
+            />
           </AdminField>
           <AdminField label="Year">
-            <Input value={form.year} onChange={(e) => set("year", e.target.value)} placeholder="2019" inputMode="numeric" />
+            <Input
+              value={form.year}
+              onChange={(e) => set("year", e.target.value)}
+              placeholder="2019"
+              inputMode="numeric"
+            />
           </AdminField>
           <AdminField label="Color">
-            <Input value={form.color} onChange={(e) => set("color", e.target.value)} placeholder="White" />
+            <Input
+              value={form.color}
+              onChange={(e) => set("color", e.target.value)}
+              placeholder="White"
+            />
           </AdminField>
           <AdminField label="Chassis number">
-            <Input value={form.chassisNumber} onChange={(e) => set("chassisNumber", e.target.value)} />
+            <Input
+              value={form.chassisNumber}
+              onChange={(e) => set("chassisNumber", e.target.value)}
+            />
           </AdminField>
           <AdminField label="Engine number">
-            <Input value={form.engineNumber} onChange={(e) => set("engineNumber", e.target.value)} />
+            <Input
+              value={form.engineNumber}
+              onChange={(e) => set("engineNumber", e.target.value)}
+            />
           </AdminField>
           <AdminField label="Owner name">
-            <Input value={form.ownerName} onChange={(e) => set("ownerName", e.target.value)} />
+            <Input
+              value={form.ownerName}
+              onChange={(e) => set("ownerName", e.target.value)}
+            />
           </AdminField>
           <AdminField label="Owner national ID">
-            <Input value={form.ownerNationalId} onChange={(e) => set("ownerNationalId", e.target.value)} />
+            <Input
+              value={form.ownerNationalId}
+              onChange={(e) => set("ownerNationalId", e.target.value)}
+            />
           </AdminField>
           <AdminField label="Owner phone">
-            <Input value={form.ownerPhone} onChange={(e) => set("ownerPhone", e.target.value)} placeholder="+265991234567" />
+            <Input
+              value={form.ownerPhone}
+              onChange={(e) => set("ownerPhone", e.target.value)}
+              placeholder="+265991234567"
+            />
           </AdminField>
           <AdminField label="Owner district">
-            <Input value={form.ownerDistrict} onChange={(e) => set("ownerDistrict", e.target.value)} placeholder="lilongwe" />
+            <Input
+              value={form.ownerDistrict}
+              onChange={(e) => set("ownerDistrict", e.target.value)}
+              placeholder="lilongwe"
+            />
           </AdminField>
         </div>
         <div className="flex items-center justify-between gap-3 rounded-none border px-3 py-2">
@@ -608,7 +705,11 @@ function VehicleDialog({
               Off = queued for later verification.
             </p>
           </div>
-          <AdminToggle checked={isVerified} onChange={setIsVerified} label="Verified against registry" />
+          <AdminToggle
+            checked={isVerified}
+            onChange={setIsVerified}
+            label="Verified against registry"
+          />
         </div>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
@@ -634,7 +735,9 @@ function VehicleImportDialog({
 }) {
   const [fileName, setFileName] = useState("")
   const [csvText, setCsvText] = useState<string | null>(null)
-  const [xlsxRows, setXlsxRows] = useState<Record<string, string>[] | null>(null)
+  const [xlsxRows, setXlsxRows] = useState<Record<string, string>[] | null>(
+    null
+  )
   const [importing, setImporting] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [result, setResult] = useState<{
@@ -648,7 +751,9 @@ function VehicleImportDialog({
   )
 
   function downloadCsvTemplate() {
-    const blob = new Blob([VEHICLE_CSV_TEMPLATE], { type: "text/csv;charset=utf-8" })
+    const blob = new Blob([VEHICLE_CSV_TEMPLATE], {
+      type: "text/csv;charset=utf-8",
+    })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement("a")
     anchor.href = url
@@ -721,7 +826,11 @@ function VehicleImportDialog({
         const headerRow = sheet.getRow(1)
         const headers: string[] = []
         headerRow.eachCell((cell) => {
-          headers.push(String(cell.value ?? "").toLowerCase().replace(/[\s-]+/g, "_"))
+          headers.push(
+            String(cell.value ?? "")
+              .toLowerCase()
+              .replace(/[\s-]+/g, "_")
+          )
         })
         const rows: Record<string, string>[] = []
         sheet.eachRow((row, rowNumber) => {
@@ -731,7 +840,8 @@ function VehicleImportDialog({
             const header = headers[colNumber - 1]
             if (header) record[header] = String(cell.value ?? "").trim()
           })
-          if (Object.values(record).some((value) => value !== "")) rows.push(record)
+          if (Object.values(record).some((value) => value !== ""))
+            rows.push(record)
         })
         setXlsxRows(rows)
         setCsvText(null)
@@ -760,12 +870,16 @@ function VehicleImportDialog({
         ownerNationalId: record.owner_national_id,
         ownerPhone: record.owner_phone,
         ownerDistrict: record.owner_district,
-        isVerified: (record.is_verified ?? "true").trim().toLowerCase() !== "false",
+        isVerified:
+          (record.is_verified ?? "true").trim().toLowerCase() !== "false",
       }))
       const errors = rows
         .map((row, index) => ({ row, index }))
         .filter(({ row }) => !normalizePlate(row.plateNumber))
-        .map(({ index }) => ({ line: index + 2, message: "Missing plate_number." }))
+        .map(({ index }) => ({
+          line: index + 2,
+          message: "Missing plate_number.",
+        }))
       return { rows, errors }
     }
     if (csvText == null) return null
@@ -774,7 +888,9 @@ function VehicleImportDialog({
 
   const duplicateCount = useMemo(() => {
     if (!preview) return 0
-    return preview.rows.filter((row) => existing.has(normalizePlate(row.plateNumber))).length
+    return preview.rows.filter((row) =>
+      existing.has(normalizePlate(row.plateNumber))
+    ).length
   }, [preview, existing])
 
   async function runImport() {
@@ -790,7 +906,10 @@ function VehicleImportDialog({
     try {
       const yearFixed = preview.rows.map((row) => ({
         ...row,
-        year: typeof row.year === "number" && Number.isFinite(row.year) ? row.year : undefined,
+        year:
+          typeof row.year === "number" && Number.isFinite(row.year)
+            ? row.year
+            : undefined,
       }))
       const outcome = await bulkRegisterVehicles({ rows: yearFixed })
       setResult(outcome)
@@ -818,15 +937,26 @@ function VehicleImportDialog({
     >
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
-          Columns: plate_number (required), make, model, year, color, chassis_number,
-          engine_number, owner_name, owner_national_id, owner_phone, owner_district,
-          is_verified. 500 rows max.
+          Columns: plate_number (required), make, model, year, color,
+          chassis_number, engine_number, owner_name, owner_national_id,
+          owner_phone, owner_district, is_verified. 500 rows max.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={downloading} onClick={() => void downloadExcelTemplate()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={downloading}
+            onClick={() => void downloadExcelTemplate()}
+          >
             {downloading ? "Building…" : "Excel template"}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={downloadCsvTemplate}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={downloadCsvTemplate}
+          >
             CSV template
           </Button>
           <Input
@@ -840,8 +970,10 @@ function VehicleImportDialog({
         {preview && (
           <p className="text-xs text-muted-foreground">
             {preview.rows.length} valid row(s)
-            {preview.errors.length > 0 && ` · ${preview.errors.length} skipped: ${preview.errors[0]?.message}`}
-            {duplicateCount > 0 && ` · ${duplicateCount} already on file (will fail per row)`}
+            {preview.errors.length > 0 &&
+              ` · ${preview.errors.length} skipped: ${preview.errors[0]?.message}`}
+            {duplicateCount > 0 &&
+              ` · ${duplicateCount} already on file (will fail per row)`}
             {fileName && ` · ${fileName}`}
           </p>
         )}
@@ -866,7 +998,11 @@ function VehicleImportDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button type="button" disabled={!preview || preview.rows.length === 0 || importing} onClick={() => void runImport()}>
+          <Button
+            type="button"
+            disabled={!preview || preview.rows.length === 0 || importing}
+            onClick={() => void runImport()}
+          >
             {importing ? "Importing…" : "Import"}
           </Button>
         </div>

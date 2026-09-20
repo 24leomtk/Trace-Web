@@ -17,6 +17,7 @@ import {
 } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
 import { TabGroup } from "@/components/app/tab-group"
+import { ListEmptyState } from "@/components/app/list-empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useUser } from "@/providers/user-context"
 
@@ -124,16 +125,32 @@ export function ReconciliationBoard() {
       </div>
 
       {tab === "takings" && (
-        <TakingsTab totals={totals} refreshing={summaryQuery.isFetching} onRefresh={refresh} />
+        <TakingsTab
+          totals={totals}
+          refreshing={summaryQuery.isFetching}
+          onRefresh={refresh}
+        />
       )}
       {tab === "unpaid" && (
-        <UnpaidTab unpaid={unpaid} refreshing={summaryQuery.isFetching} onRefresh={refresh} />
+        <UnpaidTab
+          unpaid={unpaid}
+          refreshing={summaryQuery.isFetching}
+          onRefresh={refresh}
+        />
       )}
       {tab === "paid" && (
-        <PaidTab paid={paid} refreshing={summaryQuery.isFetching} onRefresh={refresh} />
+        <PaidTab
+          paid={paid}
+          refreshing={summaryQuery.isFetching}
+          onRefresh={refresh}
+        />
       )}
       {tab === "voids" && (
-        <VoidsTab voids={voids} refreshing={summaryQuery.isFetching} onRefresh={refresh} />
+        <VoidsTab
+          voids={voids}
+          refreshing={summaryQuery.isFetching}
+          onRefresh={refresh}
+        />
       )}
     </div>
   )
@@ -148,12 +165,20 @@ function TakingsTab({
   refreshing: boolean
   onRefresh: () => Promise<void>
 }) {
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items: totals,
-      search: (entry, q) =>
-        `${entry.receiverName} ${entry.date}`.toLowerCase().includes(q),
-    })
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: totals,
+    search: (entry, q) =>
+      `${entry.receiverName} ${entry.date}`.toLowerCase().includes(q),
+  })
   return (
     <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
       <div className="flex items-start gap-2">
@@ -166,13 +191,9 @@ function TakingsTab({
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
       </div>
       {totals.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No payments recorded in scope yet.
-        </p>
+        <ListEmptyState message="No payments recorded in scope yet." />
       ) : visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No takings match “{debouncedQuery}”.
-        </p>
+        <ListEmptyState message={`No takings match “${debouncedQuery}”.`} />
       ) : (
         <>
           <ul className="flex flex-col gap-2">
@@ -192,7 +213,12 @@ function TakingsTab({
               </li>
             ))}
           </ul>
-          <ListPagination page={page} pageCount={pageCount} onPage={setPage} total={total} />
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
         </>
       )}
     </section>
@@ -208,12 +234,22 @@ function UnpaidTab({
   refreshing: boolean
   onRefresh: () => Promise<void>
 }) {
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items: unpaid,
-      search: (entry, q) =>
-        `${entry.ticketNumber ?? ""} ${entry.plateNumber ?? ""}`.toLowerCase().includes(q),
-    })
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: unpaid,
+    search: (entry, q) =>
+      `${entry.ticketNumber ?? ""} ${entry.plateNumber ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
   return (
     <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
       <div className="flex items-start gap-2">
@@ -226,13 +262,11 @@ function UnpaidTab({
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
       </div>
       {unpaid.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nothing outstanding — every ticket has a payment, a court outcome, or a void.
-        </p>
+        <ListEmptyState message="Nothing outstanding — every ticket has a payment, a court outcome, or a void." />
       ) : visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No unpaid tickets match “{debouncedQuery}”.
-        </p>
+        <ListEmptyState
+          message={`No unpaid tickets match “${debouncedQuery}”.`}
+        />
       ) : (
         <>
           <ul className="flex flex-col gap-2">
@@ -248,7 +282,8 @@ function UnpaidTab({
                     </span>
                     <span className="text-muted-foreground">
                       {" "}
-                      · {entry.plateNumber ?? "No plate"} · waiting {entry.daysWaiting}d
+                      · {entry.plateNumber ?? "No plate"} · waiting{" "}
+                      {entry.daysWaiting}d
                     </span>
                     <span
                       className={cn(
@@ -268,7 +303,12 @@ function UnpaidTab({
               </li>
             ))}
           </ul>
-          <ListPagination page={page} pageCount={pageCount} onPage={setPage} total={total} />
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
         </>
       )}
     </section>
@@ -284,12 +324,22 @@ function PaidTab({
   refreshing: boolean
   onRefresh: () => Promise<void>
 }) {
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items: paid,
-      search: (entry, q) =>
-        `${entry.ticketNumber ?? ""} ${entry.plateNumber ?? ""}`.toLowerCase().includes(q),
-    })
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: paid,
+    search: (entry, q) =>
+      `${entry.ticketNumber ?? ""} ${entry.plateNumber ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
   return (
     <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
       <div className="flex items-start gap-2">
@@ -302,13 +352,11 @@ function PaidTab({
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
       </div>
       {paid.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-          No paid tickets in scope yet.
-        </p>
+        <ListEmptyState message="No paid tickets in scope yet." />
       ) : visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No paid tickets match “{debouncedQuery}”.
-        </p>
+        <ListEmptyState
+          message={`No paid tickets match “${debouncedQuery}”.`}
+        />
       ) : (
         <>
           <ul className="flex flex-col gap-2">
@@ -324,7 +372,8 @@ function PaidTab({
                     </span>
                     <span className="text-muted-foreground">
                       {" "}
-                      · {entry.plateNumber ?? "No plate"} · {mwk(entry.totalPaid)} paid
+                      · {entry.plateNumber ?? "No plate"} ·{" "}
+                      {mwk(entry.totalPaid)} paid
                     </span>
                     <span className="ml-2 inline-flex items-center rounded-none border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
                       PAID
@@ -339,7 +388,12 @@ function PaidTab({
               </li>
             ))}
           </ul>
-          <ListPagination page={page} pageCount={pageCount} onPage={setPage} total={total} />
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
         </>
       )}
     </section>
@@ -355,12 +409,22 @@ function VoidsTab({
   refreshing: boolean
   onRefresh: () => Promise<void>
 }) {
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items: voids,
-      search: (entry, q) =>
-        `${entry.ticketNumber ?? ""} ${entry.reason ?? ""}`.toLowerCase().includes(q),
-    })
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: voids,
+    search: (entry, q) =>
+      `${entry.ticketNumber ?? ""} ${entry.reason ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
   return (
     <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
       <div className="flex items-start gap-2">
@@ -373,13 +437,9 @@ function VoidsTab({
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
       </div>
       {voids.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-          No voided tickets.
-        </p>
+        <ListEmptyState message="No voided tickets." />
       ) : visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No voids match “{debouncedQuery}”.
-        </p>
+        <ListEmptyState message={`No voids match “${debouncedQuery}”.`} />
       ) : (
         <>
           <ul className="flex flex-col gap-2">
@@ -395,13 +455,20 @@ function VoidsTab({
                   <span className="text-muted-foreground">
                     {" "}
                     · {entry.reason ?? "no reason given"}
-                    {entry.voidAt ? ` · ${formatDateKey(entry.voidAt.slice(0, 10))}` : ""}
+                    {entry.voidAt
+                      ? ` · ${formatDateKey(entry.voidAt.slice(0, 10))}`
+                      : ""}
                   </span>
                 </Link>
               </li>
             ))}
           </ul>
-          <ListPagination page={page} pageCount={pageCount} onPage={setPage} total={total} />
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
         </>
       )}
     </section>

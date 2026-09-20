@@ -15,6 +15,7 @@ import { findCitationByTicket } from "@/lib/actions/citations"
 import { unifiedSearch } from "@/lib/actions/search"
 import { daysSince, normalizePlate } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
+import { ListEmptyState } from "@/components/app/list-empty-state"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
@@ -109,7 +110,9 @@ export default function LookupPage() {
       setTicketResult(await findCitationByTicket(ticket))
     } catch (error) {
       setTicketResult(null)
-      toast.error(error instanceof Error ? error.message : "Ticket lookup failed.")
+      toast.error(
+        error instanceof Error ? error.message : "Ticket lookup failed."
+      )
     } finally {
       setBusy(false)
     }
@@ -324,9 +327,7 @@ export default function LookupPage() {
               Search
             </Button>
           </form>
-          {results && (
-            <UnifiedResultsView results={results} />
-          )}
+          {results && <UnifiedResultsView results={results} />}
         </section>
       )}
       <ScanSheet
@@ -352,14 +353,22 @@ function WatchlistList({
   onRefresh: () => void
   refreshing?: boolean
 }) {
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items: entries,
-      search: (entry, q) =>
-        `${entry.plateNumber} ${entry.caseTypes.join(" ").replace(/_/g, " ")} ${entry.district ?? ""}`
-          .toLowerCase()
-          .includes(q),
-    })
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: entries,
+    search: (entry, q) =>
+      `${entry.plateNumber} ${entry.caseTypes.join(" ").replace(/_/g, " ")} ${entry.district ?? ""}`
+        .toLowerCase()
+        .includes(q),
+  })
 
   if (entries.length === 0) {
     return (
@@ -395,7 +404,8 @@ function WatchlistList({
                 <span className="font-medium">{entry.plateNumber}</span>
                 <span className="text-muted-foreground">
                   {" "}
-                  · {entry.caseTypes.map((t) => t.replace(/_/g, " ")).join(", ")}
+                  ·{" "}
+                  {entry.caseTypes.map((t) => t.replace(/_/g, " ")).join(", ")}
                   {entry.district
                     ? ` · ${entry.district.replace(/_/g, " ")}`
                     : ""}
@@ -422,34 +432,46 @@ function UnifiedResultsView({
   results: Awaited<ReturnType<typeof unifiedSearch>>
 }) {
   const combined = [
-    ...results.vehicles.map((vehicle) => ({ kind: "vehicle" as const, vehicle })),
+    ...results.vehicles.map((vehicle) => ({
+      kind: "vehicle" as const,
+      vehicle,
+    })),
     ...results.persons.map((person) => ({ kind: "person" as const, person })),
     ...(results.citations ?? []).map((citation) => ({
       kind: "citation" as const,
       citation,
     })),
   ]
-  const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
-    usePaginatedSearch({
-      items: combined,
-      search: (item, q) =>
-        item.kind === "vehicle"
-          ? `${item.vehicle.plateNumber} ${item.vehicle.make ?? ""} ${item.vehicle.model ?? ""}`
+  const {
+    query,
+    setQuery,
+    debouncedQuery,
+    page,
+    setPage,
+    pageCount,
+    total,
+    visible,
+  } = usePaginatedSearch({
+    items: combined,
+    search: (item, q) =>
+      item.kind === "vehicle"
+        ? `${item.vehicle.plateNumber} ${item.vehicle.make ?? ""} ${item.vehicle.model ?? ""}`
+            .toLowerCase()
+            .includes(q)
+        : item.kind === "person"
+          ? `${item.person.fullName} ${item.person.nationalId ?? ""}`
               .toLowerCase()
               .includes(q)
-          : item.kind === "person"
-            ? `${item.person.fullName} ${item.person.nationalId ?? ""}`
-                .toLowerCase()
-                .includes(q)
-            : `${item.citation.ticketNumber ?? ""} ${item.citation.violationType} ${item.citation.plateNumber ?? ""}`
-                .toLowerCase()
-                .includes(q),
-    })
+          : `${item.citation.ticketNumber ?? ""} ${item.citation.violationType} ${item.citation.plateNumber ?? ""}`
+              .toLowerCase()
+              .includes(q),
+  })
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted-foreground">
-        {results.vehicles.length} vehicle(s) · {results.persons.length} person(s)
+        {results.vehicles.length} vehicle(s) · {results.persons.length}{" "}
+        person(s)
         {(results.citations ?? []).length > 0 &&
           ` · ${results.citations.length} ticket(s)`}
         — exact matches first, then partial.
@@ -462,9 +484,13 @@ function UnifiedResultsView({
         />
       )}
       {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {debouncedQuery ? `No results match “${debouncedQuery}”.` : "No matches."}
-        </p>
+        <ListEmptyState
+          message={
+            debouncedQuery
+              ? `No results match “${debouncedQuery}”.`
+              : "No matches."
+          }
+        />
       ) : (
         <>
           {visible.map((item) =>
@@ -477,7 +503,10 @@ function UnifiedResultsView({
                 <span className="font-medium">{item.vehicle.plateNumber}</span>
                 <span className="text-muted-foreground">
                   {" "}
-                  · {[item.vehicle.make, item.vehicle.model].filter(Boolean).join(" ")}
+                  ·{" "}
+                  {[item.vehicle.make, item.vehicle.model]
+                    .filter(Boolean)
+                    .join(" ")}
                 </span>
                 {item.vehicle.isFlagged && (
                   <span className="ml-2 text-xs font-semibold text-red-600">

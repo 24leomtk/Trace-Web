@@ -14,6 +14,7 @@ import {
 } from "@/components/app/audit-filters"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import { ListEmptyState } from "@/components/app/list-empty-state"
 import {
   FilterBarSkeleton,
   GridCardListSkeleton,
@@ -80,11 +81,7 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
   }
 
   if (!data || data.length === 0) {
-    return (
-      <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-        No audit entries yet.
-      </p>
-    )
+    return <ListEmptyState message="No audit entries yet." />
   }
 
   return (
@@ -117,11 +114,13 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
         />
       </div>
       {visible.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          {hasActiveFilter
-            ? "No audit entries match the current search and filters."
-            : "No audit entries yet."}
-        </p>
+        <ListEmptyState
+          message={
+            hasActiveFilter
+              ? "No audit entries match the current search and filters."
+              : "No audit entries yet."
+          }
+        />
       ) : (
         <>
           <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">

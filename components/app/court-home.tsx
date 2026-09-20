@@ -20,6 +20,7 @@ import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
+import { ListEmptyState } from "@/components/app/list-empty-state"
 
 const OUTCOME_OPTIONS = [
   { value: "pending", label: "Awaiting outcome", icon: HourglassIcon },
@@ -112,15 +113,18 @@ export function CourtHome() {
           Could not load referrals.
         </p>
       ) : !data || data.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No active referrals. Access expires unless a monitor renews it.
-        </p>
+        <ListEmptyState
+          message="No active referrals."
+          hint="Access expires unless a monitor renews it."
+        />
       ) : visible.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          {hasActiveFilter
-            ? "No referrals match the current search and filters."
-            : "No active referrals. Access expires unless a monitor renews it."}
-        </p>
+        <ListEmptyState
+          message={
+            hasActiveFilter
+              ? "No referrals match the current search and filters."
+              : "No active referrals. Access expires unless a monitor renews it."
+          }
+        />
       ) : (
         <>
           <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
