@@ -10,7 +10,7 @@ import {
   recordDisposition,
   reportLocate,
 } from "@/lib/actions/locate"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import { useUser } from "@/providers/user-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -116,8 +116,8 @@ export function LocateCard({
       {locate.locateState === "none" && locate.canReport && (
         <form onSubmit={submitReport} className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
-            Found them? Report where — resolving unlocks only after
-            confirmation by the originating branch or a monitor.
+            Found them? Report where — resolving unlocks only after confirmation
+            by the originating branch or a monitor.
           </p>
           <Input
             value={place}
@@ -147,7 +147,7 @@ export function LocateCard({
           <p className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
             LOCATED · {locate.place}
             {locate.byName ? ` · reported by ${locate.byName}` : ""}
-            {locate.at ? ` · ${formatDateTime(locate.at)}` : ""}
+            {locate.at ? ` · ${formatDateShort(locate.at)}` : ""}
           </p>
           {locate.note && (
             <p className="text-sm text-muted-foreground">{locate.note}</p>
@@ -173,8 +173,8 @@ export function LocateCard({
 
       {locate.locateState === "confirmed" && (
         <p className="rounded-none border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-          CONFIRMED{locate.byName ? ` · located by ${locate.byName}` : ""} —
-          the case can now resolve.
+          CONFIRMED{locate.byName ? ` · located by ${locate.byName}` : ""} — the
+          case can now resolve.
         </p>
       )}
 
@@ -185,7 +185,9 @@ export function LocateCard({
         >
           <p className="text-sm text-muted-foreground">
             Custodian disposition
-            {locate.disposition ? ` — currently ${locate.disposition}` : " — not recorded yet (required before closing)."}
+            {locate.disposition
+              ? ` — currently ${locate.disposition}`
+              : " — not recorded yet (required before closing)."}
           </p>
           <div className="flex gap-2">
             <select

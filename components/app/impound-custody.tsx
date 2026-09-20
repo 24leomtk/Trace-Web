@@ -10,7 +10,7 @@ import {
   placeHold,
   recordOwnerNotice,
 } from "@/lib/actions/custody"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -191,7 +191,7 @@ export function ImpoundCustody({ recordId }: { recordId: string }) {
             <dd className="font-medium">
               {custody.holdAuthorityName ?? "—"}
               {custody.holdPlacedAt
-                ? ` · ${formatDateTime(custody.holdPlacedAt)}`
+                ? ` · ${formatDateShort(custody.holdPlacedAt)}`
                 : ""}
             </dd>
           </div>
@@ -205,7 +205,7 @@ export function ImpoundCustody({ recordId }: { recordId: string }) {
             <dt className="text-muted-foreground">Owner told</dt>
             <dd className="font-medium">
               {custody.ownerNotifiedAt
-                ? formatDateTime(custody.ownerNotifiedAt)
+                ? formatDateShort(custody.ownerNotifiedAt)
                 : "Not yet"}
             </dd>
           </div>
@@ -284,8 +284,10 @@ export function ImpoundCustody({ recordId }: { recordId: string }) {
       {custody.released && (
         <p className="rounded-none border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
           RELEASED{custody.recipientName ? ` to ${custody.recipientName}` : ""}
-          {custody.releasedAt ? ` · ${formatDateTime(custody.releasedAt)}` : ""} —
-          the case can now resolve.
+          {custody.releasedAt
+            ? ` · ${formatDateShort(custody.releasedAt)}`
+            : ""}{" "}
+          — the case can now resolve.
         </p>
       )}
     </section>

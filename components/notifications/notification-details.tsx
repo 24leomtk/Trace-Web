@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ArrowLeftIcon, ExternalLinkIcon, Trash2Icon } from "lucide-react"
 
 import type { NotificationItem as TraceNotification } from "@/lib/actions/notifications"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 
 interface NotificationDetailsProps {
@@ -55,7 +55,7 @@ export function NotificationDetails({
         <div className="px-4 py-5">
           {/* Metadata — single, quiet line, no icons */}
           <span className="mt-1.5 text-xs text-muted-foreground">
-            {formatDateTime(notification.createdAt)}
+            {formatDateShort(notification.createdAt)}
           </span>
           {/* Divider separating metadata from the message */}
           <div className="mt-4 border-t" />

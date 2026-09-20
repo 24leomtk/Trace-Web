@@ -33,7 +33,7 @@ import {
 } from "@/lib/actions/assignments"
 import { addReview, listReviews } from "@/lib/actions/reviews"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
-import { assignmentDue, formatDateTime, referralSla } from "@/lib/format"
+import { assignmentDue, formatDateShort, referralSla } from "@/lib/format"
 import { formatDistrict } from "@/lib/roles"
 import type { AccessLevel, CaseStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -356,7 +356,7 @@ export default function RecordDetailPage({
           ))}
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Filed by {record.author.name} · {formatDateTime(record.createdAt)} ·
+          Filed by {record.author.name} · {formatDateShort(record.createdAt)} ·
           status {record.status} · {record.accessLevel} visibility
           {record.geo && (
             <>
@@ -499,84 +499,88 @@ export default function RecordDetailPage({
               />
             )}
           <section className="flex flex-col gap-3 rounded-none border bg-card p-4">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Reviews & follow-up notes
-          </h2>
-          {(reviewsQuery.data ?? []).length > 4 && (
-            <div className="flex items-start gap-2">
-              <SearchInput
-                value={reviewsSearch.query}
-                onChange={reviewsSearch.setQuery}
-                placeholder="Search reviews…"
-                className="flex-1"
-              />
-              <ListRefreshButton onRefresh={refresh} loading={reviewsQuery.isFetching} />
-            </div>
-          )}
-          {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
-            reviewsSearch.visible.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No reviews match “{reviewsSearch.debouncedQuery}”.
-              </p>
-            ) : (
-              <>
-                <ul className="flex flex-col gap-2">
-                  {reviewsSearch.visible.map((review) => (
-                    <li
-                      key={review.id}
-                      className="rounded-none border px-3 py-2 text-sm"
-                    >
-                      <p>{review.note}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {review.reviewerName} · {formatDateTime(review.createdAt)}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-                <ListPagination
-                  page={reviewsSearch.page}
-                  pageCount={reviewsSearch.pageCount}
-                  onPage={reviewsSearch.setPage}
-                  total={reviewsSearch.total}
+            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Reviews & follow-up notes
+            </h2>
+            {(reviewsQuery.data ?? []).length > 4 && (
+              <div className="flex items-start gap-2">
+                <SearchInput
+                  value={reviewsSearch.query}
+                  onChange={reviewsSearch.setQuery}
+                  placeholder="Search reviews…"
+                  className="flex-1"
                 />
-              </>
-            )
-          ) : (
-            <p className="text-sm text-muted-foreground">No reviews yet.</p>
-          )}
-          {canReview && (
-            <form
-              className="flex flex-col gap-2 print:hidden"
-              onSubmit={async (event) => {
-                event.preventDefault()
-                try {
-                  await addReview({ recordId: record.id, note: reviewNote })
-                  toast.success("Review added.")
-                  setReviewNote("")
-                  await refresh()
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error ? error.message : "Failed."
-                  )
-                }
-              }}
-            >
-              <Textarea
-                value={reviewNote}
-                onChange={(event) => setReviewNote(event.target.value)}
-                placeholder="Add a review note or follow-up…"
-              />
-              <Button
-                type="submit"
-                size="sm"
-                className="w-fit"
-                disabled={!reviewNote.trim()}
+                <ListRefreshButton
+                  onRefresh={refresh}
+                  loading={reviewsQuery.isFetching}
+                />
+              </div>
+            )}
+            {reviewsQuery.data && reviewsQuery.data.length > 0 ? (
+              reviewsSearch.visible.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No reviews match “{reviewsSearch.debouncedQuery}”.
+                </p>
+              ) : (
+                <>
+                  <ul className="flex flex-col gap-2">
+                    {reviewsSearch.visible.map((review) => (
+                      <li
+                        key={review.id}
+                        className="rounded-none border px-3 py-2 text-sm"
+                      >
+                        <p>{review.note}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {review.reviewerName} ·{" "}
+                          {formatDateShort(review.createdAt)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  <ListPagination
+                    page={reviewsSearch.page}
+                    pageCount={reviewsSearch.pageCount}
+                    onPage={reviewsSearch.setPage}
+                    total={reviewsSearch.total}
+                  />
+                </>
+              )
+            ) : (
+              <p className="text-sm text-muted-foreground">No reviews yet.</p>
+            )}
+            {canReview && (
+              <form
+                className="flex flex-col gap-2 print:hidden"
+                onSubmit={async (event) => {
+                  event.preventDefault()
+                  try {
+                    await addReview({ recordId: record.id, note: reviewNote })
+                    toast.success("Review added.")
+                    setReviewNote("")
+                    await refresh()
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error ? error.message : "Failed."
+                    )
+                  }
+                }}
               >
-                Add review
-              </Button>
-            </form>
-          )}
-        </section>
+                <Textarea
+                  value={reviewNote}
+                  onChange={(event) => setReviewNote(event.target.value)}
+                  placeholder="Add a review note or follow-up…"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="w-fit"
+                  disabled={!reviewNote.trim()}
+                >
+                  Add review
+                </Button>
+              </form>
+            )}
+          </section>
         </>
       )}
 
@@ -709,7 +713,10 @@ export default function RecordDetailPage({
                     placeholder="Search tasks…"
                     className="flex-1"
                   />
-                  <ListRefreshButton onRefresh={refresh} loading={assignmentsQuery.isFetching} />
+                  <ListRefreshButton
+                    onRefresh={refresh}
+                    loading={assignmentsQuery.isFetching}
+                  />
                 </div>
               )}
               {(assignmentsQuery.data ?? []).length > 0 ? (
@@ -718,103 +725,103 @@ export default function RecordDetailPage({
                     No tasks match “{tasksSearch.debouncedQuery}”.
                   </p>
                 ) : (
-                <>
-                <ul className="flex flex-col gap-2">
-                  {tasksSearch.visible.map((task) => {
-                    const due = assignmentDue(task.dueAt, task.state)
-                    return (
-                      <li
-                        key={task.id}
-                        className="rounded-none border px-3 py-2 text-sm"
-                      >
-                        <p className="flex flex-wrap items-center gap-1.5 font-medium">
-                          <span>{task.assigneeName}</span>
-                          <span
-                            className={cn(
-                              "inline-flex items-center rounded-none border px-1.5 py-0.5 text-xs",
-                              task.state === "open"
-                                ? due.overdue
-                                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-                                  : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
-                                : "border-border bg-muted/40 text-muted-foreground"
-                            )}
+                  <>
+                    <ul className="flex flex-col gap-2">
+                      {tasksSearch.visible.map((task) => {
+                        const due = assignmentDue(task.dueAt, task.state)
+                        return (
+                          <li
+                            key={task.id}
+                            className="rounded-none border px-3 py-2 text-sm"
                           >
-                            {task.state === "open"
-                              ? due.overdue
-                                ? `Overdue ${Math.abs(due.daysLeft ?? 0)}d`
-                                : due.daysLeft != null
-                                  ? due.daysLeft === 0
-                                    ? "Due today"
-                                    : `Due in ${due.daysLeft}d`
-                                  : "Open"
-                              : task.state}
-                          </span>
-                        </p>
-                        {(task.note || task.dueAt) && (
-                          <p className="text-xs text-muted-foreground">
-                            {[
-                              task.note,
-                              task.dueAt
-                                ? `due ${task.dueAt.slice(0, 10)}`
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        )}
-                        {task.state === "open" && (
-                          <div className="mt-1.5 flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={async () => {
-                                try {
-                                  await completeAssignment(task.id)
-                                  toast.success("Task done.")
-                                  await refresh()
-                                } catch (error) {
-                                  toast.error(
-                                    error instanceof Error
-                                      ? error.message
-                                      : "Failed."
-                                  )
-                                }
-                              }}
-                            >
-                              Done
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={async () => {
-                                try {
-                                  await cancelAssignment(task.id)
-                                  toast.success("Task cancelled.")
-                                  await refresh()
-                                } catch (error) {
-                                  toast.error(
-                                    error instanceof Error
-                                      ? error.message
-                                      : "Failed."
-                                  )
-                                }
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-                <ListPagination
-                  page={tasksSearch.page}
-                  pageCount={tasksSearch.pageCount}
-                  onPage={tasksSearch.setPage}
-                  total={tasksSearch.total}
-                />
-                </>
+                            <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                              <span>{task.assigneeName}</span>
+                              <span
+                                className={cn(
+                                  "inline-flex items-center rounded-none border px-1.5 py-0.5 text-xs",
+                                  task.state === "open"
+                                    ? due.overdue
+                                      ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                                      : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
+                                    : "border-border bg-muted/40 text-muted-foreground"
+                                )}
+                              >
+                                {task.state === "open"
+                                  ? due.overdue
+                                    ? `Overdue ${Math.abs(due.daysLeft ?? 0)}d`
+                                    : due.daysLeft != null
+                                      ? due.daysLeft === 0
+                                        ? "Due today"
+                                        : `Due in ${due.daysLeft}d`
+                                      : "Open"
+                                  : task.state}
+                              </span>
+                            </p>
+                            {(task.note || task.dueAt) && (
+                              <p className="text-xs text-muted-foreground">
+                                {[
+                                  task.note,
+                                  task.dueAt
+                                    ? `due ${task.dueAt.slice(0, 10)}`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </p>
+                            )}
+                            {task.state === "open" && (
+                              <div className="mt-1.5 flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      await completeAssignment(task.id)
+                                      toast.success("Task done.")
+                                      await refresh()
+                                    } catch (error) {
+                                      toast.error(
+                                        error instanceof Error
+                                          ? error.message
+                                          : "Failed."
+                                      )
+                                    }
+                                  }}
+                                >
+                                  Done
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    try {
+                                      await cancelAssignment(task.id)
+                                      toast.success("Task cancelled.")
+                                      await refresh()
+                                    } catch (error) {
+                                      toast.error(
+                                        error instanceof Error
+                                          ? error.message
+                                          : "Failed."
+                                      )
+                                    }
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    <ListPagination
+                      page={tasksSearch.page}
+                      pageCount={tasksSearch.pageCount}
+                      onPage={tasksSearch.setPage}
+                      total={tasksSearch.total}
+                    />
+                  </>
                 )
               ) : (
                 <p className="text-sm text-muted-foreground">No tasks yet.</p>
@@ -906,7 +913,7 @@ export default function RecordDetailPage({
                         <p className="text-xs text-muted-foreground">
                           {referral.reason || "No reason given"} · until{" "}
                           {referral.expiresAt
-                            ? formatDateTime(referral.expiresAt)
+                            ? formatDateShort(referral.expiresAt)
                             : "—"}{" "}
                           · outcome: {referral.outcome}
                         </p>

@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VEHICLE_CSV_TEMPLATE = exports.POLICY_CSV_TEMPLATE = exports.RETENTION_YEARS = exports.FILE_KIND_MAX_BYTES = exports.REFERRAL_OUTCOME_SLA_DAYS = exports.REFERRAL_VIEW_SLA_DAYS = exports.PAYMENT_CHANNELS = exports.PAYMENT_METHODS = void 0;
 exports.formatTimelineDate = formatTimelineDate;
 exports.formatFullDate = formatFullDate;
-exports.formatDateTime = formatDateTime;
+exports.formatDateShort = formatDateShort;
 exports.formatNotificationTime = formatNotificationTime;
 exports.formatBytes = formatBytes;
 exports.formatDelta = formatDelta;
@@ -47,7 +47,7 @@ function formatFullDate(iso) {
         timeZone: "UTC",
     }).format(new Date(iso));
 }
-function formatDateTime(iso) {
+function formatDateShort(iso) {
     return new Intl.DateTimeFormat("en-US", {
         day: "numeric",
         month: "short",
@@ -73,7 +73,7 @@ function formatNotificationTime(iso, now = Date.now()) {
     const days = Math.floor(hours / 24);
     if (days < 7)
         return `${days}d ago`;
-    return formatDateTime(iso);
+    return formatDateShort(iso);
 }
 function formatBytes(bytes) {
     if (bytes < 1024)

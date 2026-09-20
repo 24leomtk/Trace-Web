@@ -6,7 +6,7 @@ import { useDebounce } from "use-debounce"
 import { ArrowRightIcon, PaperclipIcon, TriangleAlertIcon } from "lucide-react"
 
 import { listRecords } from "@/lib/actions/records"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import {
   RECORD_TYPE_META,
   TONE_BADGE_CLASS,
@@ -110,7 +110,10 @@ export function RecordTimeline() {
             placeholder="Search cases by name, plate, place…"
             className="flex-1"
           />
-          <ListRefreshButton onRefresh={() => void retry()} loading={isLoading} />
+          <ListRefreshButton
+            onRefresh={() => void retry()}
+            loading={isLoading}
+          />
           <CaseFiltersCommand showBadges={false} />
         </div>
         <CaseFilterBadges />
@@ -214,7 +217,10 @@ function CaseTimelineItem({
               >
                 <span
                   aria-hidden="true"
-                  className={cn("size-1.5 rounded-none", TONE_DOT_CLASS[meta.tone])}
+                  className={cn(
+                    "size-1.5 rounded-none",
+                    TONE_DOT_CLASS[meta.tone]
+                  )}
                 />
                 {meta.label}
               </span>
@@ -222,7 +228,7 @@ function CaseTimelineItem({
                 dateTime={record.createdAt}
                 className="text-[11px] font-medium tracking-widest"
               >
-                {formatDateTime(record.createdAt)}
+                {formatDateShort(record.createdAt)}
               </TimelineDate>
               <span className="ml-auto text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
                 {record.status} · {record.accessLevel}
@@ -245,7 +251,10 @@ function CaseTimelineItem({
               </button>
             )}
 
-            <Link href={`/records/${record.id}`} className="group w-fit max-w-full">
+            <Link
+              href={`/records/${record.id}`}
+              className="group w-fit max-w-full"
+            >
               <h3 className="text-base leading-snug font-semibold group-hover:underline">
                 {record.title}
               </h3>
@@ -285,7 +294,10 @@ function CaseTimelineItem({
                   onClick={onOpenAttachments}
                   className="h-7 w-fit gap-1.5 rounded-none text-xs"
                 >
-                  <PaperclipIcon data-icon="inline-start" className="size-3.5" />
+                  <PaperclipIcon
+                    data-icon="inline-start"
+                    className="size-3.5"
+                  />
                   {record.attachments.length} file
                   {record.attachments.length === 1 ? "" : "s"}
                   <Badge

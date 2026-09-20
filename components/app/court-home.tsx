@@ -10,7 +10,7 @@ import {
   daysUntil,
   expiryTone,
   formatCountdown,
-  formatDateTime,
+  formatDateShort,
 } from "@/lib/format"
 import { RECORD_TYPE_META, TONE_BADGE_CLASS } from "@/lib/record-meta"
 import { cn } from "@/lib/utils"
@@ -127,60 +127,60 @@ export function CourtHome() {
         </p>
       ) : (
         <>
-        <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {visible.map((entry) => {
-            const meta = RECORD_TYPE_META[entry.record.recordType]
-            const left = daysUntil(entry.expiresAt)
-            const tone = expiryTone(left)
-            return (
-              <li key={entry.referralId}>
-                <Link
-                  href={`/records/${entry.record.id}`}
-                  className="block rounded-none border bg-card px-4 py-3 transition-colors hover:bg-accent"
-                >
-                  <p className="flex flex-wrap items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                    <span>{meta.label}</span>
-                    {entry.expiresAt && (
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {visible.map((entry) => {
+              const meta = RECORD_TYPE_META[entry.record.recordType]
+              const left = daysUntil(entry.expiresAt)
+              const tone = expiryTone(left)
+              return (
+                <li key={entry.referralId}>
+                  <Link
+                    href={`/records/${entry.record.id}`}
+                    className="block rounded-none border bg-card px-4 py-3 transition-colors hover:bg-accent"
+                  >
+                    <p className="flex flex-wrap items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                      <span>{meta.label}</span>
+                      {entry.expiresAt && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-none border px-1.5 py-0.5 normal-case",
+                            TONE_BADGE_CLASS[tone]
+                          )}
+                        >
+                          {formatCountdown(left)} · until{" "}
+                          {formatDateShort(entry.expiresAt)}
+                        </span>
+                      )}
                       <span
                         className={cn(
                           "inline-flex items-center rounded-none border px-1.5 py-0.5 normal-case",
-                          TONE_BADGE_CLASS[tone]
+                          entry.outcome !== "pending"
+                            ? TONE_BADGE_CLASS.emerald
+                            : TONE_BADGE_CLASS.slate
                         )}
                       >
-                        {formatCountdown(left)} · until{" "}
-                        {formatDateTime(entry.expiresAt)}
+                        {entry.outcome !== "pending"
+                          ? `Outcome: ${entry.outcome}`
+                          : "Awaiting outcome"}
                       </span>
-                    )}
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-none border px-1.5 py-0.5 normal-case",
-                        entry.outcome !== "pending"
-                          ? TONE_BADGE_CLASS.emerald
-                          : TONE_BADGE_CLASS.slate
-                      )}
-                    >
-                      {entry.outcome !== "pending"
-                        ? `Outcome: ${entry.outcome}`
-                        : "Awaiting outcome"}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 text-[15px] font-medium">
-                    {entry.record.title}
-                  </p>
-                  <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
-                    {entry.record.summary}
-                  </p>
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-        <ListPagination
-          page={page}
-          pageCount={pageCount}
-          onPage={setPage}
-          total={total}
-        />
+                    </p>
+                    <p className="mt-0.5 text-[15px] font-medium">
+                      {entry.record.title}
+                    </p>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+                      {entry.record.summary}
+                    </p>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+          <ListPagination
+            page={page}
+            pageCount={pageCount}
+            onPage={setPage}
+            total={total}
+          />
         </>
       )}
     </div>

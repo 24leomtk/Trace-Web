@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { getAuditLog } from "@/lib/actions/access"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import {
   AuditFilterBadges,
@@ -132,7 +132,7 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
                   {entry.actorName} · {entry.action.replace(/_/g, " ")}
                 </p>
                 <p className="text-[11px] tracking-wide text-muted-foreground uppercase">
-                  {formatDateTime(entry.at)}
+                  {formatDateShort(entry.at)}
                 </p>
                 {entry.detail && (
                   <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">

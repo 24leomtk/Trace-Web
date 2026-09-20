@@ -17,10 +17,10 @@ import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 type ComplianceTab = "waivers" | "ledger"
 
@@ -132,7 +132,8 @@ function WaiverRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
   return (
     <li className="rounded-none border border-amber-200 bg-card px-4 py-3">
       <p className="text-[15px] font-medium">
-        {row.plateNumber} · {row.taxType.replace(/_/g, " ")} · MWK {row.amountDue}
+        {row.plateNumber} · {row.taxType.replace(/_/g, " ")} ·{" "}
+        {formatCurrency(row.amountDue)}
       </p>
       <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
         Proposed justification: {row.waiverReason || "—"}
@@ -199,7 +200,7 @@ function DecideWaiverDialog({
         onOpenChange(next)
       }}
       title="Decide waiver"
-      description={`${row.plateNumber} · ${row.taxType.replace(/_/g, " ")} · MWK ${row.amountDue}. Approval waives the debt — this is logged against your name.`}
+      description={`${row.plateNumber} · ${row.taxType.replace(/_/g, " ")} · ${formatCurrency(row.amountDue)}. Approval waives the debt — this is logged against your name.`}
     >
       <div className="flex flex-col gap-3">
         <p className="rounded-none border bg-muted/40 px-3 py-2 text-sm">
@@ -208,7 +209,8 @@ function DecideWaiverDialog({
         </p>
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Decision note <span className="font-normal normal-case opacity-60">optional</span>
+            Decision note{" "}
+            <span className="font-normal normal-case opacity-60">optional</span>
           </span>
           <Textarea
             value={reason}
@@ -238,7 +240,11 @@ function DecideWaiverDialog({
           >
             Reject
           </Button>
-          <Button type="button" disabled={busy} onClick={() => void decide("approved")}>
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => void decide("approved")}
+          >
             {busy ? "Deciding…" : "Approve waiver"}
           </Button>
         </DialogFooter>
@@ -302,13 +308,17 @@ function LedgerReadOnly({
                   className="rounded-none border bg-card px-4 py-3"
                 >
                   <p className="text-[15px] font-medium">
-                    {row.plateNumber} · {row.taxType.replace(/_/g, " ")} · MWK{" "}
-                    {row.amountDue}
+                    {row.plateNumber} · {row.taxType.replace(/_/g, " ")} ·{" "}
+                    {formatCurrency(row.amountDue)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {state} · due {row.dueDate}
-                    {row.isPaid && row.receiptNo ? ` · receipt ${row.receiptNo}` : ""}
-                    {row.waiverStatus !== "none" ? ` · waiver ${row.waiverStatus}` : ""}
+                    {row.isPaid && row.receiptNo
+                      ? ` · receipt ${row.receiptNo}`
+                      : ""}
+                    {row.waiverStatus !== "none"
+                      ? ` · waiver ${row.waiverStatus}`
+                      : ""}
                   </p>
                 </li>
               )

@@ -8,7 +8,7 @@ import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { getPerson, mergePersons, searchPersons } from "@/lib/actions/persons"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
@@ -44,9 +44,7 @@ export default function PersonDetailPage({
     event.preventDefault()
     const term = debouncedMergeQuery || mergeQuery.trim()
     if (!term) return
-    setCandidates(
-      (await searchPersons(term)).filter((row) => row.id !== id)
-    )
+    setCandidates((await searchPersons(term)).filter((row) => row.id !== id))
   }
 
   async function merge(dropId: string) {
@@ -108,7 +106,12 @@ function PersonDetailView({
     homeDistrict?: string | null
     distinguishingFeatures?: string | null
   }
-  linkedCases: { id: string; recordType: string; status: string; createdAt: string }[]
+  linkedCases: {
+    id: string
+    recordType: string
+    status: string
+    createdAt: string
+  }[]
   isMonitor: boolean
   mergeQuery: string
   setMergeQuery: (value: string) => void
@@ -190,7 +193,7 @@ function PersonDetailView({
                     </span>
                     <span className="text-muted-foreground">
                       {" "}
-                      · {entry.status} · {formatDateTime(entry.createdAt)}
+                      · {entry.status} · {formatDateShort(entry.createdAt)}
                     </span>
                   </Link>
                 </li>

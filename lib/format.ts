@@ -19,22 +19,156 @@ export function formatFullDate(iso: string) {
   }).format(new Date(iso))
 }
 
-export function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-  }).format(new Date(iso))
+// ---------------------------------------------------------------------------
+// Tiny format engine — only the tokens actually used in this file
+// Supported tokens: EEEE, EEE, MMMM, MMM, MM, dd, d, yyyy, yy, h, mm, a
+// ---------------------------------------------------------------------------
+
+const WEEKDAYS_LONG = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+]
+const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const MONTHS_LONG = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+]
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+]
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0")
+}
+
+/**
+ * Minimal format() clone — supports the subset of tokens used in this file.
+ *
+ * Tokens: `EEEE` `EEE` `MMMM` `MMM` `MM` `dd` `d` `yyyy` `yy` `HH` `H` `hh` `h` `mm` `a`
+ */
+function format(date: Date | null | undefined, pattern: string): string {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return ""
+  const hours24 = date.getHours()
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12
+  const ampm: string = hours24 < 12 ? "AM" : "PM"
+
+  const tokens: Record<string, string> = {
+    EEEE: WEEKDAYS_LONG[date.getDay()] ?? "",
+    EEE: WEEKDAYS_SHORT[date.getDay()] ?? "",
+    MMMM: MONTHS_LONG[date.getMonth()] ?? "",
+    MMM: MONTHS_SHORT[date.getMonth()] ?? "",
+    MM: pad2(date.getMonth() + 1),
+    dd: pad2(date.getDate()),
+    d: String(date.getDate()),
+    yyyy: String(date.getFullYear()),
+    yy: String(date.getFullYear()).slice(-2),
+    HH: pad2(hours24),
+    H: String(hours24),
+    hh: pad2(hours12),
+    h: String(hours12),
+    mm: pad2(date.getMinutes()),
+    a: ampm,
+  }
+
+  return pattern.replace(
+    /EEEE|EEE|MMMM|MMM|MM|dd|d|yyyy|yy|HH|H|hh|h|mm|a/g,
+    (match) => tokens[match] ?? match
+  )
+}
+
+/**
+ * Accepts a `string | Date` value and formats it with the given pattern.
+ * Mirrors the `formatDate(date, pattern)` signature from date-fns.
+ */
+function formatDate(
+  date: string | Date | null | undefined,
+  pattern: string
+): string {
+  if (date === null || date === undefined || date === "") return ""
+  const parsed = typeof date === "string" ? new Date(date) : date
+  if (!(parsed instanceof Date) || isNaN(parsed.getTime())) return ""
+  return format(parsed, pattern)
+}
+
+// ---------------------------------------------------------------------------
+// Public API — identical signatures & output as before
+// ---------------------------------------------------------------------------
+
+export function formatCurrency(amount: string | number): string {
+  const omitCents = Math.abs(Number(amount)) >= 1_000_000
+
+  return new Intl.NumberFormat("en-MW", {
+    style: "currency",
+    currency: "MWK",
+    currencyDisplay: "code", // forces MWK instead of MK
+    minimumFractionDigits: omitCents ? 0 : 2,
+    maximumFractionDigits: omitCents ? 0 : 2,
+  }).format(Number(amount))
+}
+
+export function formatTime(timeString: string) {
+  if (!timeString) return ""
+  try {
+    const parts = timeString.split(":").map(Number)
+    const hours: number = parts[0] ?? 0
+    const minutes: number = parts[1] ?? 0
+    const date = new Date()
+    date.setHours(hours, minutes, 0, 0)
+    return format(date, "h:mm a")
+  } catch (error) {
+    console.error("Error formatting time:", timeString, error)
+    return timeString
+  }
+}
+
+export function formatDateLong(date: string | Date | null | undefined): string {
+  return formatDate(date, "EEEE, MMMM dd, yyyy")
+}
+
+export function formatDateTime(date: string | Date | null | undefined): string {
+  return formatDate(date, "dd MMM yyyy HH:mm")
+}
+
+export function formatDateShort(
+  date: string | Date | null | undefined
+): string {
+  return formatDate(date, "MMMM dd, yyyy")
+}
+
+export function formatDateShortWithTime(
+  date: string | Date | null | undefined
+): string {
+  return formatDate(date, "MMMM dd, yyyy HH:mm")
 }
 
 /** Compact relative time for notification rows ("just now", "5m ago", …). */
-export function formatNotificationTime(
-  iso: string,
-  now = Date.now()
-): string {
+export function formatNotificationTime(iso: string, now = Date.now()): string {
   const ms = now - new Date(iso).getTime()
   if (Number.isNaN(ms)) return iso
   const minutes = Math.floor(ms / 60_000)
@@ -102,7 +236,10 @@ export function greetingForHour(hour: number) {
 }
 
 /** Whole days from now until an ISO timestamp (negative = past). */
-export function daysUntil(iso: string | null | undefined, now = Date.now()): number | null {
+export function daysUntil(
+  iso: string | null | undefined,
+  now = Date.now()
+): number | null {
   if (!iso) return null
   const ms = new Date(iso).getTime() - now
   if (Number.isNaN(ms)) return null
@@ -110,7 +247,10 @@ export function daysUntil(iso: string | null | undefined, now = Date.now()): num
 }
 
 /** Whole days since an ISO timestamp (negative = future). */
-export function daysSince(iso: string | null | undefined, now = Date.now()): number | null {
+export function daysSince(
+  iso: string | null | undefined,
+  now = Date.now()
+): number | null {
   if (!iso) return null
   const ms = now - new Date(iso).getTime()
   if (Number.isNaN(ms)) return null
@@ -118,7 +258,9 @@ export function daysSince(iso: string | null | undefined, now = Date.now()): num
 }
 
 /** Countdown chip tone: green = comfortable, amber = due soon, red = overdue/imminent. */
-export function expiryTone(daysLeft: number | null): "emerald" | "amber" | "red" | "slate" {
+export function expiryTone(
+  daysLeft: number | null
+): "emerald" | "amber" | "red" | "slate" {
   if (daysLeft == null) return "slate"
   if (daysLeft < 0) return "red"
   if (daysLeft <= 7) return "red"
@@ -251,7 +393,8 @@ export function referralSla(
     daysSinceReferral,
     daysToView,
     daysToOutcome,
-    viewOverdue: daysToView == null && daysSinceReferral > REFERRAL_VIEW_SLA_DAYS,
+    viewOverdue:
+      daysToView == null && daysSinceReferral > REFERRAL_VIEW_SLA_DAYS,
     outcomeOverdue:
       daysToOutcome == null && daysSinceReferral > REFERRAL_OUTCOME_SLA_DAYS,
   }
@@ -273,15 +416,26 @@ export function assignmentDue(
     return { overdue: false, daysLeft: null, tone: "slate" }
   }
   const daysLeft = Math.floor((new Date(dueAt).getTime() - now) / 86_400_000)
-  if (Number.isNaN(daysLeft)) return { overdue: false, daysLeft: null, tone: "slate" }
+  if (Number.isNaN(daysLeft))
+    return { overdue: false, daysLeft: null, tone: "slate" }
   if (daysLeft < 0) return { overdue: true, daysLeft, tone: "red" }
   if (daysLeft <= 3) return { overdue: false, daysLeft, tone: "amber" }
   return { overdue: false, daysLeft, tone: "slate" }
 }
 
 const WEEK_LABEL_MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ]
 
 /**
@@ -434,7 +588,9 @@ export function parsePolicyCsv(csv: string): {
   if (missing.length > 0) {
     return {
       rows,
-      errors: [{ line: 1, message: `Missing column(s): ${missing.join(", ")}.` }],
+      errors: [
+        { line: 1, message: `Missing column(s): ${missing.join(", ")}.` },
+      ],
     }
   }
   const indexOf = (column: string) => header.indexOf(column)
@@ -449,7 +605,10 @@ export function parsePolicyCsv(csv: string): {
       errors.push({ line: i + 1, message: "Missing required field(s)." })
       continue
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(endDate)
+    ) {
       errors.push({ line: i + 1, message: "Dates must be YYYY-MM-DD." })
       continue
     }
@@ -459,7 +618,8 @@ export function parsePolicyCsv(csv: string): {
       coverageType: get("coverage_type") || undefined,
       startDate,
       endDate,
-      isActive: indexOf("is_active") === -1 ? true : parseActiveFlag(get("is_active")),
+      isActive:
+        indexOf("is_active") === -1 ? true : parseActiveFlag(get("is_active")),
       externalReference: get("external_reference") || undefined,
     })
   }
@@ -492,7 +652,8 @@ export interface BulkVehicleCsvError {
 
 function parseVerifiedFlag(raw: string): boolean {
   const value = raw.trim().toLowerCase()
-  if (["false", "0", "no", "unverified", "pending"].includes(value)) return false
+  if (["false", "0", "no", "unverified", "pending"].includes(value))
+    return false
   return true
 }
 

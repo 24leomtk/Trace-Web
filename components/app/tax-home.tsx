@@ -2,12 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  BellIcon,
-  CheckIcon,
-  ClockIcon,
-  TriangleAlertIcon,
-} from "lucide-react"
+import { BellIcon, CheckIcon, ClockIcon, TriangleAlertIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -39,6 +34,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { formatCurrency } from "@/lib/format"
 
 const STATUS_OPTIONS = [
   { value: "unpaid", label: "Unpaid", icon: ClockIcon },
@@ -71,7 +67,10 @@ export function TaxHome() {
   const [assessOpen, setAssessOpen] = useState(false)
 
   const preFiltered = useMemo(
-    () => (data ?? []).filter((row) => status === "all" || statusOf(row) === status),
+    () =>
+      (data ?? []).filter(
+        (row) => status === "all" || statusOf(row) === status
+      ),
     [data, status]
   )
 
@@ -190,7 +189,10 @@ function AssessDialog({
   onDone: () => void
 }) {
   const [plate, setPlate] = useState("")
-  const [vehicle, setVehicle] = useState<{ id: string; plateNumber: string } | null>(null)
+  const [vehicle, setVehicle] = useState<{
+    id: string
+    plateNumber: string
+  } | null>(null)
   const [looking, setLooking] = useState(false)
   const [taxType, setTaxType] = useState<string>("license_fee")
   const [amount, setAmount] = useState("")
@@ -342,7 +344,8 @@ function AssessDialog({
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Reference <span className="font-normal normal-case opacity-60">optional</span>
+            Reference{" "}
+            <span className="font-normal normal-case opacity-60">optional</span>
           </span>
           <Input
             value={referenceNo}
@@ -400,9 +403,11 @@ function TaxRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
         </span>
       </p>
       <p className="text-sm text-muted-foreground">
-        MWK {row.amountDue}
+        {formatCurrency(row.amountDue)}
         {row.referenceNo ? ` · ref ${row.referenceNo}` : ""}
-        {row.periodStart ? ` · ${row.periodStart} → ${row.periodEnd ?? ""}` : ""}
+        {row.periodStart
+          ? ` · ${row.periodStart} → ${row.periodEnd ?? ""}`
+          : ""}
       </p>
       {collectable && row.waiverStatus === "none" && (
         <div className="mt-2 flex gap-2">
@@ -490,7 +495,7 @@ function RecordPaymentDialog({
         onOpenChange(next)
       }}
       title="Record payment"
-      description={`${row.plateNumber} · ${row.taxType.replace(/_/g, " ")} · MWK ${row.amountDue}. The plate clears on save.`}
+      description={`${row.plateNumber} · ${row.taxType.replace(/_/g, " ")} · ${formatCurrency(row.amountDue)}. The plate clears on save.`}
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
@@ -572,12 +577,13 @@ function ProposeWaiverDialog({
         onOpenChange(next)
       }}
       title="Propose waiver"
-      description={`${row.plateNumber} · MWK ${row.amountDue}. A compliance officer decides — proposing never waives.`}
+      description={`${row.plateNumber} · ${formatCurrency(row.amountDue)}. A compliance officer decides — proposing never waives.`}
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Justification <span className="font-normal normal-case opacity-60">required</span>
+            Justification{" "}
+            <span className="font-normal normal-case opacity-60">required</span>
           </span>
           <Textarea
             value={reason}

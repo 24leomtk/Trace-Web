@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { getAccessReview } from "@/lib/actions/admin"
-import { formatDateTime } from "@/lib/format"
+import { formatDateShort } from "@/lib/format"
 import { Skeleton } from "@/components/ui/skeleton"
 
 /**
@@ -75,8 +75,8 @@ export function AccessReviewBoard() {
         </h2>
         {flagged.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing flagged — every account was used recently and no guard
-            is biting repeatedly.
+            Nothing flagged — every account was used recently and no guard is
+            biting repeatedly.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -91,7 +91,7 @@ export function AccessReviewBoard() {
                   · {user.role.replace(/_/g, " ")} · {user.scope}
                   {!user.isActive ? " · DEACTIVATED" : ""}
                   {user.dormant
-                    ? ` · dormant${user.lastActiveAt ? ` since ${formatDateTime(user.lastActiveAt)}` : ""}`
+                    ? ` · dormant${user.lastActiveAt ? ` since ${formatDateShort(user.lastActiveAt)}` : ""}`
                     : ""}
                   {user.rejectedTransitions > 0
                     ? ` · ${user.rejectedTransitions} blocked`
