@@ -4,7 +4,7 @@ import { use, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useDebounce } from "use-debounce"
-import { ArrowLeftIcon } from "lucide-react"
+import { ArrowLeftIcon, PlusIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -27,9 +27,19 @@ import { DISTRICT_OPTIONS, formatDistrict } from "@/lib/roles"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/providers/user-context"
@@ -42,7 +52,40 @@ import {
 
 type PersonDetail = Awaited<ReturnType<typeof getPerson>>
 
-const SELECT_CLASS = "h-9 w-full rounded-none border bg-background px-2 text-sm"
+// shadcn Select has no empty state — optional selects offer an explicit
+// "None" item mapped back to "" on change.
+const NONE = "__none"
+
+function OptionalSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: readonly string[]
+}) {
+  return (
+    <Select
+      value={value || NONE}
+      onValueChange={(next) => onChange(next === NONE ? "" : next)}
+    >
+      <SelectTrigger aria-label={label} className="h-9">
+        <SelectValue placeholder={label} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NONE}>None</SelectItem>
+        {options.map((option) => (
+          <SelectItem key={option} value={option}>
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 export default function PersonDetailPage({
   params,
@@ -219,6 +262,10 @@ function PersonDetailView({
         .toLowerCase()
         .includes(q),
   })
+  const [editOpen, setEditOpen] = useState(false)
+  const [markOpen, setMarkOpen] = useState(false)
+  const [fingerprintOpen, setFingerprintOpen] = useState(false)
+  const [dnaOpen, setDnaOpen] = useState(false)
 
   const description: [string, string | null][] = [
     ["Sex", person.sex ?? null],
@@ -268,7 +315,14 @@ function PersonDetailView({
             Physical description
           </h2>
           {canEdit && (
-            <EditDescriptionButton personId={personId} person={person} onDone={onRefresh} />
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-none print:hidden"
+              onClick={() => setEditOpen(true)}
+            >
+              Edit description
+            </Button>
           )}
         </div>
         {shownDescription.length === 0 ? (
@@ -290,23 +344,23 @@ function PersonDetailView({
       </section>
 
       <MarksSection
-        personId={personId}
         features={physicalFeatures}
         canEdit={canEdit}
+        onAdd={() => setMarkOpen(true)}
         onDone={onRefresh}
       />
 
       <FingerprintsSection
-        personId={personId}
         fingerprints={fingerprints}
         canEdit={canEdit}
+        onAdd={() => setFingerprintOpen(true)}
         onDone={onRefresh}
       />
 
       <DnaSection
-        personId={personId}
         dnaSamples={dnaSamples}
         canEdit={canEdit}
+        onAdd={() => setDnaOpen(true)}
         onDone={onRefresh}
       />
 
@@ -415,6 +469,36 @@ function PersonDetailView({
           ) : null}
         </section>
       )}
+
+      {canEdit && (
+        <>
+          <EditDescriptionDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            personId={personId}
+            person={person}
+            onDone={onRefresh}
+          />
+          <MarkDialog
+            open={markOpen}
+            onOpenChange={setMarkOpen}
+            personId={personId}
+            onDone={onRefresh}
+          />
+          <FingerprintDialog
+            open={fingerprintOpen}
+            onOpenChange={setFingerprintOpen}
+            personId={personId}
+            onDone={onRefresh}
+          />
+          <DnaDialog
+            open={dnaOpen}
+            onOpenChange={setDnaOpen}
+            personId={personId}
+            onDone={onRefresh}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -426,16 +510,19 @@ function numOrUndefined(value: string): number | undefined {
   return Number.isNaN(num) ? undefined : num
 }
 
-function EditDescriptionButton({
+function EditDescriptionDialog({
+  open,
+  onOpenChange,
   personId,
   person,
   onDone,
 }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   personId: string
   person: PersonDetail["person"]
   onDone?: () => Promise<void>
 }) {
-  const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     fullName: person.fullName,
@@ -460,8 +547,13 @@ function EditDescriptionButton({
     jewelryDescription: person.jewelryDescription ?? "",
     medicalNotes: person.medicalNotes ?? "",
   })
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm((prev) => ({ ...prev, [key]: event.target.value }))
+  const set =
+    (key: keyof typeof form) =>
+    (
+      event: React.ChangeEvent<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >
+    ) => setForm((prev) => ({ ...prev, [key]: event.target.value }))
 
   async function submit(event: React.SubmitEvent) {
     event.preventDefault()
@@ -475,7 +567,11 @@ function EditDescriptionButton({
         fullName: form.fullName,
         nationalId: form.nationalId,
         dateOfBirth: form.dateOfBirth,
-        sex: (["male", "female", "other"] as const).includes(form.sex as "male") ? (form.sex as "male" | "female" | "other") : undefined,
+        sex: (["male", "female", "other"] as const).includes(
+          form.sex as "male"
+        )
+          ? (form.sex as "male" | "female" | "other")
+          : undefined,
         homeDistrict: form.homeDistrict,
         distinguishingFeatures: form.distinguishingFeatures,
         ageYears: numOrUndefined(form.ageYears),
@@ -495,7 +591,7 @@ function EditDescriptionButton({
         medicalNotes: form.medicalNotes,
       })
       toast.success("Description updated.")
-      setOpen(false)
+      onOpenChange(false)
       await onDone?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed.")
@@ -504,110 +600,208 @@ function EditDescriptionButton({
     }
   }
 
-  if (!open) {
-    return (
-      <Button size="sm" variant="outline" className="rounded-none" onClick={() => setOpen(true)}>
-        Edit description
-      </Button>
-    )
-  }
   return (
-    <form
-      onSubmit={submit}
-      className="flex flex-col gap-2 rounded-none border bg-card p-4"
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next)
+      }}
+      title="Edit description"
+      description="Physical description for this profile — every field optional."
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Input value={form.fullName} onChange={set("fullName")} placeholder="Full name*" aria-label="Full name" />
-        <Input value={form.nationalId} onChange={set("nationalId")} placeholder="National ID" aria-label="National ID" />
-        <Input type="date" value={form.dateOfBirth} onChange={set("dateOfBirth")} aria-label="Date of birth" />
-        <select value={form.sex} onChange={set("sex")} aria-label="Sex" className={SELECT_CLASS}>
-          <option value="">Sex…</option>
-          <option value="male">male</option>
-          <option value="female">female</option>
-          <option value="other">other</option>
-        </select>
-        <select value={form.homeDistrict} onChange={set("homeDistrict")} aria-label="Home district" className={SELECT_CLASS}>
-          <option value="">Home district…</option>
-          {DISTRICT_OPTIONS.map((district) => (
-            <option key={district} value={district}>
-              {formatDistrict(district)}
-            </option>
-          ))}
-        </select>
-        <Input value={form.ageYears} onChange={set("ageYears")} placeholder="Age (exact)" inputMode="numeric" aria-label="Age" />
-        <Input value={form.ageFrom} onChange={set("ageFrom")} placeholder="Age from" inputMode="numeric" aria-label="Age from" />
-        <Input value={form.ageTo} onChange={set("ageTo")} placeholder="Age to" inputMode="numeric" aria-label="Age to" />
-        <Input value={form.heightCmFrom} onChange={set("heightCmFrom")} placeholder="Height from (cm)" inputMode="numeric" aria-label="Height from" />
-        <Input value={form.heightCmTo} onChange={set("heightCmTo")} placeholder="Height to (cm)" inputMode="numeric" aria-label="Height to" />
-        <Input value={form.weightKgFrom} onChange={set("weightKgFrom")} placeholder="Weight from (kg)" inputMode="numeric" aria-label="Weight from" />
-        <Input value={form.weightKgTo} onChange={set("weightKgTo")} placeholder="Weight to (kg)" inputMode="numeric" aria-label="Weight to" />
-        <Input value={form.hairColor} onChange={set("hairColor")} placeholder="Hair color" aria-label="Hair color" />
-        <Input value={form.hairLength} onChange={set("hairLength")} placeholder="Hair length" aria-label="Hair length" />
-        <Input value={form.eyeColor} onChange={set("eyeColor")} placeholder="Eye color" aria-label="Eye color" />
-        <Input value={form.complexion} onChange={set("complexion")} placeholder="Complexion" aria-label="Complexion" />
-        <Input value={form.build} onChange={set("build")} placeholder="Build" aria-label="Build" />
-      </div>
-      <Textarea value={form.distinguishingFeatures} onChange={set("distinguishingFeatures")} placeholder="Distinguishing features…" rows={2} />
-      <Textarea value={form.clothingDescription} onChange={set("clothingDescription")} placeholder="Clothing…" rows={2} />
-      <Textarea value={form.jewelryDescription} onChange={set("jewelryDescription")} placeholder="Jewelry…" rows={2} />
-      <Textarea value={form.medicalNotes} onChange={set("medicalNotes")} placeholder="Medical notes…" rows={2} />
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={saving}>
-          {saving ? "Saving…" : "Save description"}
-        </Button>
-        <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => setOpen(false)}>
-          Cancel
-        </Button>
-      </div>
-    </form>
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <Input
+          value={form.fullName}
+          onChange={set("fullName")}
+          placeholder="Full name"
+          aria-label="Full name"
+        />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Input
+            value={form.nationalId}
+            onChange={set("nationalId")}
+            placeholder="National ID"
+            aria-label="National ID"
+          />
+          <DatePicker
+            value={form.dateOfBirth}
+            onChange={(next) =>
+              setForm((prev) => ({ ...prev, dateOfBirth: next }))
+            }
+            label="Date of birth"
+            placeholder="Date of birth"
+          />
+          <Select
+            value={form.sex || NONE}
+            onValueChange={(next) =>
+              setForm((prev) => ({ ...prev, sex: next === NONE ? "" : next }))
+            }
+          >
+            <SelectTrigger aria-label="Sex" className="h-9">
+              <SelectValue placeholder="Sex" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>None</SelectItem>
+              <SelectItem value="male">male</SelectItem>
+              <SelectItem value="female">female</SelectItem>
+              <SelectItem value="other">other</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={form.homeDistrict || NONE}
+            onValueChange={(next) =>
+              setForm((prev) => ({
+                ...prev,
+                homeDistrict: next === NONE ? "" : next,
+              }))
+            }
+          >
+            <SelectTrigger aria-label="Home district" className="h-9">
+              <SelectValue placeholder="Home district" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>None</SelectItem>
+              {DISTRICT_OPTIONS.map((district) => (
+                <SelectItem key={district} value={district}>
+                  {formatDistrict(district)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            value={form.ageYears}
+            onChange={set("ageYears")}
+            placeholder="Age (exact)"
+            inputMode="numeric"
+            aria-label="Age"
+          />
+          <Input
+            value={form.ageFrom}
+            onChange={set("ageFrom")}
+            placeholder="Age from"
+            inputMode="numeric"
+            aria-label="Age from"
+          />
+          <Input
+            value={form.ageTo}
+            onChange={set("ageTo")}
+            placeholder="Age to"
+            inputMode="numeric"
+            aria-label="Age to"
+          />
+          <Input
+            value={form.heightCmFrom}
+            onChange={set("heightCmFrom")}
+            placeholder="Height from (cm)"
+            inputMode="numeric"
+            aria-label="Height from"
+          />
+          <Input
+            value={form.heightCmTo}
+            onChange={set("heightCmTo")}
+            placeholder="Height to (cm)"
+            inputMode="numeric"
+            aria-label="Height to"
+          />
+          <Input
+            value={form.weightKgFrom}
+            onChange={set("weightKgFrom")}
+            placeholder="Weight from (kg)"
+            inputMode="numeric"
+            aria-label="Weight from"
+          />
+          <Input
+            value={form.weightKgTo}
+            onChange={set("weightKgTo")}
+            placeholder="Weight to (kg)"
+            inputMode="numeric"
+            aria-label="Weight to"
+          />
+          <Input
+            value={form.hairColor}
+            onChange={set("hairColor")}
+            placeholder="Hair color"
+            aria-label="Hair color"
+          />
+          <Input
+            value={form.hairLength}
+            onChange={set("hairLength")}
+            placeholder="Hair length"
+            aria-label="Hair length"
+          />
+          <Input
+            value={form.eyeColor}
+            onChange={set("eyeColor")}
+            placeholder="Eye color"
+            aria-label="Eye color"
+          />
+          <Input
+            value={form.complexion}
+            onChange={set("complexion")}
+            placeholder="Complexion"
+            aria-label="Complexion"
+          />
+          <Input
+            value={form.build}
+            onChange={set("build")}
+            placeholder="Build"
+            aria-label="Build"
+          />
+        </div>
+        <Textarea
+          value={form.distinguishingFeatures}
+          onChange={set("distinguishingFeatures")}
+          placeholder="Distinguishing features…"
+          rows={2}
+        />
+        <Textarea
+          value={form.clothingDescription}
+          onChange={set("clothingDescription")}
+          placeholder="Clothing…"
+          rows={2}
+        />
+        <Textarea
+          value={form.jewelryDescription}
+          onChange={set("jewelryDescription")}
+          placeholder="Jewelry…"
+          rows={2}
+        />
+        <Textarea
+          value={form.medicalNotes}
+          onChange={set("medicalNotes")}
+          placeholder="Medical notes…"
+          rows={2}
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save description"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
   )
 }
 
 function MarksSection({
-  personId,
   features,
   canEdit,
+  onAdd,
   onDone,
 }: {
-  personId: string
   features: PersonDetail["physicalFeatures"]
   canEdit: boolean
+  onAdd: () => void
   onDone?: () => Promise<void>
 }) {
-  const [featureType, setFeatureType] = useState("")
-  const [bodyLocation, setBodyLocation] = useState("")
-  const [description, setDescription] = useState("")
-  const [size, setSize] = useState("")
-  const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
-
-  async function submit(event: React.SubmitEvent) {
-    event.preventDefault()
-    if (!featureType) {
-      toast.error("Choose a mark type.")
-      return
-    }
-    setSaving(true)
-    try {
-      await addPersonFeature({
-        personId,
-        featureType,
-        bodyLocation,
-        description,
-        approximateSize: size,
-      })
-      toast.success("Mark added.")
-      setFeatureType("")
-      setBodyLocation("")
-      setDescription("")
-      setSize("")
-      await onDone?.()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed.")
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function remove(featureId: string) {
     setRemoving(featureId)
@@ -623,10 +817,23 @@ function MarksSection({
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Distinguishing marks ({features.length})
-      </h2>
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Distinguishing marks ({features.length})
+        </h2>
+        {canEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-none print:hidden"
+            onClick={onAdd}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Add mark
+          </Button>
+        )}
+      </div>
       {features.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No marks recorded — tattoos, scars, piercings go here.
@@ -641,10 +848,15 @@ function MarksSection({
               <span>
                 <span className="font-medium">{feature.featureType}</span>
                 {feature.bodyLocation && (
-                  <span className="text-muted-foreground"> · {feature.bodyLocation}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {feature.bodyLocation}
+                  </span>
                 )}
                 {feature.description && (
-                  <span className="block text-muted-foreground">{feature.description}</span>
+                  <span className="block text-muted-foreground">
+                    {feature.description}
+                  </span>
                 )}
                 {feature.approximateSize && (
                   <span className="block text-xs text-muted-foreground">
@@ -666,92 +878,48 @@ function MarksSection({
           ))}
         </ul>
       )}
-      {canEdit && (
-        <form onSubmit={submit} className="flex flex-col gap-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <select
-              value={featureType}
-              onChange={(event) => setFeatureType(event.target.value)}
-              aria-label="Mark type"
-              className={SELECT_CLASS}
-            >
-              <option value="">Mark type…</option>
-              {personFeatureTypeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <Input
-              value={bodyLocation}
-              onChange={(event) => setBodyLocation(event.target.value)}
-              placeholder="Body location"
-              aria-label="Body location"
-            />
-          </div>
-          <Input
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Description"
-            aria-label="Mark description"
-          />
-          <div className="flex gap-2">
-            <Input
-              value={size}
-              onChange={(event) => setSize(event.target.value)}
-              placeholder="Approximate size (optional)"
-              aria-label="Approximate size"
-              className="flex-1"
-            />
-            <Button type="submit" size="sm" disabled={saving || !featureType}>
-              {saving ? "Adding…" : "Add mark"}
-            </Button>
-          </div>
-        </form>
-      )}
     </section>
   )
 }
 
-function FingerprintsSection({
+function MarkDialog({
+  open,
+  onOpenChange,
   personId,
-  fingerprints,
-  canEdit,
   onDone,
 }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   personId: string
-  fingerprints: PersonDetail["fingerprints"]
-  canEdit: boolean
   onDone?: () => Promise<void>
 }) {
-  const [referenceNo, setReferenceNo] = useState("")
-  const [quality, setQuality] = useState("")
-  const [dateProcessed, setDateProcessed] = useState("")
-  const [afisReference, setAfisReference] = useState("")
-  const [notes, setNotes] = useState("")
+  const [featureType, setFeatureType] = useState("")
+  const [bodyLocation, setBodyLocation] = useState("")
+  const [description, setDescription] = useState("")
+  const [size, setSize] = useState("")
   const [saving, setSaving] = useState(false)
-  const [removing, setRemoving] = useState<string | null>(null)
 
   async function submit(event: React.SubmitEvent) {
     event.preventDefault()
+    if (!featureType) {
+      toast.error("Choose a mark type.")
+      return
+    }
     setSaving(true)
     try {
-      await recordFingerprint({
+      await addPersonFeature({
         personId,
-        referenceNo,
-        quality: (fingerprintQualityOptions as readonly string[]).includes(quality)
-          ? (quality as (typeof fingerprintQualityOptions)[number])
-          : undefined,
-        dateProcessed,
-        afisReference,
-        notes,
+        featureType,
+        bodyLocation,
+        description,
+        approximateSize: size,
       })
-      toast.success("Fingerprint set recorded.")
-      setReferenceNo("")
-      setQuality("")
-      setDateProcessed("")
-      setAfisReference("")
-      setNotes("")
+      toast.success("Mark added.")
+      setFeatureType("")
+      setBodyLocation("")
+      setDescription("")
+      setSize("")
+      onOpenChange(false)
       await onDone?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed.")
@@ -759,6 +927,77 @@ function FingerprintsSection({
       setSaving(false)
     }
   }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next)
+      }}
+      title="Add mark"
+      description="A tattoo, scar, piercing, or other distinguishing mark."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <Select value={featureType} onValueChange={setFeatureType}>
+          <SelectTrigger aria-label="Mark type" className="h-9">
+            <SelectValue placeholder="Mark type" />
+          </SelectTrigger>
+          <SelectContent>
+            {personFeatureTypeOptions.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={bodyLocation}
+          onChange={(event) => setBodyLocation(event.target.value)}
+          placeholder="Body location"
+          aria-label="Body location"
+        />
+        <Input
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Description"
+          aria-label="Mark description"
+        />
+        <Input
+          value={size}
+          onChange={(event) => setSize(event.target.value)}
+          placeholder="Approximate size (optional)"
+          aria-label="Approximate size"
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving || !featureType}>
+            {saving ? "Adding…" : "Add mark"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
+  )
+}
+
+function FingerprintsSection({
+  fingerprints,
+  canEdit,
+  onAdd,
+  onDone,
+}: {
+  fingerprints: PersonDetail["fingerprints"]
+  canEdit: boolean
+  onAdd: () => void
+  onDone?: () => Promise<void>
+}) {
+  const [removing, setRemoving] = useState<string | null>(null)
 
   async function remove(fingerprintId: string) {
     setRemoving(fingerprintId)
@@ -774,10 +1013,23 @@ function FingerprintsSection({
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Fingerprints ({fingerprints.length})
-      </h2>
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Fingerprints ({fingerprints.length})
+        </h2>
+        {canEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-none print:hidden"
+            onClick={onAdd}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Record fingerprints
+          </Button>
+        )}
+      </div>
       {fingerprints.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No fingerprint sets on file.
@@ -795,7 +1047,8 @@ function FingerprintsSection({
                 </span>
                 <span className="text-muted-foreground">
                   {" "}
-                  · {[
+                  ·{" "}
+                  {[
                     fp.quality,
                     fp.dateProcessed,
                     fp.afisReference ? `AFIS ${fp.afisReference}` : null,
@@ -821,100 +1074,51 @@ function FingerprintsSection({
           ))}
         </ul>
       )}
-      {canEdit && (
-        <form onSubmit={submit} className="flex flex-col gap-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Input
-              value={referenceNo}
-              onChange={(event) => setReferenceNo(event.target.value)}
-              placeholder="Reference no."
-              aria-label="Fingerprint reference number"
-            />
-            <select
-              value={quality}
-              onChange={(event) => setQuality(event.target.value)}
-              aria-label="Print quality"
-              className={SELECT_CLASS}
-            >
-              <option value="">Quality…</option>
-              {fingerprintQualityOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <Input
-              type="date"
-              value={dateProcessed}
-              onChange={(event) => setDateProcessed(event.target.value)}
-              aria-label="Date processed"
-            />
-            <Input
-              value={afisReference}
-              onChange={(event) => setAfisReference(event.target.value)}
-              placeholder="AFIS reference (if searched)"
-              aria-label="AFIS reference"
-            />
-          </div>
-          <Input
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="Notes (optional)"
-            aria-label="Fingerprint notes"
-          />
-          <div>
-            <Button type="submit" size="sm" disabled={saving}>
-              {saving ? "Recording…" : "Record fingerprints"}
-            </Button>
-          </div>
-        </form>
-      )}
     </section>
   )
 }
 
-function DnaSection({
+function FingerprintDialog({
+  open,
+  onOpenChange,
   personId,
-  dnaSamples,
-  canEdit,
   onDone,
 }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   personId: string
-  dnaSamples: PersonDetail["dnaSamples"]
-  canEdit: boolean
   onDone?: () => Promise<void>
 }) {
-  const [sampleType, setSampleType] = useState("")
-  const [labName, setLabName] = useState("")
-  const [labReference, setLabReference] = useState("")
-  const [relationship, setRelationship] = useState("")
-  const [collectedAt, setCollectedAt] = useState("")
+  const [referenceNo, setReferenceNo] = useState("")
+  const [quality, setQuality] = useState("")
+  const [dateProcessed, setDateProcessed] = useState("")
+  const [afisReference, setAfisReference] = useState("")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
-  const [busyId, setBusyId] = useState<string | null>(null)
 
   async function submit(event: React.SubmitEvent) {
     event.preventDefault()
     setSaving(true)
     try {
-      await recordDnaSample({
+      await recordFingerprint({
         personId,
-        sampleType: (dnaSampleTypeOptions as readonly string[]).includes(sampleType)
-          ? (sampleType as (typeof dnaSampleTypeOptions)[number])
+        referenceNo,
+        quality: (
+          fingerprintQualityOptions as readonly string[]
+        ).includes(quality)
+          ? (quality as (typeof fingerprintQualityOptions)[number])
           : undefined,
-        labName,
-        labReference,
-        relationshipToSubject: relationship,
-        collectedAt,
+        dateProcessed,
+        afisReference,
         notes,
       })
-      toast.success("DNA sample recorded.")
-      setSampleType("")
-      setLabName("")
-      setLabReference("")
-      setRelationship("")
-      setCollectedAt("")
+      toast.success("Fingerprint set recorded.")
+      setReferenceNo("")
+      setQuality("")
+      setDateProcessed("")
+      setAfisReference("")
       setNotes("")
+      onOpenChange(false)
       await onDone?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed.")
@@ -922,6 +1126,77 @@ function DnaSection({
       setSaving(false)
     }
   }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next)
+      }}
+      title="Record fingerprints"
+      description="A fingerprint set taken for this profile — every field optional."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <Input
+          value={referenceNo}
+          onChange={(event) => setReferenceNo(event.target.value)}
+          placeholder="Reference no."
+          aria-label="Fingerprint reference number"
+        />
+        <OptionalSelect
+          label="Quality"
+          value={quality}
+          onChange={setQuality}
+          options={fingerprintQualityOptions}
+        />
+        <DatePicker
+          value={dateProcessed}
+          onChange={setDateProcessed}
+          label="Date processed"
+          placeholder="Date processed"
+        />
+        <Input
+          value={afisReference}
+          onChange={(event) => setAfisReference(event.target.value)}
+          placeholder="AFIS reference (if searched)"
+          aria-label="AFIS reference"
+        />
+        <Input
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder="Notes (optional)"
+          aria-label="Fingerprint notes"
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Recording…" : "Record fingerprints"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
+  )
+}
+
+function DnaSection({
+  dnaSamples,
+  canEdit,
+  onAdd,
+  onDone,
+}: {
+  dnaSamples: PersonDetail["dnaSamples"]
+  canEdit: boolean
+  onAdd: () => void
+  onDone?: () => Promise<void>
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   async function advance(sampleId: string, status: string) {
     if (!(dnaStatusOptions as readonly string[]).includes(status)) return
@@ -954,10 +1229,23 @@ function DnaSection({
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        DNA samples ({dnaSamples.length})
-      </h2>
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          DNA samples ({dnaSamples.length})
+        </h2>
+        {canEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-none print:hidden"
+            onClick={onAdd}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Record DNA sample
+          </Button>
+        )}
+      </div>
       {dnaSamples.length === 0 ? (
         <p className="text-sm text-muted-foreground">No DNA samples on file.</p>
       ) : (
@@ -1006,80 +1294,148 @@ function DnaSection({
                   Status: {sample.status}
                 </span>
                 {canEdit && (
-                  <select
+                  <Select
                     value={sample.status}
-                    onChange={(event) => advance(sample.id, event.target.value)}
+                    onValueChange={(next) => advance(sample.id, next)}
                     disabled={busyId === sample.id}
-                    aria-label="DNA sample status"
-                    className="h-8 w-auto rounded-none border bg-background px-2 text-xs"
                   >
-                    {dnaStatusOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      aria-label="DNA sample status"
+                      className="h-8 w-auto text-xs"
+                    >
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dnaStatusOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             </li>
           ))}
         </ul>
       )}
-      {canEdit && (
-        <form onSubmit={submit} className="flex flex-col gap-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <select
-              value={sampleType}
-              onChange={(event) => setSampleType(event.target.value)}
-              aria-label="Sample type"
-              className={SELECT_CLASS}
-            >
-              <option value="">Sample type…</option>
-              {dnaSampleTypeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <Input
-              value={labName}
-              onChange={(event) => setLabName(event.target.value)}
-              placeholder="Lab name"
-              aria-label="Lab name"
-            />
-            <Input
-              value={labReference}
-              onChange={(event) => setLabReference(event.target.value)}
-              placeholder="Lab reference"
-              aria-label="Lab reference"
-            />
-            <Input
-              value={relationship}
-              onChange={(event) => setRelationship(event.target.value)}
-              placeholder="Relationship (family ref only)"
-              aria-label="Relationship to subject"
-            />
-            <Input
-              type="date"
-              value={collectedAt}
-              onChange={(event) => setCollectedAt(event.target.value)}
-              aria-label="Date collected"
-            />
-          </div>
-          <Input
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="Notes (optional)"
-            aria-label="DNA notes"
-          />
-          <div>
-            <Button type="submit" size="sm" disabled={saving}>
-              {saving ? "Recording…" : "Record DNA sample"}
-            </Button>
-          </div>
-        </form>
-      )}
     </section>
+  )
+}
+
+function DnaDialog({
+  open,
+  onOpenChange,
+  personId,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  personId: string
+  onDone?: () => Promise<void>
+}) {
+  const [sampleType, setSampleType] = useState("")
+  const [labName, setLabName] = useState("")
+  const [labReference, setLabReference] = useState("")
+  const [relationship, setRelationship] = useState("")
+  const [collectedAt, setCollectedAt] = useState("")
+  const [notes, setNotes] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      await recordDnaSample({
+        personId,
+        sampleType: (dnaSampleTypeOptions as readonly string[]).includes(
+          sampleType
+        )
+          ? (sampleType as (typeof dnaSampleTypeOptions)[number])
+          : undefined,
+        labName,
+        labReference,
+        relationshipToSubject: relationship,
+        collectedAt,
+        notes,
+      })
+      toast.success("DNA sample recorded.")
+      setSampleType("")
+      setLabName("")
+      setLabReference("")
+      setRelationship("")
+      setCollectedAt("")
+      setNotes("")
+      onOpenChange(false)
+      await onDone?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next)
+      }}
+      title="Record DNA sample"
+      description="A sample collected for this profile — lab pipeline tracked after."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <OptionalSelect
+          label="Sample type"
+          value={sampleType}
+          onChange={setSampleType}
+          options={dnaSampleTypeOptions}
+        />
+        <Input
+          value={labName}
+          onChange={(event) => setLabName(event.target.value)}
+          placeholder="Lab name"
+          aria-label="Lab name"
+        />
+        <Input
+          value={labReference}
+          onChange={(event) => setLabReference(event.target.value)}
+          placeholder="Lab reference"
+          aria-label="Lab reference"
+        />
+        <Input
+          value={relationship}
+          onChange={(event) => setRelationship(event.target.value)}
+          placeholder="Relationship (family ref only)"
+          aria-label="Relationship to subject"
+        />
+        <DatePicker
+          value={collectedAt}
+          onChange={setCollectedAt}
+          label="Date collected"
+          placeholder="Date collected"
+        />
+        <Input
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder="Notes (optional)"
+          aria-label="DNA notes"
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Recording…" : "Record DNA sample"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
   )
 }
 

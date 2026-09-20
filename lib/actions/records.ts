@@ -204,6 +204,72 @@ async function resolveVehicleByPlate(tx: DbTransaction, plate: string) {
   return created
 }
 
+/**
+ * Person-centred filings build the profile from the payload itself — match
+ * by national_id when given (ad-hoc spellings must not fork a profile that
+ * already exists), else create carrying the filed description over. Mirrors
+ * the ad-hoc vehicle pattern above: filing never depends on a separate
+ * manual linking step.
+ */
+async function resolvePayloadPerson(
+  tx: DbTransaction,
+  type: RecordType,
+  payload: Record<string, unknown>
+): Promise<string | undefined> {
+  if (
+    type !== "missing_person" &&
+    type !== "wanted_person" &&
+    type !== "arrest_record" &&
+    type !== "unclaimed_person"
+  ) {
+    return undefined
+  }
+  const name =
+    str(payload, type === "unclaimed_person" ? "deceased_name" : "full_name")
+  if (!name) return undefined
+  const nationalId = str(payload, "national_id") || undefined
+  if (nationalId) {
+    const [existing] = await tx
+      .select({ id: personsOfInterest.id })
+      .from(personsOfInterest)
+      .where(eq(personsOfInterest.nationalId, nationalId))
+      .limit(1)
+    if (existing) return existing.id
+  }
+  const num = (key: string) =>
+    typeof payload[key] === "number" ? (payload[key] as number) : undefined
+  const text = (key: string) => str(payload, key) || undefined
+  const sex = text("sex")
+  const [created] = await tx
+    .insert(personsOfInterest)
+    .values({
+      fullName: name,
+      nationalId,
+      sex:
+        sex === "male" || sex === "female" || sex === "other"
+          ? sex
+          : undefined,
+      distinguishingFeatures:
+        text("distinguishing_features") ?? text("description"),
+      ageYears: num("age"),
+      ageFrom: num("age_from"),
+      ageTo: num("age_to"),
+      heightCmFrom: num("height_cm_from"),
+      heightCmTo: num("height_cm_to"),
+      weightKgFrom: num("weight_kg_from"),
+      weightKgTo: num("weight_kg_to"),
+      hairColor: text("hair_color"),
+      hairLength: text("hair_length"),
+      eyeColor: text("eye_color"),
+      complexion: text("complexion"),
+      build: text("build"),
+      clothingDescription: text("clothing_description"),
+      jewelryDescription: text("jewelry_description"),
+    })
+    .returning({ id: personsOfInterest.id })
+  return created.id
+}
+
 /** A vehicle is flagged while an active missing/offense/impound case points
  * at it, OR an unsettled, non-waived, non-exempt tax assessment is past due
  * — the same predicate Seed-refresh.sql uses. */
@@ -976,11 +1042,16 @@ export async function createRecord({
     if (type === "road_accident") {
       await attachInsuranceSnapshots(tx, payload)
     }
-    // Link person when the payload references a known profile.
-    const personId =
+    // Link person when the payload references a known profile — otherwise
+    // person-centred filings build the profile from the payload itself
+    // (match by national_id, else create), exactly like ad-hoc vehicles.
+    let personId =
       typeof payload.person_id === "string" && payload.person_id
         ? (payload.person_id as string)
         : undefined
+    if (!personId) {
+      personId = await resolvePayloadPerson(tx, type, payload)
+    }
     // Link (or ad-hoc create) the vehicle when a plate is present.
     let vehicleId: string | undefined
     const plate =

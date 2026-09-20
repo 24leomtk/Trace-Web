@@ -24,6 +24,11 @@ generic or intentionally scoped.
 
 **Goal:** `unclaimed_person` becomes fileable (today it crashes the form);
 officers can capture NamUs-grade descriptions on person-centred filings.
+Person profiles are **auto-created from the filing payload server-side**
+(`resolvePayloadPerson` in `lib/actions/records.ts`: match by
+`national_id`, else create carrying the description over — same discipline
+as ad-hoc vehicles). There is deliberately NO manual link picker at
+filing; corrections happen via merge or the detail link dialog.
 
 1. `fields.ts`: add `unclaimed_person: [...]` mirroring
    `unclaimedPersonSchema` — `deceased_name*`, `place_of_death*` via `f()`,
@@ -78,6 +83,10 @@ proposal (button hidden, server rejects anyway).
 ## Phase U3 — Person profile: descriptions, marks, biometrics (P4)
 
 **Goal:** the profile shows everything `getPerson` already returns.
+Forms live in `ResponsiveModal` dialogs (TaskDialog/ReferDialog pattern),
+selects are shadcn `Select` (`ui/select`, `__none` sentinel for the
+explicit None item on optional fields), dates are `DatePicker`
+(`ui/date-picker`). No native `<select>`, no in-page forms.
 
 1. `persons/[id]/page.tsx` view type (`115-148`): stop dropping fields —
    extend to the N1 columns, `physicalFeatures`, `fingerprints`,
