@@ -34,7 +34,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { formatCurrency } from "@/lib/format"
+import { formatCurrency, formatDateShort } from "@/lib/format"
 
 const STATUS_OPTIONS = [
   { value: "unpaid", label: "Unpaid", icon: ClockIcon },
@@ -399,7 +399,7 @@ function TaxRow({ row, onDone }: { row: TaxLedgerRow; onDone: () => void }) {
               : row.isExempt
                 ? "exempt"
                 : `waived (${row.waiverStatus})`
-            : `${state} · due ${row.dueDate}`}
+            : `${state} · due ${formatDateShort(row.dueDate)}`}
         </span>
       </p>
       <p className="text-sm text-muted-foreground">

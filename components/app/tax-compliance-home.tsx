@@ -20,7 +20,7 @@ import { DialogFooter } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { formatCurrency } from "@/lib/format"
+import { formatCurrency, formatDateShort } from "@/lib/format"
 
 type ComplianceTab = "waivers" | "ledger"
 
@@ -312,7 +312,7 @@ function LedgerReadOnly({
                     {formatCurrency(row.amountDue)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {state} · due {row.dueDate}
+                    {state} · due {formatDateShort(row.dueDate)}
                     {row.isPaid && row.receiptNo
                       ? ` · receipt ${row.receiptNo}`
                       : ""}
