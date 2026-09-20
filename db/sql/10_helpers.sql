@@ -42,6 +42,14 @@ security definer
 set search_path = public, pg_catalog
 as $$ select role::text from public.users where id = public.app_user_id() $$;
 
+create or replace function public.app_my_district()
+returns text
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$ select district::text from public.users where id = public.app_user_id() $$;
+
 create or replace function public.app_is_police()
 returns boolean
 language sql

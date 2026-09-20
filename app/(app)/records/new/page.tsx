@@ -572,7 +572,7 @@ export default function NewRecordPage() {
                   {
                     kind: "ref",
                     ref: "branch",
-                    domain: user.domain ?? "regular",
+                    domain: domainForRecordType(recordType),
                     path: "__branch",
                     label: "Branch",
                   },

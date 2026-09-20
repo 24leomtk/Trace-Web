@@ -34,10 +34,19 @@ create policy users_admin_write on public.users for all to app_user
   using (public.app_is_system_admin())
   with check (public.app_is_system_admin());
 
--- branches / organizations: readable reference data; admin-written.
+-- branches: readable reference data, except district monitors are scoped to
+-- their own district (drives the filing branch picker via RLS); admin-written.
+-- Officers keep full read — cross-branch/district branch names are needed for
+-- display inside RLS-scoped record reads, and officers never get a picker.
 drop policy if exists branches_read on public.branches;
 create policy branches_read on public.branches for select to app_user
-  using (public.app_user_id() is not null);
+  using (
+    public.app_user_id() is not null
+    and (
+      public.app_my_role() <> 'district_monitor'
+      or branches.district::text = public.app_my_district()
+    )
+  );
 drop policy if exists branches_admin_write on public.branches;
 create policy branches_admin_write on public.branches for all to app_user
   using (public.app_is_system_admin())

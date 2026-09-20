@@ -377,6 +377,11 @@ export default function RecordDetailPage({
       display: formatFieldValue(field, payload[field.path]),
     }))
     .filter((entry) => entry.display)
+  // Reassign targets: in-district, in-domain branches excluding the current
+  // one. Single-branch districts legitimately yield zero targets.
+  const reassignTargets = (branchesQuery.data ?? []).filter(
+    (branch) => branch.id !== record.branchId
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -1001,6 +1006,16 @@ export default function RecordDetailPage({
                 <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                   Reassign branch
                 </h3>
+                {branchesQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">
+                    Loading branches…
+                  </p>
+                ) : reassignTargets.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No other branches in your district and domain — this case
+                    has nowhere to move.
+                  </p>
+                ) : (
                 <form
                   className="flex gap-2"
                   onSubmit={async (event) => {
@@ -1029,19 +1044,18 @@ export default function RecordDetailPage({
                     triggerClassName="h-9 flex-1"
                     source={{
                       mode: "client",
-                      items: (branchesQuery.data ?? [])
-                        .filter((branch) => branch.id !== record.branchId)
-                        .map((branch) => ({
-                          value: branch.id,
-                          label: branch.name,
-                          detail: formatDistrict(branch.district),
-                        })),
+                      items: reassignTargets.map((branch) => ({
+                        value: branch.id,
+                        label: branch.name,
+                        detail: formatDistrict(branch.district),
+                      })),
                     }}
                   />
-                  <Button type="submit" size="sm">
+                  <Button type="submit" size="lg">
                     Move
                   </Button>
                 </form>
+                )}
               </div>
             )}
           </div>
