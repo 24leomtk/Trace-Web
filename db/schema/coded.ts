@@ -16,7 +16,6 @@ import { branches } from "./branches"
 import { organizations } from "./organizations"
 import { users } from "./auth"
 import { districtEnum, caseStatusEnum, dangerLevelEnum } from "./enums"
-
 // ---------------------------------------------------------------------------
 // missing_person_cases — populated by a trigger on records INSERT/UPDATE
 // where record_type = 'missing_person'.
@@ -79,6 +78,47 @@ export const wantedPersonCases = pgTable(
     index("wanted_person_cases_district_idx").on(table.district),
     index("wanted_person_cases_status_idx").on(table.status),
     index("wanted_person_cases_danger_idx").on(table.dangerLevel),
+  ]
+)
+
+// ---------------------------------------------------------------------------
+// unclaimed_person_cases — Phase N2 (NamUs-inspired). record_type =
+// 'unclaimed_person': the deceased has been identified but no next of kin
+// has claimed the remains. `custodialBranchId` points at the branch /
+// facility holding the remains (NamUs `custodial_agency_id`, TRACE-style);
+// `identificationMethod` records HOW identity was established (visual,
+// fingerprints, dental, DNA, documents…); `reasonUnclaimed` is free text.
+// ---------------------------------------------------------------------------
+
+export const unclaimedPersonCases = pgTable(
+  "unclaimed_person_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => records.id, { onDelete: "cascade" }),
+    personId: uuid("person_id").references(() => personsOfInterest.id),
+
+    deceasedName: text("deceased_name").notNull(),
+    dateOfDeath: date("date_of_death"),
+    placeOfDeath: text("place_of_death"),
+    identificationMethod: text("identification_method"),
+    reasonUnclaimed: text("reason_unclaimed"),
+    custodialBranchId: uuid("custodial_branch_id").references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    district: districtEnum("district"),
+    status: caseStatusEnum("status").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("unclaimed_person_cases_record_id_idx").on(table.recordId),
+    index("unclaimed_person_cases_person_id_idx").on(table.personId),
+    index("unclaimed_person_cases_district_idx").on(table.district),
+    index("unclaimed_person_cases_status_idx").on(table.status),
   ]
 )
 

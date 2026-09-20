@@ -9,6 +9,12 @@ export * from "./apikeys"
 export * from "./persons"
 export * from "./vehicles"
 
+// Person biometrics (fingerprints + DNA — NamUs-inspired, TRACE-scoped)
+export * from "./biometrics"
+
+// Case matches (missing ↔ unclaimed review workflow)
+export * from "./matches"
+
 // Insurance (entered via insurer portal accounts)
 export * from "./insurance"
 

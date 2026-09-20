@@ -99,6 +99,8 @@ truncate public.actions,
   public.referral_documents,
   public.missing_person_cases,
   public.wanted_person_cases,
+  public.unclaimed_person_cases,
+  public.person_case_matches,
   public.vehicle_cases,
   public.accidents,
   public.accident_vehicles,
@@ -109,6 +111,9 @@ truncate public.actions,
   public.insurance_policies,
   public.records,
   public.vehicles,
+  public.person_physical_features,
+  public.person_fingerprints,
+  public.person_dna_samples,
   public.persons_of_interest,
   public.users,
   public.branches,
@@ -200,6 +205,12 @@ declare
   v_note           text;
   v_fine           integer;
   v_paid           integer;
+  v_match_a        uuid;
+  v_match_b        uuid;
+  v_match_c        uuid;
+  v_match_d        uuid;
+  v_match_district text;
+  v_match_reviewer text;
 begin
   -- ════════════════════════════════════════════════════════════════════════
   -- A. ANCHORS — branches, orgs, and one login per role (sequential phones)
@@ -361,12 +372,35 @@ begin
       if v_nid is not null then v_last_nid := v_nid; end if;
     end if;
     insert into public.persons_of_interest
-      (id, full_name, national_id, sex, home_district, distinguishing_features)
+      (id, full_name, national_id, sex, home_district, distinguishing_features,
+       age_from, age_to, height_cm_from, height_cm_to,
+       weight_kg_from, weight_kg_to,
+       hair_color, eye_color, complexion, build)
     values
       (gen_random_uuid(), v_full, v_nid,
        pg_temp.pick(array['male','female','male','female'])::sex,
        pg_temp.pick(v_all_districts)::district,
-       case when v_i % 3 = 0 then pg_temp.pick(array['Scar on left cheek','Tattoo on right forearm','Limp in left leg','Birthmark on neck']) end);
+       case when v_i % 3 = 0 then pg_temp.pick(array['Scar on left cheek','Tattoo on right forearm','Limp in left leg','Birthmark on neck']) end,
+       case when v_i % 3 <> 0 then 18 + floor(random() * 40)::int end,
+       case when v_i % 3 <> 0 then 23 + floor(random() * 40)::int end,
+       case when v_i % 3 <> 0 then 160 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then 168 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then 55 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then 63 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Black','Short black','Bald','Braided','Grey']) end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Brown','Dark brown','Black']) end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Dark','Medium','Light']) end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Slim','Medium','Stocky']) end)
+    returning id into v_person;
+    if v_i % 3 = 0 then
+      insert into public.person_physical_features
+        (person_id, feature_type, body_location, description)
+      values
+        (v_person,
+         pg_temp.pick(array['tattoo','scar','mark','piercing']),
+         pg_temp.pick(array['Left cheek','Right forearm','Neck','Left leg','Right hand']),
+         pg_temp.pick(array['Scar on left cheek','Tattoo on right forearm','Birthmark on neck','Piercing on left ear']));
+    end if;
     v_seq := v_seq + 1;
   end loop;
 
@@ -396,7 +430,7 @@ begin
   -- ════════════════════════════════════════════════════════════════════════
   for v_i in 1..v_case_count loop
     v_type := pg_temp.pick(array['missing_person','missing_person',
-      'wanted_person','stolen_property','stolen_property',
+      'wanted_person','unclaimed_person','stolen_property','stolen_property',
       'crime_incident','crime_incident','crime_incident',
       'arrest_record','missing_vehicle','missing_vehicle',
       'vehicle_offense','vehicle_offense','vehicle_offense',
@@ -439,7 +473,7 @@ begin
       v_lat := null; v_lng := null;
     end if;
 
-    if v_type in ('missing_person','wanted_person','arrest_record') then
+    if v_type in ('missing_person','wanted_person','unclaimed_person','arrest_record') then
       select p.id into v_person from public.persons_of_interest p order by random() limit 1;
     end if;
     if v_type in ('missing_vehicle','vehicle_offense','traffic_citation','vehicle_impoundment') then
@@ -477,6 +511,15 @@ begin
         'danger_level', pg_temp.pick(array['low','medium','high','extreme']),
         'last_known_location', initcap(v_branch_district) || ' township',
         'description', 'Wanted for questioning.');
+      when 'unclaimed_person' then v_data := jsonb_build_object(
+        'person_id', v_person, 'deceased_name', coalesce(v_full, 'Unknown'),
+        'national_id', v_nid,
+        'sex', pg_temp.pick(array['male','female']),
+        'date_of_death', to_char(v_rdate, 'YYYY-MM-DD'),
+        'place_of_death', pg_temp.pick(array['District hospital','Central mortuary','Health centre']) || ', ' || initcap(v_branch_district),
+        'identification_method', pg_temp.pick(array['Visual identification by relative','Fingerprints','National ID documents','Dental records']),
+        'reason_unclaimed', 'Next of kin not yet traced.',
+        'description', 'Remains held pending next-of-kin tracing.');
       when 'stolen_property' then v_data := jsonb_build_object(
         'item_description', pg_temp.pick(array['Laptop','Smartphone','Bicycle','Generator','TV set','Motorbike']),
         'category', pg_temp.pick(array['Electronics','Vehicle','Household','Machinery']),
@@ -586,6 +629,15 @@ begin
       values (v_record, v_person, coalesce(v_full, 'Unknown'),
               v_data ->> 'offense', (v_data ->> 'danger_level')::danger_level,
               v_branch_district::district, v_status::case_status);
+    elsif v_type = 'unclaimed_person' then
+      insert into public.unclaimed_person_cases
+        (record_id, person_id, deceased_name, date_of_death, place_of_death,
+         identification_method, reason_unclaimed, custodial_branch_id,
+         district, status)
+      values (v_record, v_person, coalesce(v_full, 'Unknown'),
+              (v_data ->> 'date_of_death')::date, v_data ->> 'place_of_death',
+              v_data ->> 'identification_method', v_data ->> 'reason_unclaimed',
+              v_branch, v_branch_district::district, v_status::case_status);
     elsif v_type in ('missing_vehicle','vehicle_offense','vehicle_impoundment') then
       insert into public.vehicle_cases
         (record_id, vehicle_id, case_type, plate_number, district, status)
@@ -920,6 +972,24 @@ begin
     (gen_random_uuid(), 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe'),
     (gen_random_uuid(), 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe');
 
+  -- H6b. N3 biometric depth: one fingerprint set + one DNA sample on a
+  -- random profile (audited as the demo traffic officer).
+  select p.id into v_person from public.persons_of_interest p
+   where p.national_id is not null order by random() limit 1;
+  if v_person is not null then
+    insert into public.person_fingerprints
+      (person_id, reference_no, quality, date_processed, notes)
+    values (v_person, 'FP-26-DEMO-01', 'good', current_date - 10,
+            'Ten-print set taken at intake (demo).');
+    insert into public.person_dna_samples
+      (person_id, sample_type, lab_name, status, collected_at, notes)
+    values (v_person, 'reference', 'Central Lab Lilongwe', 'sent',
+            current_date - 9, 'Buccal swab sent to lab (demo).');
+    insert into public.actions (actor_id, action_type, person_id, reason)
+    values (v_officer_traffic, 'fingerprint_recorded', v_person, 'Seeded biometric demo.'),
+           (v_officer_traffic, 'dna_sample_recorded', v_person, 'Seeded biometric demo.');
+  end if;
+
   -- H7. DEV-ONLY machine key for the ANPR endpoint (plaintext in header only).
   insert into public.api_keys (user_id, name, key_hash, key_prefix, scopes)
   values (v_officer_traffic, 'Seeded ANPR demo key',
@@ -1027,6 +1097,56 @@ begin
            (v_monitor_country, 'hold_released', v_record, 'Seeded release demo.');
   end if;
 
+  -- H10b. Match workflow demo (Phase N4): one possible + one confirmed
+  -- (missing ↔ unclaimed, Lilongwe).
+  select id into v_match_a from public.records
+   where record_type = 'missing_person' and status = 'active'
+     and district = 'lilongwe' order by random() limit 1;
+  select id into v_match_b from public.records
+   where record_type = 'unclaimed_person' and status = 'active'
+     and district = 'lilongwe' order by random() limit 1;
+  if v_match_a is not null and v_match_b is not null then
+    insert into public.person_case_matches
+      (record_id_a, record_id_b, match_type, score, reason, proposed_by)
+    values (v_match_a, v_match_b, 'possible', 62.5,
+            'Same district, similar name and age window — verify before confirming (demo).',
+            v_officer_regular);
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_officer_regular, 'match_proposed', v_match_a, 'Seeded match demo.');
+    -- Confirmed pair: any district with both sides present (Lilongwe first),
+    -- reviewed by that district's regular monitor.
+    select m.id, u.id, m.district::text into v_match_c, v_match_d, v_match_district
+      from public.records m
+      join public.records u
+        on u.district = m.district
+       and u.record_type = 'unclaimed_person' and u.status = 'active'
+       and u.id <> v_match_a and u.id <> v_match_b
+     where m.record_type = 'missing_person' and m.status = 'active'
+       and m.id <> v_match_a and m.id <> v_match_b
+     order by (m.district = 'lilongwe') desc, random() limit 1;
+    if v_match_c is not null then
+      if v_match_district = 'lilongwe' then
+        v_match_reviewer := v_monitor_district;
+      else
+        select id into v_match_reviewer from public.users
+         where role = 'district_monitor' and domain = 'regular'
+           and district = v_match_district::district and is_active
+         order by random() limit 1;
+      end if;
+    end if;
+    if v_match_c is not null and v_match_d is not null and v_match_reviewer is not null then
+      insert into public.person_case_matches
+        (record_id_a, record_id_b, match_type, score, reason,
+         proposed_by, reviewed_by, reviewed_at)
+      values (v_match_c, v_match_d, 'confirmed', 88.0,
+              'Same person profile + family identification (demo).',
+              v_officer_regular, v_match_reviewer, now() - interval '1 day');
+      insert into public.actions (actor_id, action_type, record_id, reason)
+      values (v_officer_regular, 'match_proposed', v_match_c, 'Seeded match demo.'),
+             (v_match_reviewer, 'match_confirmed', v_match_c, 'Seeded match demo.');
+    end if;
+  end if;
+
   -- H11. Access-review demo (Phase 6): recent sessions for a handful of
   -- anchors (the rest read as dormant), plus blocked-transition friction.
   insert into public.sessions
@@ -1102,6 +1222,7 @@ begin
   raise notice 'Demo plates: LL 4242 (3 citations: unpaid/part/paid+scheduled) · % (flagged).', coalesce(v_plate, 'none');
   raise notice 'Receipt demo: T-26-DEMO-01 overdue-unpaid · T-26-DEMO-02 part-paid at Blantyre counter · T-26-DEMO-09 voided.';
   raise notice 'Locate demo: one wanted located (Blantyre report), one confirmed; custody demo: one hold+notice, one released.';
+  raise notice 'NamUs demo: described persons + physical marks; unclaimed persons; FP-26-DEMO-01 + DNA sample; one possible + one confirmed missing↔unclaimed match.';
   raise notice 'Expiring referrals (renew demo): %.', v_overdue_refs;
   raise notice 'DEV-ONLY ANPR key: trace_seed_demo_anpr_001 (plate:read). Never use outside dev.';
 end $$;

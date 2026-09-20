@@ -1,9 +1,9 @@
 -- TRACE seed 03 — regular-domain cases.
 -- Run AFTER 02_entities.sql. Own transaction, self-contained.
 -- Notification triggers muted (flag set below).
--- Covers: missing_person ×2, wanted_person, stolen_property ×2,
--- crime_incident ×3, arrest_record + coded projections, GPS pins,
--- arrest custody depth, locate/disposition states, micro-districts.
+-- Covers: missing_person ×2, wanted_person, unclaimed_person,
+-- stolen_property ×2, crime_incident ×3, arrest_record + coded projections,
+-- GPS pins, arrest custody depth, locate/disposition states, micro-districts.
 --
 -- Knobs: v_case_count = 450 · v_gps_ratio = 0.30.
 
@@ -45,6 +45,15 @@ declare
   v_br_rumphi     uuid;
   v_br_likoma     uuid;
   v_n             integer;
+  v_monitor       text;
+  v_cmonitor      text;
+  v_reviewer      text;
+  v_missing       uuid;
+  v_unclaimed     uuid;
+  v_missing2      uuid;
+  v_unclaimed2    uuid;
+  v_district2     text;
+  v_match         uuid;
 begin
   select id into v_br_rumphi from public.branches where name = 'Rumphi Central';
   select id into v_br_likoma from public.branches where name = 'Likoma Central';
@@ -53,7 +62,7 @@ begin
 
   for v_i in 1..v_case_count loop
     v_type := pg_temp.pick(array['missing_person','missing_person',
-      'wanted_person','stolen_property','stolen_property',
+      'wanted_person','unclaimed_person','stolen_property','stolen_property',
       'crime_incident','crime_incident','crime_incident','arrest_record']);
     select b.id, b.district::text into v_branch, v_branch_district
       from public.branches b
@@ -87,7 +96,7 @@ begin
       v_lat := null; v_lng := null;
     end if;
 
-    if v_type in ('missing_person','wanted_person','arrest_record') then
+    if v_type in ('missing_person','wanted_person','unclaimed_person','arrest_record') then
       select p.id into v_person from public.persons_of_interest p order by random() limit 1;
     end if;
     select full_name, national_id into v_full, v_nid
@@ -114,6 +123,18 @@ begin
         'danger_level', pg_temp.pick(array['low','medium','high','extreme']),
         'last_known_location', initcap(v_branch_district) || ' township',
         'description', 'Wanted for questioning.');
+      -- N2 unclaimed: identified deceased, no next of kin yet. Custody stays
+      -- with the filing branch's mortuary in the seed.
+      when 'unclaimed_person' then v_data := jsonb_build_object(
+        'person_id', v_person, 'deceased_name', coalesce(v_full, 'Unknown'),
+        'national_id', v_nid,
+        'sex', pg_temp.pick(array['male','female']),
+        'date_of_death', to_char(v_rdate, 'YYYY-MM-DD'),
+        'place_of_death', pg_temp.pick(array['District hospital','Central mortuary','Health centre']) || ', ' || initcap(v_branch_district),
+        'identification_method', pg_temp.pick(array['Visual identification by relative','Fingerprints','National ID documents','Dental records']),
+        'reason_unclaimed', 'Next of kin not yet traced.',
+        'custodial_branch_id', v_branch,
+        'description', 'Remains held pending next-of-kin tracing.');
       when 'stolen_property' then v_data := jsonb_build_object(
         'item_description', pg_temp.pick(array['Laptop','Smartphone','Bicycle','Generator','TV set','Motorbike']),
         'category', pg_temp.pick(array['Electronics','Vehicle','Household','Machinery']),
@@ -173,6 +194,15 @@ begin
       values (v_record, v_person, coalesce(v_full, 'Unknown'),
               v_data ->> 'offense', (v_data ->> 'danger_level')::danger_level,
               v_branch_district::district, v_status::case_status);
+    elsif v_type = 'unclaimed_person' then
+      insert into public.unclaimed_person_cases
+        (record_id, person_id, deceased_name, date_of_death, place_of_death,
+         identification_method, reason_unclaimed, custodial_branch_id,
+         district, status)
+      values (v_record, v_person, coalesce(v_full, 'Unknown'),
+              (v_data ->> 'date_of_death')::date, v_data ->> 'place_of_death',
+              v_data ->> 'identification_method', v_data ->> 'reason_unclaimed',
+              v_branch, v_branch_district::district, v_status::case_status);
     end if;
     v_seq := v_seq + 1;
   end loop;
@@ -250,7 +280,69 @@ begin
      where id = v_record;
   end if;
 
-  raise notice 'seed/03 regular: % regular cases.', (select count(*) from public.records where domain = 'regular');
+  raise notice 'seed/03 regular: % regular cases (% unclaimed, % possible matches, % confirmed matches).',
+    (select count(*) from public.records where domain = 'regular'),
+    (select count(*) from public.unclaimed_person_cases),
+    (select count(*) from public.person_case_matches where match_type = 'possible'),
+    (select count(*) from public.person_case_matches where match_type = 'confirmed');
+
+  -- ── N4 match workflow: 1 possible + 1 confirmed (missing ↔ unclaimed) ──
+  -- Possible pair prefers Lilongwe (anchor district); the confirmed pair
+  -- takes any district with both sides present (Lilongwe first) so the demo
+  -- survives sparse samples — reviewed by that district's monitor.
+  select id into v_officer from public.users where phone_number = '+265997000003';
+  select id into v_monitor from public.users where phone_number = '+265997000005';
+  select id into v_cmonitor from public.users where phone_number = '+265997000012';
+  select id into v_missing from public.records
+   where record_type = 'missing_person' and status = 'active' and district = 'lilongwe'
+   order by random() limit 1;
+  select id into v_unclaimed from public.records
+   where record_type = 'unclaimed_person' and status = 'active' and district = 'lilongwe'
+     and id <> coalesce(v_missing, '00000000-0000-0000-0000-000000000000')
+   order by random() limit 1;
+  if v_missing is not null and v_unclaimed is not null and v_officer is not null then
+    v_match := gen_random_uuid();
+    insert into public.person_case_matches
+      (id, record_id_a, record_id_b, match_type, score, reason, proposed_by)
+    values (v_match, v_missing, v_unclaimed, 'possible', 62.5,
+            'Same district, similar name and age window — verify before confirming (demo).',
+            v_officer);
+    insert into public.actions (actor_id, action_type, record_id, reason)
+    values (v_officer, 'match_proposed', v_missing, 'Seeded match demo.');
+    -- A second pair, already confirmed by the district monitor.
+    select m.id, u.id, m.district::text into v_missing2, v_unclaimed2, v_district2
+      from public.records m
+      join public.records u
+        on u.district = m.district
+       and u.record_type = 'unclaimed_person' and u.status = 'active'
+       and u.id <> v_missing and u.id <> v_unclaimed
+     where m.record_type = 'missing_person' and m.status = 'active'
+       and m.id <> v_missing and m.id <> v_unclaimed
+     order by (m.district = 'lilongwe') desc, random() limit 1;
+    if v_missing2 is not null then
+      if v_district2 = 'lilongwe' then
+        v_reviewer := v_monitor;
+      else
+        select id into v_reviewer from public.users
+         where role = 'district_monitor' and domain = 'regular'
+           and district = v_district2::district and is_active
+         order by random() limit 1;
+        if v_reviewer is null then v_reviewer := v_cmonitor; end if;
+      end if;
+    end if;
+    if v_missing2 is not null and v_unclaimed2 is not null and v_reviewer is not null then
+      v_match := gen_random_uuid();
+      insert into public.person_case_matches
+        (id, record_id_a, record_id_b, match_type, score, reason,
+         proposed_by, reviewed_by, reviewed_at)
+      values (v_match, v_missing2, v_unclaimed2, 'confirmed', 88.0,
+              'Same person profile + family identification (demo).',
+              v_officer, v_reviewer, now() - interval '1 day');
+      insert into public.actions (actor_id, action_type, record_id, reason)
+      values (v_officer, 'match_proposed', v_missing2, 'Seeded match demo.'),
+             (v_reviewer, 'match_confirmed', v_missing2, 'Seeded match demo.');
+    end if;
+  end if;
 end $$;
 
 commit;

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
@@ -14,9 +14,11 @@ import {
   insurancePolicies,
   missingPersonCases,
   organizations,
+  personCaseMatches,
   recordAttachments,
   records,
   trafficCitations,
+  unclaimedPersonCases,
   users,
   vehicleCases,
   vehicleTaxes,
@@ -46,6 +48,7 @@ import type {
   AttachmentKind,
   CaseStatus,
   Domain,
+  RecordMatchSummary,
   Role,
   TraceRecord,
 } from "@/lib/types"
@@ -337,6 +340,7 @@ async function writeCodedProjections(  tx: DbTransaction,
       : []
   await tx.delete(missingPersonCases).where(eq(missingPersonCases.recordId, record.id))
   await tx.delete(wantedPersonCases).where(eq(wantedPersonCases.recordId, record.id))
+  await tx.delete(unclaimedPersonCases).where(eq(unclaimedPersonCases.recordId, record.id))
   await tx.delete(vehicleCases).where(eq(vehicleCases.recordId, record.id))
   await tx.delete(trafficCitations).where(eq(trafficCitations.recordId, record.id))
   const [accident] = await tx
@@ -372,6 +376,21 @@ async function writeCodedProjections(  tx: DbTransaction,
         )
           ? (danger as "low" | "medium" | "high" | "extreme")
           : undefined,
+        district: record.district,
+        status: record.status,
+      })
+      break
+    }
+    case "unclaimed_person": {
+      await tx.insert(unclaimedPersonCases).values({
+        recordId: record.id,
+        personId: record.personId ?? undefined,
+        deceasedName: str(data, "deceased_name"),
+        dateOfDeath: str(data, "date_of_death") || undefined,
+        placeOfDeath: str(data, "place_of_death") || undefined,
+        identificationMethod: str(data, "identification_method") || undefined,
+        reasonUnclaimed: str(data, "reason_unclaimed") || undefined,
+        custodialBranchId: str(data, "custodial_branch_id") || undefined,
         district: record.district,
         status: record.status,
       })
@@ -477,6 +496,42 @@ async function toTraceRecord(
     .select()
     .from(recordAttachments)
     .where(eq(recordAttachments.recordId, record.id))
+  // N4 live matches touching this record (excluded ones stay queryable via
+  // listMatchesForRecord, but don't badge the case).
+  const matchRows = await tx
+    .select()
+    .from(personCaseMatches)
+    .where(
+      and(
+        or(
+          eq(personCaseMatches.recordIdA, record.id),
+          eq(personCaseMatches.recordIdB, record.id)
+        ),
+        ne(personCaseMatches.matchType, "excluded")
+      )
+    )
+  const matches: RecordMatchSummary[] = []
+  for (const row of matchRows) {
+    const otherId = row.recordIdA === record.id ? row.recordIdB : row.recordIdA
+    const [other] = await tx
+      .select({
+        recordType: records.recordType,
+        district: records.district,
+        status: records.status,
+      })
+      .from(records)
+      .where(eq(records.id, otherId))
+      .limit(1)
+    if (!other) continue
+    matches.push({
+      id: row.id,
+      matchType: row.matchType,
+      otherRecordId: otherId,
+      otherRecordType: other.recordType,
+      otherDistrict: other.district,
+      otherStatus: other.status,
+    })
+  }
   const view = describeRecord(
     record.recordType as RecordType,
     (record.data ?? {}) as Record<string, unknown>
@@ -520,6 +575,7 @@ async function toTraceRecord(
       latitude != null && longitude != null
         ? { latitude, longitude }
         : null,
+    matches,
   }
 }
 

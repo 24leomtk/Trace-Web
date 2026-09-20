@@ -82,6 +82,7 @@ begin
   raise notice 'Demo plates: LL 4242 (3 citations: unpaid/part/paid+scheduled) · % (flagged).', coalesce(v_plate, 'none');
   raise notice 'Receipt demo: T-26-DEMO-01 overdue-unpaid · T-26-DEMO-02 part-paid at Blantyre counter · T-26-DEMO-09 voided.';
   raise notice 'Locate demo: one wanted located (Blantyre report), one confirmed; custody demo: one hold+notice, one released.';
+  raise notice 'NamUs demo: described persons + physical marks (02); unclaimed persons (03); FP-26-DEMO-01 + DNA sample (02); one possible + one confirmed missing↔unclaimed match (03).';
   raise notice 'Expiring referrals (renew demo): %.', v_expiring_refs;
   raise notice 'DEV-ONLY ANPR key: trace_seed_demo_anpr_001 (plate:read). Never use outside dev.';
 end $$;

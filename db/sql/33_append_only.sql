@@ -10,7 +10,10 @@ revoke delete on public.case_assignments from app_user;
 revoke delete on public.impound_custody from app_user;
 revoke delete on public.missing_person_cases,
   public.wanted_person_cases,
+  public.unclaimed_person_cases,
   public.vehicle_cases,
   public.accidents,
   public.accident_vehicles,
   public.traffic_citations from app_user;
+-- N4: matches are never deleted either (corrections are flips to excluded).
+revoke delete on public.person_case_matches from app_user;

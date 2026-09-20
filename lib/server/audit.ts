@@ -27,6 +27,11 @@ export type AuditActionType =
   | "hold_released"
   | "owner_notified"
   | "review_added"
+  | "fingerprint_recorded"
+  | "dna_sample_recorded"
+  | "match_proposed"
+  | "match_confirmed"
+  | "match_excluded"
   | "insurer_flag_lookup"
   | "vehicle_registered"
   | "user_provisioned"
@@ -41,6 +46,7 @@ export type AuditInput = {
   actionType: AuditActionType
   recordId?: string | null // the case concerned, if any
   vehicleId?: string | null // the vehicle concerned, if any (flag lookups)
+  personId?: string | null // the person profile concerned, if any (N3 biometrics)
   reason?: string | null
 }
 
@@ -56,6 +62,7 @@ export async function writeAuditTx(
       actionType: input.actionType,
       recordId: input.recordId ?? undefined,
       vehicleId: input.vehicleId ?? undefined,
+      personId: input.personId ?? undefined,
       reason: input.reason ?? undefined,
     })
   } catch (error) {
@@ -72,6 +79,7 @@ export async function writeAudit(input: AuditInput): Promise<void> {
       actionType: input.actionType,
       recordId: input.recordId ?? undefined,
       vehicleId: input.vehicleId ?? undefined,
+      personId: input.personId ?? undefined,
       reason: input.reason ?? undefined,
     })
   } catch (error) {

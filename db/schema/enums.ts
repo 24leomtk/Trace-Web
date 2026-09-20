@@ -98,6 +98,7 @@ export const recordTypeEnum = pgEnum("record_type", [
   // regular domain
   "missing_person",
   "wanted_person",
+  "unclaimed_person",
   "stolen_property",
   "crime_incident",
   "arrest_record",
@@ -173,6 +174,11 @@ export const auditActionTypeEnum = pgEnum("audit_action_type", [
   "hold_released", // Phase 4: hold authority signed the release
   "owner_notified", // Phase 4: owner/lienholder told where the vehicle is
   "review_added", // a monitor (or filing officer) added a review note
+  "fingerprint_recorded", // N3: fingerprint set recorded against a person profile
+  "dna_sample_recorded", // N3: DNA sample recorded against a person profile
+  "match_proposed", // N4: officer/monitor proposed a link between two records
+  "match_confirmed", // N4: monitor confirmed a proposed match
+  "match_excluded", // N4: monitor ruled a proposed match out
   "insurer_flag_lookup", // an insurance_portal_user checked a vehicle's flagged status
   "vehicle_registered", // a vehicle_registrar created/verified a vehicle record
   "user_provisioned", // a system_admin created or edited a user account

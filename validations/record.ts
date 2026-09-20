@@ -32,6 +32,25 @@ const geoFields = {
 // Regular domain
 // ---------------------------------------------------------------------------
 
+// N1 NamUs-inspired description block: optional physical-description fields
+// shared by person-centred filing payloads. Every field optional — filing
+// must work roadside with just the required core fields.
+const personDescriptionFields = {
+  age_from: z.number().int().min(0).max(150).optional(),
+  age_to: z.number().int().min(0).max(150).optional(),
+  height_cm_from: z.number().int().min(30).max(250).optional(),
+  height_cm_to: z.number().int().min(30).max(250).optional(),
+  weight_kg_from: z.number().int().min(2).max(400).optional(),
+  weight_kg_to: z.number().int().min(2).max(400).optional(),
+  hair_color: z.string().trim().max(50).optional(),
+  hair_length: z.string().trim().max(50).optional(),
+  eye_color: z.string().trim().max(50).optional(),
+  complexion: z.string().trim().max(50).optional(),
+  build: z.string().trim().max(50).optional(),
+  clothing_description: z.string().trim().max(1000).optional(),
+  jewelry_description: z.string().trim().max(1000).optional(),
+}
+
 export const missingPersonSchema = z.object({
   person_id: z.uuid().optional(), // link to persons_of_interest if matched
   full_name: z.string().min(1),
@@ -44,6 +63,7 @@ export const missingPersonSchema = z.object({
   reporter_name: z.string().min(1),
   reporter_relationship: z.string().min(1),
   reporter_contact: z.string().min(1),
+  ...personDescriptionFields,
   ...geoFields,
 })
 
@@ -56,6 +76,35 @@ export const wantedPersonSchema = z.object({
   warrant_number: z.string().optional(),
   last_known_location: z.string().optional(),
   description: z.string().min(1),
+  ...personDescriptionFields,
+})
+
+// ---------------------------------------------------------------------------
+// N2 NamUs-inspired unclaimed person: the deceased HAS been identified but
+// no next of kin has claimed the remains. `identification_method` records
+// HOW identity was established (visual / fingerprints / dental / DNA /
+// documents); `custodial_branch_id` names the holding branch/facility.
+// Only deceased_name + place_of_death are required — filing must work with
+// sparse mortuary intake data.
+// ---------------------------------------------------------------------------
+
+export const unclaimedPersonSchema = z.object({
+  person_id: z.uuid().optional(), // link to persons_of_interest if matched
+  deceased_name: z.string().min(1),
+  national_id: z.string().optional(),
+  age: z.number().int().min(0).optional(),
+  sex: z.enum(["male", "female", "other"]).optional(),
+  date_of_death: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  place_of_death: z.string().min(1),
+  identification_method: z.string().trim().max(200).optional(),
+  reason_unclaimed: z.string().trim().max(2000).optional(),
+  custodial_branch_id: z.uuid().optional(),
+  description: z.string().trim().max(2000).optional(),
+  ...personDescriptionFields,
+  ...geoFields,
 })
 
 export const stolenPropertySchema = z.object({
@@ -225,6 +274,7 @@ export const vehicleImpoundmentSchema = z.object({
 export const recordSchemas = {
   missing_person: missingPersonSchema,
   wanted_person: wantedPersonSchema,
+  unclaimed_person: unclaimedPersonSchema,
   stolen_property: stolenPropertySchema,
   crime_incident: crimeIncidentSchema,
   arrest_record: arrestRecordSchema,

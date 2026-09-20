@@ -207,6 +207,72 @@ export const appRelations = defineRelations(schema, (r) => ({
       from: r.personsOfInterest.id,
       to: r.recordAttachments.personId,
     }),
+    physicalFeatures: r.many.personPhysicalFeatures({
+      from: r.personsOfInterest.id,
+      to: r.personPhysicalFeatures.personId,
+    }),
+    fingerprints: r.many.personFingerprints({
+      from: r.personsOfInterest.id,
+      to: r.personFingerprints.personId,
+    }),
+    dnaSamples: r.many.personDnaSamples({
+      from: r.personsOfInterest.id,
+      to: r.personDnaSamples.personId,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // person_physical_features
+  // ══════════════════════════════════════════════════════════════════════════
+  personPhysicalFeatures: {
+    person: r.one.personsOfInterest({
+      from: r.personPhysicalFeatures.personId,
+      to: r.personsOfInterest.id,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // person_fingerprints + person_dna_samples
+  // ══════════════════════════════════════════════════════════════════════════
+  personFingerprints: {
+    person: r.one.personsOfInterest({
+      from: r.personFingerprints.personId,
+      to: r.personsOfInterest.id,
+    }),
+    processor: r.one.users({
+      from: r.personFingerprints.processedBy,
+      to: r.users.id,
+      optional: true,
+    }),
+  },
+  personDnaSamples: {
+    person: r.one.personsOfInterest({
+      from: r.personDnaSamples.personId,
+      to: r.personsOfInterest.id,
+    }),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // person_case_matches
+  // ══════════════════════════════════════════════════════════════════════════
+  personCaseMatches: {
+    recordA: r.one.records({
+      from: r.personCaseMatches.recordIdA,
+      to: r.records.id,
+    }),
+    recordB: r.one.records({
+      from: r.personCaseMatches.recordIdB,
+      to: r.records.id,
+    }),
+    proposer: r.one.users({
+      from: r.personCaseMatches.proposedBy,
+      to: r.users.id,
+    }),
+    reviewer: r.one.users({
+      from: r.personCaseMatches.reviewedBy,
+      to: r.users.id,
+      optional: true,
+    }),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -360,6 +426,22 @@ export const appRelations = defineRelations(schema, (r) => ({
       optional: true,
     }),
   },
+  unclaimedPersonCases: {
+    record: r.one.records({
+      from: r.unclaimedPersonCases.recordId,
+      to: r.records.id,
+    }),
+    person: r.one.personsOfInterest({
+      from: r.unclaimedPersonCases.personId,
+      to: r.personsOfInterest.id,
+      optional: true,
+    }),
+    custodialBranch: r.one.branches({
+      from: r.unclaimedPersonCases.custodialBranchId,
+      to: r.branches.id,
+      optional: true,
+    }),
+  },
   vehicleCases: {
     record: r.one.records({
       from: r.vehicleCases.recordId,
@@ -484,6 +566,11 @@ export const appRelations = defineRelations(schema, (r) => ({
     vehicle: r.one.vehicles({
       from: r.actions.vehicleId,
       to: r.vehicles.id,
+      optional: true,
+    }),
+    person: r.one.personsOfInterest({
+      from: r.actions.personId,
+      to: r.personsOfInterest.id,
       optional: true,
     }),
   },

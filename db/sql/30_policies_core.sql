@@ -1,12 +1,15 @@
 -- TRACE application security: 30 core RLS policies (reference data).
 -- Run AFTER 10_helpers.sql, as the schema owner. Re-runnable.
 -- Covers: users, branches, organizations, vehicles, persons_of_interest,
--- insurance_policies, api_keys.
+-- person_physical_features, insurance_policies, api_keys.
 
 alter table public.users enable row level security;
 alter table public.branches enable row level security;
 alter table public.organizations enable row level security;
 alter table public.persons_of_interest enable row level security;
+alter table public.person_physical_features enable row level security;
+alter table public.person_fingerprints enable row level security;
+alter table public.person_dna_samples enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.insurance_policies enable row level security;
 alter table public.vehicle_taxes enable row level security;
@@ -63,6 +66,23 @@ create policy organizations_admin_write on public.organizations for all to app_u
 -- persons of interest: police-only.
 drop policy if exists persons_police on public.persons_of_interest;
 create policy persons_police on public.persons_of_interest for all to app_user
+  using (public.app_is_police())
+  with check (public.app_is_police());
+
+-- person physical features: same scope as the profile they hang off —
+-- police-only, no external-role access.
+drop policy if exists person_features_police on public.person_physical_features;
+create policy person_features_police on public.person_physical_features for all to app_user
+  using (public.app_is_police())
+  with check (public.app_is_police());
+
+-- N3 biometrics: same scope as the person profile — police-only.
+drop policy if exists person_fingerprints_police on public.person_fingerprints;
+create policy person_fingerprints_police on public.person_fingerprints for all to app_user
+  using (public.app_is_police())
+  with check (public.app_is_police());
+drop policy if exists person_dna_police on public.person_dna_samples;
+create policy person_dna_police on public.person_dna_samples for all to app_user
   using (public.app_is_police())
   with check (public.app_is_police());
 

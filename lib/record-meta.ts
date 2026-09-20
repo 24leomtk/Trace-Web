@@ -42,6 +42,13 @@ export const RECORD_TYPE_META: Record<RecordType, RecordTypeMeta> = {
     tone: "rose",
     icon: ShieldAlertIcon,
   },
+  unclaimed_person: {
+    label: "Unclaimed Person",
+    shortLabel: "Unclaimed",
+    domain: "regular",
+    tone: "slate",
+    icon: UserSearchIcon,
+  },
   stolen_property: {
     label: "Stolen Property",
     shortLabel: "Stolen",

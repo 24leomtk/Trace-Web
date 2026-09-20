@@ -21,6 +21,8 @@ declare
   v_i             integer;
   v_full          text;
   v_nid           text;
+  v_person        uuid;
+  v_officer       text;
   v_last_nid      text := null;
   v_district      text;
   v_plate         text;
@@ -35,6 +37,9 @@ begin
 
   -- ── Persons: every 10th row reuses the previous national_id (merge queue)
   -- + 1-in-4 null national_id (unidentified / juvenile / foreign) ──────────
+  -- N1: ~2-in-3 rows carry a physical description (age/height/weight ranges,
+  -- hair/eye/complexion/build); ~1-in-3 rows get a physical mark in
+  -- person_physical_features.
   for v_i in 1..v_person_count loop
     v_full := pg_temp.pick(v_first) || ' ' || pg_temp.pick(v_last);
     if v_i % 10 = 0 and v_last_nid is not null then
@@ -44,12 +49,35 @@ begin
       if v_nid is not null then v_last_nid := v_nid; end if;
     end if;
     insert into public.persons_of_interest
-      (id, full_name, national_id, sex, home_district, distinguishing_features)
+      (id, full_name, national_id, sex, home_district, distinguishing_features,
+       age_from, age_to, height_cm_from, height_cm_to,
+       weight_kg_from, weight_kg_to,
+       hair_color, eye_color, complexion, build)
     values
       (gen_random_uuid(), v_full, v_nid,
        pg_temp.pick(array['male','female','male','female'])::sex,
        pg_temp.pick(v_all_districts)::district,
-       case when v_i % 3 = 0 then pg_temp.pick(array['Scar on left cheek','Tattoo on right forearm','Limp in left leg','Birthmark on neck']) end);
+       case when v_i % 3 = 0 then pg_temp.pick(array['Scar on left cheek','Tattoo on right forearm','Limp in left leg','Birthmark on neck']) end,
+       case when v_i % 3 <> 0 then 18 + floor(random() * 40)::int end,
+       case when v_i % 3 <> 0 then 23 + floor(random() * 40)::int end,
+       case when v_i % 3 <> 0 then 160 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then 168 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then 55 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then 63 + floor(random() * 15)::int end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Black','Short black','Bald','Braided','Grey']) end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Brown','Dark brown','Black']) end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Dark','Medium','Light']) end,
+       case when v_i % 3 <> 0 then pg_temp.pick(array['Slim','Medium','Stocky']) end)
+    returning id into v_person;
+    if v_i % 3 = 0 then
+      insert into public.person_physical_features
+        (person_id, feature_type, body_location, description)
+      values
+        (v_person,
+         pg_temp.pick(array['tattoo','scar','mark','piercing']),
+         pg_temp.pick(array['Left cheek','Right forearm','Neck','Left leg','Right hand']),
+         pg_temp.pick(array['Scar on left cheek','Tattoo on right forearm','Birthmark on neck','Piercing on left ear']));
+    end if;
     v_seq := v_seq + 1;
   end loop;
 
@@ -57,6 +85,26 @@ begin
   insert into public.persons_of_interest (id, full_name, national_id, sex, home_district) values
     (gen_random_uuid(), 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe'),
     (gen_random_uuid(), 'Joseph Banda', 'MW-P-909090', 'male', 'lilongwe');
+
+  -- N3 biometric depth: one fingerprint set + one DNA sample on a random
+  -- profile (audited as the first officer on file).
+  select p.id into v_person from public.persons_of_interest p
+   where p.national_id is not null order by random() limit 1;
+  select u.id into v_officer from public.users u
+   where u.role = 'officer' and u.is_active order by random() limit 1;
+  if v_person is not null and v_officer is not null then
+    insert into public.person_fingerprints
+      (person_id, reference_no, quality, date_processed, notes)
+    values (v_person, 'FP-26-DEMO-01', 'good', current_date - 10,
+            'Ten-print set taken at intake (demo).');
+    insert into public.person_dna_samples
+      (person_id, sample_type, lab_name, status, collected_at, notes)
+    values (v_person, 'reference', 'Central Lab Lilongwe', 'sent',
+            current_date - 9, 'Buccal swab sent to lab (demo).');
+    insert into public.actions (actor_id, action_type, person_id, reason)
+    values (v_officer, 'fingerprint_recorded', v_person, 'Seeded biometric demo.'),
+           (v_officer, 'dna_sample_recorded', v_person, 'Seeded biometric demo.');
+  end if;
 
   -- ── Vehicles: 1-in-4 registrar-verified (verified rows are fully
   -- detailed — that is what verification means); flags stay false here
@@ -93,8 +141,12 @@ begin
     v_seq := v_seq + 1;
   end loop;
 
-  raise notice 'seed/02 entities: % persons, % vehicles.',
-    (select count(*) from public.persons_of_interest), (select count(*) from public.vehicles);
+  raise notice 'seed/02 entities: % persons (% features, % fingerprint sets, % DNA samples), % vehicles.',
+    (select count(*) from public.persons_of_interest),
+    (select count(*) from public.person_physical_features),
+    (select count(*) from public.person_fingerprints),
+    (select count(*) from public.person_dna_samples),
+    (select count(*) from public.vehicles);
 end $$;
 
 commit;

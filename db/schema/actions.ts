@@ -9,6 +9,7 @@ import {
 import { users } from "./auth"
 import { records } from "./records"
 import { vehicles } from "./vehicles"
+import { personsOfInterest } from "./persons"
 import { auditActionTypeEnum } from "./enums"
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,10 @@ import { auditActionTypeEnum } from "./enums"
 // insurer's self-serve "is this plate flagged" lookup) concern a vehicle
 // directly and aren't tied to any specific case — including when the
 // answer is "no open case", where recordId would have nothing to point to.
+//
+// personId is the same carve-out for person-profile actions (N3 biometric
+// holdings, description edits): the person may have no linked case yet, so
+// recordId would have nothing to point to.
 // ---------------------------------------------------------------------------
 
 export const actions = pgTable(
@@ -33,6 +38,9 @@ export const actions = pgTable(
       onDelete: "set null",
     }),
     vehicleId: uuid("vehicle_id").references(() => vehicles.id, {
+      onDelete: "set null",
+    }),
+    personId: uuid("person_id").references(() => personsOfInterest.id, {
       onDelete: "set null",
     }),
     actorId: text("actor_id")
@@ -54,6 +62,7 @@ export const actions = pgTable(
   (table) => [
     index("actions_record_id_idx").on(table.recordId),
     index("actions_vehicle_id_idx").on(table.vehicleId),
+    index("actions_person_id_idx").on(table.personId),
     index("actions_actor_id_idx").on(table.actorId),
     index("actions_type_idx").on(table.actionType),
   ]

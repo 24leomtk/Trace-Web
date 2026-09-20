@@ -18,6 +18,20 @@ create index if not exists traffic_citations_ticket_number_trgm_idx
 create index if not exists traffic_citations_violation_type_trgm_idx
   on public.traffic_citations using gin (violation_type gin_trgm_ops);
 
+-- Phase N1: person-description search (complexion + feature descriptions).
+create index if not exists persons_of_interest_complexion_trgm_idx
+  on public.persons_of_interest using gin (complexion gin_trgm_ops);
+create index if not exists person_physical_features_description_trgm_idx
+  on public.person_physical_features using gin (description gin_trgm_ops);
+
+-- Phase N5: match-candidate name search (ILIKE %token% on projection names).
+create index if not exists missing_person_cases_full_name_trgm_idx
+  on public.missing_person_cases using gin (full_name gin_trgm_ops);
+create index if not exists wanted_person_cases_full_name_trgm_idx
+  on public.wanted_person_cases using gin (full_name gin_trgm_ops);
+create index if not exists unclaimed_person_cases_deceased_name_trgm_idx
+  on public.unclaimed_person_cases using gin (deceased_name gin_trgm_ops);
+
 -- 2. Per-role scope rules on users (mirrors the scoping comment on users in
 --    db/schema/auth.ts; app code enforces first, this is the backstop).
 --    External org roles (court/insurer/registry/revenue) require
@@ -84,4 +98,45 @@ begin
       voided_at is null or void_reason is not null
     );
   end if;
+  -- Phase N1: physical-feature vocab backstop (app validates first).
+  if not exists (select 1 from pg_constraint where conname = 'person_physical_features_type_chk') then
+    alter table public.person_physical_features add constraint person_physical_features_type_chk check (
+      feature_type in ('tattoo', 'scar', 'mark', 'piercing', 'amputation', 'other')
+    );
+  end if;
+  -- Phase N3: biometric vocab backstops (app validates first; legacy rows
+  -- predate these columns, so every check permits NULL).
+  if not exists (select 1 from pg_constraint where conname = 'person_fingerprints_quality_chk') then
+    alter table public.person_fingerprints add constraint person_fingerprints_quality_chk check (
+      quality is null or quality in ('poor', 'fair', 'good', 'excellent')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'person_dna_samples_type_chk') then
+    alter table public.person_dna_samples add constraint person_dna_samples_type_chk check (
+      sample_type is null or sample_type in ('reference', 'family_reference', 'direct', 'elimination')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'person_dna_samples_status_chk') then
+    alter table public.person_dna_samples add constraint person_dna_samples_status_chk check (
+      status in ('collected', 'sent', 'processed', 'destroyed')
+    );
+  end if;
+  -- Phase N4: match vocab + self-match guard + ordered-pair duplicate guard
+  -- (LEAST/GREATEST — Drizzle can't express this; app code checks too).
+  if not exists (select 1 from pg_constraint where conname = 'person_case_matches_type_chk') then
+    alter table public.person_case_matches add constraint person_case_matches_type_chk check (
+      match_type in ('possible', 'confirmed', 'excluded')
+    );
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'person_case_matches_no_self_chk') then
+    alter table public.person_case_matches add constraint person_case_matches_no_self_chk check (
+      record_id_a <> record_id_b
+    );
+  end if;
+  -- Partial: excluded pairs may be re-proposed later (a new row); live
+  -- duplicates are rejected both here and in app code.
+  create unique index if not exists person_case_matches_pair_uidx
+    on public.person_case_matches
+    (least(record_id_a, record_id_b), greatest(record_id_a, record_id_b))
+    where (match_type <> 'excluded');
 end $$;

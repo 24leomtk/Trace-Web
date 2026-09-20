@@ -7,6 +7,7 @@ alter table public.records enable row level security;
 alter table public.record_attachments enable row level security;
 alter table public.missing_person_cases enable row level security;
 alter table public.wanted_person_cases enable row level security;
+alter table public.unclaimed_person_cases enable row level security;
 alter table public.vehicle_cases enable row level security;
 alter table public.accidents enable row level security;
 alter table public.accident_vehicles enable row level security;
@@ -76,6 +77,31 @@ create policy wanted_read on public.wanted_person_cases for select to app_user
 drop policy if exists wanted_write on public.wanted_person_cases;
 create policy wanted_write on public.wanted_person_cases for all to app_user
   using (public.app_is_police()) with check (public.app_is_police());
+
+drop policy if exists unclaimed_read on public.unclaimed_person_cases;
+create policy unclaimed_read on public.unclaimed_person_cases for select to app_user
+  using (exists (select 1 from public.records r where r.id = record_id and public.app_can_read_record(r)));
+drop policy if exists unclaimed_write on public.unclaimed_person_cases;
+create policy unclaimed_write on public.unclaimed_person_cases for all to app_user
+  using (public.app_is_police()) with check (public.app_is_police());
+
+-- N4 case matches: readable wherever BOTH parent cases are readable (a link
+-- leaks nothing beyond its endpoints); inserts by police, review-updates by
+-- monitors (approver ≠ proposer is enforced in app code, not RLS).
+alter table public.person_case_matches enable row level security;
+drop policy if exists case_matches_read on public.person_case_matches;
+create policy case_matches_read on public.person_case_matches for select to app_user
+  using (
+    exists (select 1 from public.records a where a.id = record_id_a and public.app_can_read_record(a))
+    and exists (select 1 from public.records b where b.id = record_id_b and public.app_can_read_record(b))
+  );
+drop policy if exists case_matches_insert on public.person_case_matches;
+create policy case_matches_insert on public.person_case_matches for insert to app_user
+  with check (public.app_is_police());
+drop policy if exists case_matches_review on public.person_case_matches;
+create policy case_matches_review on public.person_case_matches for update to app_user
+  using (public.app_is_monitor())
+  with check (public.app_is_monitor());
 
 drop policy if exists vehicle_cases_read on public.vehicle_cases;
 create policy vehicle_cases_read on public.vehicle_cases for select to app_user

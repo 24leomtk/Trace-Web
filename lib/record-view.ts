@@ -228,6 +228,19 @@ export function describeRecord(type: RecordType, data: Data): RecordView {
         badges: [{ label: "Impounded", tone: "slate" }],
       }
 
+    case "unclaimed_person":
+      return {
+        title: str(data, "deceased_name") || meta.label,
+        summary: sentence([
+          str(data, "place_of_death") &&
+            `Found at ${str(data, "place_of_death")}`,
+          str(data, "date_of_death") && `on ${str(data, "date_of_death")}.`,
+          str(data, "identification_method") &&
+            `Identified by ${str(data, "identification_method")}.`,
+        ]),
+        badges: [{ label: "Unclaimed", tone: "slate" }],
+      }
+
     default:
       return {
         title: meta.label,

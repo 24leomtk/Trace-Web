@@ -80,6 +80,16 @@ export interface RecordBadge {
   tone: Tone
 }
 
+/** A case match touching this record (N4) — the other endpoint's basics. */
+export interface RecordMatchSummary {
+  id: string
+  matchType: string
+  otherRecordId: string
+  otherRecordType: string
+  otherDistrict: string
+  otherStatus: string
+}
+
 export interface TraceRecord {
   id: string
   recordType: RecordType
@@ -101,6 +111,8 @@ export interface TraceRecord {
   attachments: AttachmentMeta[]
   /** F10 precise coordinates when captured at filing (null otherwise). */
   geo?: { latitude: number; longitude: number } | null
+  /** N4 live (non-excluded) matches touching this record. */
+  matches?: RecordMatchSummary[]
 }
 
 export interface VehicleSummary {

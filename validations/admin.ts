@@ -138,9 +138,46 @@ export const personSchema = z.object({
     .max(1000)
     .optional()
     .or(z.literal("")),
+  // N1 NamUs-inspired description fields — all optional, filing/profile
+  // creation must never hard-gate on data the officer can't know.
+  ageYears: z.number().int().min(0).max(150).optional(),
+  ageFrom: z.number().int().min(0).max(150).optional(),
+  ageTo: z.number().int().min(0).max(150).optional(),
+  heightCmFrom: z.number().int().min(30).max(250).optional(),
+  heightCmTo: z.number().int().min(30).max(250).optional(),
+  weightKgFrom: z.number().int().min(2).max(400).optional(),
+  weightKgTo: z.number().int().min(2).max(400).optional(),
+  hairColor: z.string().trim().max(50).optional().or(z.literal("")),
+  hairLength: z.string().trim().max(50).optional().or(z.literal("")),
+  eyeColor: z.string().trim().max(50).optional().or(z.literal("")),
+  complexion: z.string().trim().max(50).optional().or(z.literal("")),
+  build: z.string().trim().max(50).optional().or(z.literal("")),
+  clothingDescription: z.string().trim().max(1000).optional().or(z.literal("")),
+  jewelryDescription: z.string().trim().max(1000).optional().or(z.literal("")),
+  medicalNotes: z.string().trim().max(2000).optional().or(z.literal("")),
 })
 
 export type PersonInput = z.output<typeof personSchema>
+
+// N1 physical marks (tattoo / scar / mark / piercing / amputation / other).
+export const personFeatureTypeOptions = [
+  "tattoo",
+  "scar",
+  "mark",
+  "piercing",
+  "amputation",
+  "other",
+] as const
+
+export const personFeatureSchema = z.object({
+  personId: z.uuid(),
+  featureType: z.enum(personFeatureTypeOptions),
+  bodyLocation: z.string().trim().max(150).optional().or(z.literal("")),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  approximateSize: z.string().trim().max(50).optional().or(z.literal("")),
+})
+
+export type PersonFeatureInput = z.output<typeof personFeatureSchema>
 
 export const insurancePolicySchema = z.object({
   vehicleId: z.uuid(),
