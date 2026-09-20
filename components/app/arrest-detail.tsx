@@ -104,7 +104,15 @@ export function ArrestDetail({
     }
   }
 
-  if (payloadQuery.isLoading) return <Skeleton className="h-24 w-full" />
+  if (payloadQuery.isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+        <Skeleton className="h-3 w-36" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-8 w-28" />
+      </div>
+    )
   if (payloadQuery.isError || !payloadQuery.data) return null
   const payload = payloadQuery.data as Record<string, unknown>
   const custodyValue =

@@ -10,6 +10,11 @@ import { cn } from "@/lib/utils"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import {
+  RowListSkeleton,
+  ScopeTabBarSkeleton,
+  StatChipsSkeleton,
+} from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -37,9 +42,16 @@ export function ReconciliationBoard() {
 
   if (summaryQuery.isLoading) {
     return (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
+      <div className="flex flex-col gap-4">
+        <StatChipsSkeleton count={3} />
+        <ScopeTabBarSkeleton tabs={4} />
+        <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+          <div className="flex items-start gap-2">
+            <Skeleton className="h-10 flex-1" />
+            <Skeleton className="size-10 shrink-0" />
+          </div>
+          <RowListSkeleton count={4} />
+        </div>
       </div>
     )
   }

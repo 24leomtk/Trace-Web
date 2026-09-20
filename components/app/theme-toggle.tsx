@@ -48,7 +48,7 @@ export function ThemePreferenceControl() {
               aria-checked={active}
               onClick={() => setTheme(option.value)}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-none px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center justify-center gap-1.5 rounded-none px-3 py-1 text-sm font-medium transition-colors",
                 active
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"

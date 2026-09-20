@@ -103,7 +103,15 @@ export function LocateCard({
     }
   }
 
-  if (locateQuery.isLoading) return <Skeleton className="h-32 w-full" />
+  if (locateQuery.isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+    )
   if (locateQuery.isError || !locateQuery.data) return null
   const locate = locateQuery.data
 

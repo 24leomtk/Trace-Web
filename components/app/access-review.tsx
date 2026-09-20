@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { getAccessReview } from "@/lib/actions/admin"
 import { formatDateShort } from "@/lib/format"
 import { Skeleton } from "@/components/ui/skeleton"
+import { RowListSkeleton } from "@/components/app/list-skeletons"
 
 /**
  * Phase 6: periodic access recertification. Who holds an account, what
@@ -19,9 +20,19 @@ export function AccessReviewBoard() {
 
   if (reviewQuery.isLoading) {
     return (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+          <Skeleton className="h-3 w-24" />
+          <div className="flex gap-6">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+          <Skeleton className="h-3 w-36" />
+          <RowListSkeleton count={4} />
+        </div>
       </div>
     )
   }

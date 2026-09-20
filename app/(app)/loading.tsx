@@ -1,53 +1,25 @@
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  FilterBarSkeleton,
+  PageHeaderSkeleton,
+  ScopeTabBarSkeleton,
+  TimelineListSkeleton,
+} from "@/components/app/list-skeletons"
 
+/**
+ * Default (app) shell — mirrors OfficerHome, the most common landing:
+ * header + scope tabbar + timeline filter row + timeline cards.
+ */
 export default function AppLoading() {
   return (
-    <div className="flex animate-in flex-col gap-6 duration-300 fade-in">
-      {/* Top Header / Mode Switcher placeholder */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Skeleton className="size-10" />
-          <div className="flex flex-col gap-1.5">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-20" />
-          </div>
-        </div>
-        <Skeleton className="h-9 w-28" />
-      </div>
-
-      {/* Filter / Action Bar placeholder */}
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-10 flex-1" />
-        <Skeleton className="size-10 shrink-0" />
-      </div>
-
-      {/* Timeline / Record cards skeletons */}
-      <div className="space-y-4 pt-2">
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="flex flex-col gap-3 border border-border/60 bg-card/60 p-4 shadow-2xs"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Skeleton className="size-6" />
-                <Skeleton className="h-4 w-36" />
-              </div>
-              <Skeleton className="h-3 w-16" />
-            </div>
-
-            <div className="space-y-1.5 pt-1">
-              <Skeleton className="h-3.5 w-full" />
-              <Skeleton className="h-3.5 w-4/5" />
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-5 w-20" />
-            </div>
-          </div>
-        ))}
-      </div>
+    <div
+      className="flex animate-in flex-col gap-5 duration-300 fade-in"
+      aria-busy="true"
+      aria-label="Loading cases"
+    >
+      <PageHeaderSkeleton titleWidth="w-36" subWidth="w-48" />
+      <ScopeTabBarSkeleton tabs={4} />
+      <FilterBarSkeleton />
+      <TimelineListSkeleton count={4} />
     </div>
   )
 }

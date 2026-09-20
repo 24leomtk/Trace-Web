@@ -18,8 +18,8 @@ import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
-import { Skeleton } from "@/components/ui/skeleton"
 
 const OUTCOME_OPTIONS = [
   { value: "pending", label: "Awaiting outcome", icon: HourglassIcon },
@@ -106,11 +106,7 @@ export function CourtHome() {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col gap-2">
-          {[0, 1].map((row) => (
-            <Skeleton key={row} className="h-20 w-full" />
-          ))}
-        </div>
+        <GridCardListSkeleton count={4} />
       ) : isError ? (
         <p className="rounded-none border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
           Could not load referrals.

@@ -14,8 +14,11 @@ import {
 } from "@/components/app/audit-filters"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import {
+  FilterBarSkeleton,
+  GridCardListSkeleton,
+} from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
-import { Skeleton } from "@/components/ui/skeleton"
 
 /** Scoped audit viewer. Auditors see this only — no case drill-down. */
 export function AuditLog({ limit = 100 }: { limit?: number }) {
@@ -61,10 +64,9 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-2">
-        {[0, 1, 2].map((row) => (
-          <Skeleton key={row} className="h-16 w-full" />
-        ))}
+      <div className="flex flex-col gap-3">
+        <FilterBarSkeleton />
+        <GridCardListSkeleton count={4} />
       </div>
     )
   }

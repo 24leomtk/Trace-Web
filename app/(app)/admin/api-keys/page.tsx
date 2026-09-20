@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
+import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 
 const EMPTY_FORM = { userId: "", name: "", expiresAt: "" }
 
@@ -250,7 +250,7 @@ export default function AdminApiKeysPage() {
           />
         </div>
         {isLoading ? (
-          <Skeleton className="h-24 w-full" />
+          <GridCardListSkeleton count={4} />
         ) : !keys || keys.length === 0 ? (
           <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             No API keys issued.

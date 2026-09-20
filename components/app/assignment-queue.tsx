@@ -24,6 +24,7 @@ import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { RowListSkeleton } from "@/components/app/list-skeletons"
 
 const DUE_CHIP: Record<string, string> = {
   red: "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300",
@@ -80,7 +81,13 @@ export function AssignmentQueue() {
         .includes(q),
   })
 
-  if (isLoading) return <Skeleton className="h-20 w-full" />
+  if (isLoading)
+    return (
+      <section aria-label="My queue" className="flex flex-col gap-2">
+        <Skeleton className="h-3 w-32" />
+        <RowListSkeleton count={2} />
+      </section>
+    )
   const overdueCount = open.filter(
     (item) => assignmentDue(item.dueAt, item.state).overdue
   ).length

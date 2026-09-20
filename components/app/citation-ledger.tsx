@@ -135,7 +135,19 @@ export function CitationLedger({
     }
   }
 
-  if (ledgerQuery.isLoading) return <Skeleton className="h-40 w-full" />
+  if (ledgerQuery.isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+        <Skeleton className="h-3 w-36" />
+        <Skeleton className="h-5 w-1/2" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+        <div className="flex gap-2 pt-1">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-28" />
+        </div>
+      </div>
+    )
   if (ledgerQuery.isError || !ledgerQuery.data) {
     return (
       <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">

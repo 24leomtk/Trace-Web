@@ -66,7 +66,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
+import { DetailHeaderSkeleton } from "@/components/app/list-skeletons"
 import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/providers/user-context"
 
@@ -259,12 +259,7 @@ export default function RecordDetailPage({
   }
 
   if (recordQuery.isLoading) {
-    return (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-6 w-2/3" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    )
+    return <DetailHeaderSkeleton withTabs tabCount={4} />
   }
 
   if (recordQuery.isError || !recordQuery.data) {

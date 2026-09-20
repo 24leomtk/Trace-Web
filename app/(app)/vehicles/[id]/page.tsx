@@ -45,7 +45,29 @@ export default function VehicleDetailPage({
   const [statusBusy, setStatusBusy] = useState(false)
   const isRegistrar = user.role === "VEHICLE_REGISTRAR"
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />
+  if (isLoading)
+    return (
+      <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading vehicle">
+        <Skeleton className="h-8 w-20" />
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-3 w-48" />
+        </div>
+        <div className="rounded-none border bg-card p-4">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="mt-2 h-3 w-1/2" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-3 w-32" />
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   if (isError || !data) {
     return (
       <div className="flex flex-col gap-4">

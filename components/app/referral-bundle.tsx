@@ -99,7 +99,15 @@ export function ReferralBundle({
     }
   }
 
-  if (bundleQuery.isLoading) return <Skeleton className="h-40 w-full" />
+  if (bundleQuery.isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-8 w-32" />
+      </div>
+    )
   if (bundleQuery.isError || !bundleQuery.data) {
     return (
       <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">

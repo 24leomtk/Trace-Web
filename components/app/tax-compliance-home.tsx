@@ -13,11 +13,11 @@ import {
 import { isTaxDueSoon, isTaxOverdue, isTaxSettled } from "@/lib/visibility"
 import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListPagination } from "@/components/app/list-pagination"
+import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { formatCurrency, formatDateShort } from "@/lib/format"
@@ -98,7 +98,7 @@ export function TaxComplianceHome() {
             Waivers awaiting decision ({pending.data?.length ?? 0})
           </h2>
           {pending.isLoading ? (
-            <Skeleton className="h-20 w-full" />
+            <GridCardListSkeleton count={2} />
           ) : pending.isError ? (
             <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
               Could not load waivers.
@@ -282,7 +282,7 @@ function LedgerReadOnly({
         placeholder="Search plate, tax type, reference…"
       />
       {isLoading ? (
-        <Skeleton className="h-20 w-full" />
+        <GridCardListSkeleton count={4} />
       ) : isError ? (
         <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
           Could not load the ledger.

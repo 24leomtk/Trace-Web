@@ -32,7 +32,7 @@ import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
+import { RowListSkeleton } from "@/components/app/list-skeletons"
 
 const PAGE_SIZE = 8
 
@@ -332,7 +332,7 @@ export default function AdminUsersPage() {
           </div>
 
           {isLoading ? (
-            <Skeleton className="h-24 w-full" />
+            <RowListSkeleton count={6} />
           ) : !data || data.users.length === 0 ? (
             <p className="rounded-none border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
               No accounts found.

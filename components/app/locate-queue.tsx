@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { listDormantLocates } from "@/lib/actions/locate"
 import { Skeleton } from "@/components/ui/skeleton"
+import { RowListSkeleton } from "@/components/app/list-skeletons"
 import { useUser } from "@/providers/user-context"
 
 /**
@@ -23,7 +24,13 @@ export function LocateQueue() {
   })
 
   if (!isMonitor) return null
-  if (locatesQuery.isLoading) return <Skeleton className="h-20 w-full" />
+  if (locatesQuery.isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+        <Skeleton className="h-3 w-56" />
+        <RowListSkeleton count={2} />
+      </div>
+    )
   if (locatesQuery.isError || !locatesQuery.data) return null
   const items = locatesQuery.data
   if (items.length === 0) return null

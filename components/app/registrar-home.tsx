@@ -24,11 +24,11 @@ import { AdminField, AdminToggle } from "@/components/app/admin-section"
 import { ConfirmDialog } from "@/components/app/confirm-dialog"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
 
 type RegistrarTab = "queue" | "registry" | "out_of_service"
 
@@ -339,7 +339,7 @@ function RegistryTab({
         <ListRefreshButton onRefresh={onRefresh} loading={isFetching} />
       </div>
       {isLoading ? (
-        <Skeleton className="h-20 w-full" />
+        <GridCardListSkeleton count={4} />
       ) : items.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
           {emptyTitle}

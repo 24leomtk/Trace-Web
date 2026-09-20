@@ -40,7 +40,14 @@ function PersonCard({ id }: { id: string }) {
     queryKey: ["person", id],
     queryFn: () => getPerson(id),
   })
-  if (isLoading) return <Skeleton className="h-20 w-full" />
+  if (isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card px-4 py-3">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-3 w-2/3" />
+      </div>
+    )
   if (isError || !data) {
     return (
       <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
@@ -74,7 +81,14 @@ function VehicleCard({ id }: { id: string }) {
     queryKey: ["vehicle", id],
     queryFn: () => getVehicle(id),
   })
-  if (isLoading) return <Skeleton className="h-20 w-full" />
+  if (isLoading)
+    return (
+      <div className="flex flex-col gap-2 rounded-none border bg-card px-4 py-3">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+    )
   if (isError || !data) {
     return (
       <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">

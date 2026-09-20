@@ -21,10 +21,10 @@ import { usePaginatedSearch } from "@/hooks/use-paginated-search"
 import { ListFilter, ListFilterBadges } from "@/components/app/list-filter"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
+import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
 
 export function InsurerHome() {
   const queryClient = useQueryClient()
@@ -300,7 +300,7 @@ function PoliciesSection({
           />
         </div>
         {isLoading ? (
-          <Skeleton className="h-20 w-full" />
+          <GridCardListSkeleton count={4} />
         ) : isError ? (
           <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
             Could not load policies.

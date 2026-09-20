@@ -17,7 +17,7 @@ import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
 import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
+import { GridCardListSkeleton } from "@/components/app/list-skeletons"
 import { Textarea } from "@/components/ui/textarea"
 
 const EMPTY_FORM = {
@@ -240,7 +240,7 @@ export default function AdminTaxRulesPage() {
           Rules ({data?.length ?? 0})
         </h2>
         {isLoading ? (
-          <Skeleton className="h-20 w-full" />
+          <GridCardListSkeleton count={4} />
         ) : isError ? (
           <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
             Could not load rules.

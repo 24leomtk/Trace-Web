@@ -58,7 +58,25 @@ export default function PersonDetailPage({
     }
   }
 
-  if (isLoading) return <Skeleton className="h-32 w-full" />
+  if (isLoading)
+    return (
+      <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading person">
+        <Skeleton className="h-8 w-32" />
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-6 w-52" />
+          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-4 w-4/5" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-3 w-32" />
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   if (isError || !data) {
     return (
       <div className="flex flex-col gap-4">
