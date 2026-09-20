@@ -8,7 +8,6 @@ import { RecordTimeline } from "@/components/app/record-timeline"
 import {
   useHomeView,
   type FeedScope,
-  type HomeTab,
 } from "@/providers/home-view-context"
 import { useUser } from "@/providers/user-context"
 
@@ -42,70 +41,87 @@ export function OfficerHome() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">
-          {user.role === "OFFICER"
-            ? "Branch cases"
-            : user.role === "DISTRICT_MONITOR"
-              ? "District oversight"
-              : "National oversight"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {user.posting ?? user.district ?? user.domain}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-lg font-semibold">
+            {user.role === "OFFICER"
+              ? "Branch cases"
+              : user.role === "DISTRICT_MONITOR"
+                ? "District oversight"
+                : "National oversight"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {user.posting ?? user.district ?? user.domain}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {isMonitor && (
+            <TabGroup
+              label="Home view"
+              options={[
+                { value: "feed", label: "Cases" },
+                { value: "reports", label: "Reports" },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+          )}
+          {(tab === "feed" || !isMonitor) && (
+            <TabGroup
+              label="Case scope"
+              options={scopes}
+              value={feedScope}
+              onChange={setFeedScope}
+            />
+          )}
+        </div>
       </header>
 
       <AssignmentQueue />
 
       <LocateQueue />
 
-      {isMonitor && (
-        <div className="flex gap-1 rounded-none border bg-muted/40 p-1">
-          {(["feed", "reports"] as HomeTab[]).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className={cn(
-                "flex-1 rounded-none px-3 py-1.5 text-sm font-medium transition-colors",
-                tab === value
-                  ? "bg-background shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {value === "feed" ? "Cases" : "Reports"}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {(tab === "feed" || !isMonitor) && (
-        <div
-          role="tablist"
-          aria-label="Case scope"
-          className="flex gap-1 overflow-x-auto rounded-none border bg-muted/40 p-1"
-        >
-          {scopes.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="tab"
-              aria-selected={feedScope === option.value}
-              onClick={() => setFeedScope(option.value)}
-              className={cn(
-                "flex-1 rounded-none px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
-                feedScope === option.value
-                  ? "bg-background shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {tab === "reports" && isMonitor ? <AnalyticsFeed /> : <RecordTimeline />}
+    </div>
+  )
+}
+
+/** Compact tab bar for the header row — small buttons, no stretching, so
+ * title + tabs share one row on wide screens and wrap on small ones. */
+function TabGroup<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (value: T) => void
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className="flex gap-1 rounded-none border bg-muted/40 p-1"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="tab"
+          aria-selected={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "rounded-none px-2 py-1 text-xs font-medium whitespace-nowrap transition-colors",
+            value === option.value
+              ? "bg-background shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   )
 }

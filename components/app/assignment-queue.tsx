@@ -50,6 +50,9 @@ export function AssignmentQueue() {
     queryFn: listMyAssignments,
   })
   const [due, setDue] = useState("all")
+  // Which task is being completed — while set, every Done button is
+  // disabled so no other status change can race the in-flight mutation.
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const open = data?.open ?? []
   const preFiltered = useMemo(
@@ -67,7 +70,6 @@ export function AssignmentQueue() {
   const {
     query,
     setQuery,
-    debouncedQuery,
     page,
     setPage,
     pageCount,
@@ -91,7 +93,9 @@ export function AssignmentQueue() {
   const overdueCount = open.filter(
     (item) => assignmentDue(item.dueAt, item.state).overdue
   ).length
-  const hasActiveFilter = due !== "all" || debouncedQuery !== ""
+
+  // Nothing assigned — hide the whole section instead of an empty state.
+  if (open.length === 0) return null
 
   return (
     <section aria-label="My queue" className="flex flex-col gap-2">
@@ -109,49 +113,41 @@ export function AssignmentQueue() {
           {overdueCount > 0 ? ` · ${overdueCount} overdue` : ""}
         </span>
       </h2>
-      {open.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-start gap-2">
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search tasks…"
-              className="flex-1"
-            />
-            <ListRefreshButton
-              onRefresh={() =>
-                queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
-              }
-              loading={isFetching}
-            />
-            <ListFilter
-              title="Filter tasks"
-              description="Narrow by due state."
-              heading="Due"
-              allLabel="All tasks"
-              options={DUE_OPTIONS}
-              value={due}
-              onChange={setDue}
-              showBadges={false}
-            />
-          </div>
-          <ListFilterBadges
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start gap-2">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search tasks…"
+            className="flex-1"
+          />
+          <ListRefreshButton
+            onRefresh={() =>
+              queryClient.invalidateQueries({ queryKey: ["my-assignments"] })
+            }
+            loading={isFetching}
+          />
+          <ListFilter
+            title="Filter tasks"
+            description="Narrow by due state."
             heading="Due"
+            allLabel="All tasks"
             options={DUE_OPTIONS}
             value={due}
             onChange={setDue}
+            showBadges={false}
           />
         </div>
-      )}
-      {open.length === 0 ? (
+        <ListFilterBadges
+          heading="Due"
+          options={DUE_OPTIONS}
+          value={due}
+          onChange={setDue}
+        />
+      </div>
+      {visible.length === 0 ? (
         <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
-          Queue clear — no open tasks.
-        </p>
-      ) : visible.length === 0 ? (
-        <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
-          {hasActiveFilter
-            ? "No tasks match the current search and filters."
-            : "Queue clear — no open tasks."}
+          No tasks match the current search and filters.
         </p>
       ) : (
         <>
@@ -195,7 +191,10 @@ export function AssignmentQueue() {
                   variant="outline"
                   className="shrink-0 rounded-none"
                   aria-label={`Mark task done: ${item.recordTitle}`}
+                  disabled={busyId !== null}
                   onClick={async () => {
+                    if (busyId !== null) return
+                    setBusyId(item.id)
                     try {
                       await completeAssignment(item.id)
                       toast.success("Task done.")
@@ -206,11 +205,13 @@ export function AssignmentQueue() {
                       toast.error(
                         error instanceof Error ? error.message : "Failed."
                       )
+                    } finally {
+                      setBusyId(null)
                     }
                   }}
                 >
                   <CheckIcon data-icon="inline-start" />
-                  Done
+                  {busyId === item.id ? "Saving…" : "Done"}
                 </Button>
               </li>
             )
