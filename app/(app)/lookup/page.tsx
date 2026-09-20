@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { ScanLineIcon } from "lucide-react"
 import { toast } from "sonner"
@@ -431,17 +431,35 @@ function UnifiedResultsView({
 }: {
   results: Awaited<ReturnType<typeof unifiedSearch>>
 }) {
-  const combined = [
-    ...results.vehicles.map((vehicle) => ({
-      kind: "vehicle" as const,
-      vehicle,
-    })),
-    ...results.persons.map((person) => ({ kind: "person" as const, person })),
-    ...(results.citations ?? []).map((citation) => ({
-      kind: "citation" as const,
-      citation,
-    })),
-  ]
+  const combined = useMemo(
+    () => [
+      ...results.vehicles.map((vehicle) => ({
+        kind: "vehicle" as const,
+        vehicle,
+      })),
+      ...results.persons.map((person) => ({ kind: "person" as const, person })),
+      ...(results.citations ?? []).map((citation) => ({
+        kind: "citation" as const,
+        citation,
+      })),
+    ],
+    [results]
+  )
+  // New server search replaces the whole result set — page one even when the
+  // new set happens to have the same length as the old one.
+  const resultKey = useMemo(
+    () =>
+      combined
+        .map((item) =>
+          item.kind === "vehicle"
+            ? `v:${item.vehicle.id}`
+            : item.kind === "person"
+              ? `p:${item.person.id}`
+              : `c:${item.citation.recordId}`
+        )
+        .join("|"),
+    [combined]
+  )
   const {
     query,
     setQuery,
@@ -453,6 +471,7 @@ function UnifiedResultsView({
     visible,
   } = usePaginatedSearch({
     items: combined,
+    resetKey: resultKey,
     search: (item, q) =>
       item.kind === "vehicle"
         ? `${item.vehicle.plateNumber} ${item.vehicle.make ?? ""} ${item.vehicle.model ?? ""}`

@@ -56,6 +56,7 @@ export function CourtHome() {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: outcome,
     search: (entry, q) =>
       `${entry.record.title} ${entry.record.summary} ${entry.record.recordType.replace(/_/g, " ")} ${entry.outcome}`
         .toLowerCase()

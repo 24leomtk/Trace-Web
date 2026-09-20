@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -96,6 +96,11 @@ function AttachmentList({
   onOpenFile: (attachment: AttachmentMeta) => void
 }) {
   const [page, setPage] = useState(0)
+
+  // New record / new file set starts on page one, not a stale page.
+  useEffect(() => {
+    setPage(0)
+  }, [attachments])
 
   const pageCount = Math.max(1, Math.ceil(attachments.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)

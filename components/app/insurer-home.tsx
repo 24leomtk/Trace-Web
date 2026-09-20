@@ -525,6 +525,7 @@ function PoliciesSection({
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: status,
     search: (policy, q) =>
       `${policy.plateNumber} ${policy.policyNumber} ${policy.coverageType ?? ""}`
         .toLowerCase()

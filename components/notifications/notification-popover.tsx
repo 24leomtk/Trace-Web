@@ -83,6 +83,11 @@ export function NotificationPopover() {
   }, [all, activeTab, filters.type, debouncedSearch])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
+  // Clamp real state so a shrunken list can't snap back to a stale page
+  // when new notifications arrive.
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages))
+  }, [totalPages])
   const safePage = Math.min(currentPage, totalPages)
   const visible = filtered.slice(
     (safePage - 1) * ITEMS_PER_PAGE,

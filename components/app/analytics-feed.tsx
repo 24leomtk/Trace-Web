@@ -78,6 +78,7 @@ export function AnalyticsFeed() {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: severity,
     search: (entry, q) =>
       `${entry.title} ${entry.description} ${entry.scopeLabel}`
         .toLowerCase()

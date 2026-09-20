@@ -51,6 +51,7 @@ export function AuditLog({ limit = 100 }: { limit?: number }) {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: `${filters.action}|${filters.from ?? ""}|${filters.to ?? ""}`,
     search: (entry, q) =>
       `${entry.actorName} ${entry.action.replace(/_/g, " ")} ${entry.detail ?? ""}`
         .toLowerCase()

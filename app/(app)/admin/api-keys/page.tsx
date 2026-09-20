@@ -67,6 +67,7 @@ export default function AdminApiKeysPage() {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: keyStatus,
     search: (key, q) =>
       `${key.name} ${key.keyPrefix} ${key.userName} ${key.scopes.join(" ")}`
         .toLowerCase()

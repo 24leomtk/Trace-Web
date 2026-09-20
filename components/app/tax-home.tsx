@@ -85,6 +85,7 @@ export function TaxHome() {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: status,
     search: (row, q) =>
       `${row.plateNumber} ${row.taxType.replace(/_/g, " ")} ${row.referenceNo ?? ""}`
         .toLowerCase()

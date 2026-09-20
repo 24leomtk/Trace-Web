@@ -81,6 +81,7 @@ export default function AdminOrganizationsPage() {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: orgType,
     search: (org, q) =>
       `${org.name} ${org.orgType.replace(/_/g, " ")} ${org.district ? formatDistrict(org.district) : ""}`
         .toLowerCase()

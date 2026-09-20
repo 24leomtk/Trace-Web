@@ -69,6 +69,7 @@ export default function AdminBranchesPage() {
     visible,
   } = usePaginatedSearch({
     items: preFiltered,
+    resetKey: `${filters.domain}|${filters.district}`,
     search: (branch, q) =>
       `${branch.name} ${branch.domain} ${formatDistrict(branch.district)} ${branch.location ?? ""}`
         .toLowerCase()

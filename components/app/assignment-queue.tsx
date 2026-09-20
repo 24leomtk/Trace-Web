@@ -70,6 +70,7 @@ export function AssignmentQueue() {
   const { query, setQuery, page, setPage, pageCount, total, visible } =
     usePaginatedSearch({
       items: preFiltered,
+      resetKey: due,
       search: (item, q) =>
         `${item.recordTitle} ${item.assignedByName} ${item.note ?? ""}`
           .toLowerCase()

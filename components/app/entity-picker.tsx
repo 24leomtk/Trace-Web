@@ -134,6 +134,12 @@ export function EntityPicker({
     1,
     Math.ceil(clientMatches.length / PAGE_SIZE)
   )
+  // Clamp real state so clearing a search can't snap back to a stale page.
+  useEffect(() => {
+    if (source.mode === "client") {
+      setPage((prev) => Math.min(prev, clientPageCount - 1))
+    }
+  }, [source.mode, clientPageCount])
   const clientPage = Math.min(page, clientPageCount - 1)
   const clientVisible = clientMatches.slice(
     clientPage * PAGE_SIZE,
