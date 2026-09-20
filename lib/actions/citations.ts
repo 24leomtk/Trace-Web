@@ -612,6 +612,7 @@ export interface ReconciliationDayTotal {
   receiverName: string
   count: number
   total: number
+  tickets: string[]
 }
 
 export interface ReconciliationException {
@@ -741,15 +742,26 @@ export async function getReconciliationSummary(): Promise<ReconciliationSummary>
     }
 
     const totalsMap = new Map<string, ReconciliationDayTotal>()
+    const ticketByRecord = new Map(
+      inScopeRows.map((row) => [row.recordId, row.ticketNumber] as const)
+    )
     for (const p of scopedPayments) {
       const date = p.createdAt.toISOString().slice(0, 10)
       const receiverName = p.receivedBy
         ? (receiverNames.get(p.receivedBy) ?? "Unknown")
         : "Unknown"
       const key = `${date}::${receiverName}`
-      const entry = totalsMap.get(key) ?? { date, receiverName, count: 0, total: 0 }
+      const entry = totalsMap.get(key) ?? {
+        date,
+        receiverName,
+        count: 0,
+        total: 0,
+        tickets: [],
+      }
       entry.count += 1
       entry.total = Math.round((entry.total + Number(p.amount)) * 100) / 100
+      const ticket = ticketByRecord.get(p.recordId) ?? null
+      if (ticket && !entry.tickets.includes(ticket)) entry.tickets.push(ticket)
       totalsMap.set(key, entry)
     }
     const totals = [...totalsMap.values()].sort((a, b) =>

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { PrinterIcon } from "lucide-react"
+import { PlusIcon, PrinterIcon } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import { toast } from "sonner"
 
@@ -18,9 +18,18 @@ import { EntityPicker } from "@/components/app/entity-picker"
 import { ListPagination } from "@/components/app/list-pagination"
 import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import { SearchInput } from "@/components/app/search-input"
+import { ResponsiveModal } from "@/components/app/responsive-modal"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
+import { DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 
 function mwk(value: number): string {
@@ -52,87 +61,12 @@ export function CitationLedger({
     enabled: isMonitor,
   })
 
-  const [amount, setAmount] = useState("")
-  const [receiptNo, setReceiptNo] = useState("")
-  const [note, setNote] = useState("")
-  const [payerName, setPayerName] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState("cash")
-  const [countersign, setCountersign] = useState("")
-  const [paying, setPaying] = useState(false)
-  const [courtDate, setCourtDate] = useState("")
-  const [courtId, setCourtId] = useState("")
-  const [scheduling, setScheduling] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
 
   async function refresh() {
     await queryClient.invalidateQueries({
       queryKey: ["citation-ledger", recordId],
     })
-  }
-
-  async function submitPayment(event: React.SubmitEvent) {
-    event.preventDefault()
-    const parsed = Number(amount)
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      toast.error("Enter a positive amount.")
-      return
-    }
-    if (!payerName.trim()) {
-      toast.error("Enter the payer's name.")
-      return
-    }
-    setPaying(true)
-    try {
-      const result = await recordCitationPayment({
-        recordId,
-        amount: Math.round(parsed * 100) / 100,
-        receiptNo: receiptNo.trim() || undefined,
-        note: note.trim() || undefined,
-        payerName: payerName.trim(),
-        paymentMethod: (["cash", "mobile", "bank"] as const).includes(
-          paymentMethod as "cash"
-        )
-          ? (paymentMethod as "cash" | "mobile" | "bank")
-          : "cash",
-        countersignedBy: countersign.trim() || undefined,
-      })
-      toast.success(
-        `Receipt ${result.receiptNo} recorded.${result.isPaid ? " Fine fully paid." : ""}`
-      )
-      setAmount("")
-      setReceiptNo("")
-      setNote("")
-      setPayerName("")
-      setCountersign("")
-      await refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Payment failed.")
-    } finally {
-      setPaying(false)
-    }
-  }
-
-  async function submitSchedule(event: React.SubmitEvent) {
-    event.preventDefault()
-    if (!courtDate) {
-      toast.error("Choose a court date.")
-      return
-    }
-    setScheduling(true)
-    try {
-      await scheduleCitationCourt({
-        recordId,
-        courtDate,
-        courtId: courtId || undefined,
-      })
-      toast.success("Court date scheduled.")
-      setCourtDate("")
-      setCourtId("")
-      await refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Scheduling failed.")
-    } finally {
-      setScheduling(false)
-    }
   }
 
   if (ledgerQuery.isLoading)
@@ -162,7 +96,6 @@ export function CitationLedger({
     typeof window !== "undefined"
       ? `${window.location.origin}/records/${recordId}`
       : recordId
-  const todayKey = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="flex flex-col gap-4">
@@ -277,70 +210,40 @@ export function CitationLedger({
         payments={ledger.payments}
         refreshing={ledgerQuery.isFetching}
         onRefresh={refresh}
-        amount={amount}
-        setAmount={setAmount}
-        receiptNo={receiptNo}
-        setReceiptNo={setReceiptNo}
-        note={note}
-        setNote={setNote}
-        payerName={payerName}
-        setPayerName={setPayerName}
-        paymentMethod={paymentMethod}
-        setPaymentMethod={setPaymentMethod}
-        countersign={countersign}
-        setCountersign={setCountersign}
-        paying={paying}
+        recordId={recordId}
         canManage={canManage}
         isPaid={ledger.isPaid}
         isVoid={!!ledger.voidedAt}
-        onSubmit={submitPayment}
       />
 
       {/* Court scheduling (monitors) */}
       {isMonitor && (
         <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Court appearance
-          </h2>
-          <form onSubmit={submitSchedule} className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <DatePicker
-                value={courtDate}
-                onChange={setCourtDate}
-                label="Court date"
-                placeholder="Court date"
-                min={todayKey}
-                allowClear={false}
-                className="flex-1"
-              />
-              <EntityPicker
-                label="Court"
-                placeholder="Select court…"
-                value={courtId}
-                onChange={setCourtId}
-                triggerClassName="h-9 flex-1"
-                source={{
-                  mode: "client",
-                  items: (courtsQuery.data ?? []).map((court) => ({
-                    value: court.id,
-                    label: court.name,
-                  })),
-                }}
-              />
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Court appearance
+            </h2>
             <Button
-              type="submit"
+              type="button"
               size="sm"
               className="w-fit"
-              disabled={scheduling}
+              onClick={() => setScheduleOpen(true)}
             >
-              {scheduling
-                ? "Scheduling…"
-                : ledger.courtDate
-                  ? "Reschedule"
-                  : "Schedule"}
+              {ledger.courtDate ? "Reschedule…" : "Schedule…"}
             </Button>
-          </form>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {ledger.courtDate
+              ? `${formatDateKey(ledger.courtDate)}${ledger.courtName ? ` · ${ledger.courtName}` : ""}`
+              : "Not scheduled"}
+          </p>
+          <ScheduleCourtDialog
+            open={scheduleOpen}
+            onOpenChange={setScheduleOpen}
+            recordId={recordId}
+            courts={courtsQuery.data ?? []}
+            onDone={refresh}
+          />
         </section>
       )}
     </div>
@@ -351,45 +254,20 @@ function PaymentsSection({
   payments,
   refreshing,
   onRefresh,
-  amount,
-  setAmount,
-  receiptNo,
-  setReceiptNo,
-  note,
-  setNote,
-  payerName,
-  setPayerName,
-  paymentMethod,
-  setPaymentMethod,
-  countersign,
-  setCountersign,
-  paying,
+  recordId,
   canManage,
   isPaid,
   isVoid,
-  onSubmit,
 }: {
   payments: Awaited<ReturnType<typeof getCitationLedger>>["payments"]
-  amount: string
-  setAmount: (value: string) => void
-  receiptNo: string
-  setReceiptNo: (value: string) => void
-  note: string
-  setNote: (value: string) => void
-  payerName: string
-  setPayerName: (value: string) => void
-  paymentMethod: string
-  setPaymentMethod: (value: string) => void
-  countersign: string
-  setCountersign: (value: string) => void
-  paying: boolean
+  refreshing?: boolean
+  onRefresh?: () => Promise<void>
+  recordId: string
   canManage: boolean
   isPaid: boolean
   isVoid: boolean
-  refreshing?: boolean
-  onRefresh?: () => Promise<void>
-  onSubmit: (event: React.SubmitEvent) => void
 }) {
+  const [payOpen, setPayOpen] = useState(false)
   const { query, setQuery, debouncedQuery, page, setPage, pageCount, total, visible } =
     usePaginatedSearch({
       items: payments,
@@ -398,12 +276,30 @@ function PaymentsSection({
           .toLowerCase()
           .includes(q),
     })
+  const canPay = canManage && !isPaid && !isVoid
+
+  async function refresh() {
+    await onRefresh?.()
+  }
 
   return (
     <section className="flex flex-col gap-2 rounded-none border bg-card p-4 print:hidden">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Payments ({payments.length})
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Payments ({payments.length})
+        </h2>
+        {canPay && (
+          <Button
+            type="button"
+            size="sm"
+            className="w-fit"
+            onClick={() => setPayOpen(true)}
+          >
+            <PlusIcon data-icon="inline-start" />
+            Record payment…
+          </Button>
+        )}
+      </div>
       {payments.length > 4 && (
         <div className="flex items-start gap-2">
           <SearchInput
@@ -458,68 +354,272 @@ function PaymentsSection({
           />
         </>
       )}
-      {canManage && !isPaid && !isVoid && (
-        <form onSubmit={onSubmit} className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              min="1"
-              step="0.01"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              placeholder="Amount (MWK)"
-              aria-label="Payment amount in kwacha"
-            />
-            <Input
-              value={receiptNo}
-              onChange={(event) => setReceiptNo(event.target.value)}
-              placeholder="Receipt no. (auto)"
-              aria-label="Receipt number, blank for auto"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={payerName}
-              onChange={(event) => setPayerName(event.target.value)}
-              placeholder="Payer name*"
-              aria-label="Payer name"
-            />
-            <select
-              value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value)}
-              aria-label="Payment method"
-              className="h-9 flex-1 rounded-none border bg-background px-2 text-sm"
-            >
-              <option value="cash">Cash</option>
-              <option value="mobile">Mobile money</option>
-              <option value="bank">Bank</option>
-            </select>
-          </div>
-          <Input
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="Note (optional)"
-            aria-label="Payment note"
-          />
-          <Input
-            value={countersign}
-            onChange={(event) => setCountersign(event.target.value)}
-            placeholder="Countersign (required only if you filed this ticket)"
-            aria-label="Countersigning officer"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Any branch counter can receive — your branch is stamped automatically.
-          </p>
-          <Button type="submit" size="sm" className="w-fit" disabled={paying}>
-            {paying ? "Recording…" : "Record payment"}
-          </Button>
-        </form>
-      )}
       {isPaid && (
         <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
           Fully paid — no further payments accepted.
         </p>
       )}
+      {canPay && (
+        <RecordPaymentDialog
+          open={payOpen}
+          onOpenChange={setPayOpen}
+          recordId={recordId}
+          onDone={refresh}
+        />
+      )}
     </section>
+  )
+}
+
+function RecordPaymentDialog({
+  open,
+  onOpenChange,
+  recordId,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  recordId: string
+  onDone: () => Promise<void>
+}) {
+  const [amount, setAmount] = useState("")
+  const [receiptNo, setReceiptNo] = useState("")
+  const [note, setNote] = useState("")
+  const [payerName, setPayerName] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [countersign, setCountersign] = useState("")
+  const [paying, setPaying] = useState(false)
+
+  function reset() {
+    setAmount("")
+    setReceiptNo("")
+    setNote("")
+    setPayerName("")
+    setPaymentMethod("cash")
+    setCountersign("")
+  }
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    const parsed = Number(amount)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toast.error("Enter a positive amount.")
+      return
+    }
+    if (!payerName.trim()) {
+      toast.error("Enter the payer's name.")
+      return
+    }
+    setPaying(true)
+    try {
+      const result = await recordCitationPayment({
+        recordId,
+        amount: Math.round(parsed * 100) / 100,
+        receiptNo: receiptNo.trim() || undefined,
+        note: note.trim() || undefined,
+        payerName: payerName.trim(),
+        paymentMethod: (["cash", "mobile", "bank"] as const).includes(
+          paymentMethod as "cash"
+        )
+          ? (paymentMethod as "cash" | "mobile" | "bank")
+          : "cash",
+        countersignedBy: countersign.trim() || undefined,
+      })
+      toast.success(
+        `Receipt ${result.receiptNo} recorded.${result.isPaid ? " Fine fully paid." : ""}`
+      )
+      reset()
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Payment failed.")
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!paying) {
+          if (!next) reset()
+          onOpenChange(next)
+        }
+      }}
+      title="Record payment"
+      description="Receipted against this ticket. Your branch is stamped automatically."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            min="1"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="Amount (MWK)"
+            aria-label="Payment amount in kwacha"
+          />
+          <Input
+            value={receiptNo}
+            onChange={(event) => setReceiptNo(event.target.value)}
+            placeholder="Receipt no. (auto)"
+            aria-label="Receipt number, blank for auto"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={payerName}
+            onChange={(event) => setPayerName(event.target.value)}
+            placeholder="Payer name*"
+            aria-label="Payer name"
+          />
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger
+                aria-label="Payment method"
+                className="h-9 flex-1 rounded-none"
+              >
+                <SelectValue placeholder="Payment method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="mobile">Mobile money</SelectItem>
+                <SelectItem value="bank">Bank</SelectItem>
+              </SelectContent>
+            </Select>
+        </div>
+        <Input
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="Note (optional)"
+          aria-label="Payment note"
+        />
+        <Input
+          value={countersign}
+          onChange={(event) => setCountersign(event.target.value)}
+          placeholder="Countersign (required only if you filed this ticket)"
+          aria-label="Countersigning officer"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Any branch counter can receive — your branch is stamped automatically.
+        </p>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={paying}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={paying}>
+            {paying ? "Recording…" : "Record payment"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
+  )
+}
+
+function ScheduleCourtDialog({
+  open,
+  onOpenChange,
+  recordId,
+  courts,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  recordId: string
+  courts: { id: string; name: string }[]
+  onDone: () => Promise<void>
+}) {
+  const [courtDate, setCourtDate] = useState("")
+  const [courtId, setCourtId] = useState("")
+  const [scheduling, setScheduling] = useState(false)
+  const todayKey = new Date().toISOString().slice(0, 10)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (!courtDate) {
+      toast.error("Choose a court date.")
+      return
+    }
+    setScheduling(true)
+    try {
+      await scheduleCitationCourt({
+        recordId,
+        courtDate,
+        courtId: courtId || undefined,
+      })
+      toast.success("Court date scheduled.")
+      setCourtDate("")
+      setCourtId("")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Scheduling failed.")
+    } finally {
+      setScheduling(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!scheduling) {
+          if (!next) {
+            setCourtDate("")
+            setCourtId("")
+          }
+          onOpenChange(next)
+        }
+      }}
+      title="Schedule court appearance"
+      description="Sets the hearing date for this ticket."
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <div className="flex gap-2">
+          <DatePicker
+            value={courtDate}
+            onChange={setCourtDate}
+            label="Court date"
+            placeholder="Court date"
+            min={todayKey}
+            allowClear={false}
+            className="flex-1"
+          />
+          <EntityPicker
+            label="Court"
+            placeholder="Select court…"
+            value={courtId}
+            onChange={setCourtId}
+            triggerClassName="h-9 flex-1"
+            source={{
+              mode: "client",
+              items: courts.map((court) => ({
+                value: court.id,
+                label: court.name,
+              })),
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={scheduling}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={scheduling || !courtDate}>
+            {scheduling ? "Scheduling…" : "Schedule"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
   )
 }

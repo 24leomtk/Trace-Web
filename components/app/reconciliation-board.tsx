@@ -177,7 +177,9 @@ function TakingsTab({
   } = usePaginatedSearch({
     items: totals,
     search: (entry, q) =>
-      `${entry.receiverName} ${entry.date}`.toLowerCase().includes(q),
+      `${entry.receiverName} ${entry.date} ${entry.tickets.join(" ")}`
+        .toLowerCase()
+        .includes(q),
   })
   return (
     <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
@@ -185,7 +187,7 @@ function TakingsTab({
         <SearchInput
           value={query}
           onChange={setQuery}
-          placeholder="Search receiver or date…"
+          placeholder="Search receiver, ticket, or date…"
           className="flex-1"
         />
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
@@ -202,14 +204,22 @@ function TakingsTab({
                 key={`${entry.date}::${entry.receiverName}`}
                 className="flex items-center justify-between gap-4 rounded-none border px-3 py-2 text-sm"
               >
-                <span>
+                <span className="min-w-0">
                   <span className="font-medium">{entry.receiverName}</span>
                   <span className="text-muted-foreground">
                     {" "}
                     · {formatDateKey(entry.date)} · {entry.count} receipt(s)
                   </span>
+                  {entry.tickets.length > 0 && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {entry.tickets.slice(0, 4).join(" · ")}
+                      {entry.tickets.length > 4
+                        ? ` · +${entry.tickets.length - 4} more`
+                        : ""}
+                    </span>
+                  )}
                 </span>
-                <span className="font-medium">{mwk(entry.total)}</span>
+                <span className="shrink-0 font-medium">{mwk(entry.total)}</span>
               </li>
             ))}
           </ul>

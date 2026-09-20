@@ -187,7 +187,7 @@ export default function RecordDetailPage({
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [statusSaving, setStatusSaving] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
-  const [reassignTo, setReassignTo] = useState("")
+  const [reassignOpen, setReassignOpen] = useState(false)
 
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
@@ -1099,45 +1099,19 @@ export default function RecordDetailPage({
                     has nowhere to move.
                   </p>
                 ) : (
-                <form
-                  className="flex gap-2"
-                  onSubmit={async (event) => {
-                    event.preventDefault()
-                    if (!reassignTo) return
-                    try {
-                      await reassignRecord({
-                        id: record.id,
-                        branchId: reassignTo,
-                      })
-                      toast.success("Case reassigned.")
-                      setReassignTo("")
-                      await refresh()
-                    } catch (error) {
-                      toast.error(
-                        error instanceof Error ? error.message : "Failed."
-                      )
-                    }
-                  }}
-                >
-                  <EntityPicker
-                    label="Target branch"
-                    placeholder="Select branch…"
-                    value={reassignTo}
-                    onChange={setReassignTo}
-                    triggerClassName="h-9 flex-1"
-                    source={{
-                      mode: "client",
-                      items: reassignTargets.map((branch) => ({
-                        value: branch.id,
-                        label: branch.name,
-                        detail: formatDistrict(branch.district),
-                      })),
-                    }}
-                  />
-                  <Button type="submit" size="lg">
-                    Move
-                  </Button>
-                </form>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm">
+                      Currently at{" "}
+                      <span className="font-medium">{record.branchName}</span>
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setReassignOpen(true)}
+                    >
+                      Move…
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -1205,6 +1179,17 @@ export default function RecordDetailPage({
           open={referOpen}
           onOpenChange={setReferOpen}
           recordId={record.id}
+          onDone={refresh}
+        />
+      )}
+
+      {showManage && user.role === "DISTRICT_MONITOR" && (
+        <ReassignDialog
+          open={reassignOpen}
+          onOpenChange={setReassignOpen}
+          recordId={record.id}
+          currentBranchName={record.branchName ?? "the current branch"}
+          targets={reassignTargets}
           onDone={refresh}
         />
       )}
@@ -1606,6 +1591,90 @@ function ReferDialog({
           </Button>
           <Button type="submit" disabled={saving || !liaisonId}>
             {saving ? "Referring…" : "Refer to court"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </ResponsiveModal>
+  )
+}
+
+function ReassignDialog({
+  open,
+  onOpenChange,
+  recordId,
+  currentBranchName,
+  targets,
+  onDone,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  recordId: string
+  currentBranchName: string
+  targets: { id: string; name: string; district: string }[]
+  onDone: () => Promise<void>
+}) {
+  const [targetId, setTargetId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: React.SubmitEvent) {
+    event.preventDefault()
+    if (!targetId) {
+      toast.error("Choose a target branch.")
+      return
+    }
+    setSaving(true)
+    try {
+      await reassignRecord({ id: recordId, branchId: targetId })
+      toast.success("Case reassigned.")
+      setTargetId("")
+      onOpenChange(false)
+      await onDone()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) {
+          if (!next) setTargetId("")
+          onOpenChange(next)
+        }
+      }}
+      title="Reassign branch"
+      description={`Move this case away from ${currentBranchName}.`}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <EntityPicker
+          label="Target branch"
+          placeholder="Select branch…"
+          value={targetId}
+          onChange={setTargetId}
+          triggerClassName="h-9"
+          source={{
+            mode: "client",
+            items: targets.map((branch) => ({
+              value: branch.id,
+              label: branch.name,
+              detail: formatDistrict(branch.district),
+            })),
+          }}
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving || !targetId}>
+            {saving ? "Moving…" : "Move"}
           </Button>
         </DialogFooter>
       </form>
