@@ -12,13 +12,21 @@ export function PageHeaderSkeleton({
   titleWidth = "w-40",
   subWidth = "w-64",
   withActions = false,
+  withTabs = false,
+  tabCount = 3,
 }: {
   titleWidth?: string
   subWidth?: string
   withActions?: boolean
+  /** Compact tab pills sharing the header row — mirrors TabGroup. */
+  withTabs?: boolean
+  tabCount?: number
 }) {
   return (
-    <header className="flex items-start justify-between gap-3" aria-hidden="true">
+    <header
+      className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3"
+      aria-hidden="true"
+    >
       <div className="flex flex-col gap-1.5">
         <Skeleton className={cn("h-5", titleWidth)} />
         <Skeleton className={cn("h-4", subWidth)} />
@@ -27,6 +35,16 @@ export function PageHeaderSkeleton({
         <div className="flex shrink-0 gap-2">
           <Skeleton className="h-9 w-24" />
           <Skeleton className="h-9 w-24" />
+        </div>
+      )}
+      {withTabs && (
+        <div className="flex shrink-0 gap-1 rounded-none border bg-muted/40 p-1">
+          {Array.from({ length: tabCount }).map((_, i) => (
+            <Skeleton
+              key={i}
+              className={cn("h-5", ["w-14", "w-20", "w-24", "w-16"][i % 4])}
+            />
+          ))}
         </div>
       )}
     </header>
@@ -47,19 +65,6 @@ export function FilterBarSkeleton({
         {withRefresh && <Skeleton className="size-10 shrink-0" />}
         {withFilter && <Skeleton className="size-10 shrink-0" />}
       </div>
-    </div>
-  )
-}
-
-export function ScopeTabBarSkeleton({ tabs = 4 }: { tabs?: number }) {
-  return (
-    <div
-      aria-hidden="true"
-      className="flex gap-1 overflow-hidden rounded-none border bg-muted/40 p-1"
-    >
-      {Array.from({ length: tabs }).map((_, i) => (
-        <Skeleton key={i} className="h-7 w-20" />
-      ))}
     </div>
   )
 }
@@ -168,14 +173,8 @@ export function LookupCardSkeleton({ rows = 3 }: { rows?: number }) {
   )
 }
 
-/** Mirrors record/vehicle/person detail header + tabbar + content card. */
-export function DetailHeaderSkeleton({
-  withTabs = true,
-  tabCount = 3,
-}: {
-  withTabs?: boolean
-  tabCount?: number
-}) {
+/** Mirrors the record detail header + content card (no tabs). */
+export function DetailHeaderSkeleton() {
   return (
     <div className="flex flex-col gap-6" aria-hidden="true">
       <div className="flex items-center justify-between">
@@ -194,7 +193,6 @@ export function DetailHeaderSkeleton({
         </div>
         <Skeleton className="mt-1 h-3 w-72" />
       </div>
-      {withTabs && <ScopeTabBarSkeleton tabs={tabCount} />}
       <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
         <Skeleton className="h-3 w-36" />
         <Skeleton className="h-4 w-full" />

@@ -13,7 +13,6 @@ import { ListRefreshButton } from "@/components/app/list-refresh-button"
 import {
   PageHeaderSkeleton,
   RowListSkeleton,
-  ScopeTabBarSkeleton,
   StatChipsSkeleton,
 } from "@/components/app/list-skeletons"
 import { SearchInput } from "@/components/app/search-input"
@@ -47,9 +46,13 @@ export function ReconciliationBoard() {
   if (summaryQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
-        <PageHeaderSkeleton titleWidth="w-48" subWidth="w-64" />
+        <PageHeaderSkeleton
+          titleWidth="w-48"
+          subWidth="w-64"
+          withTabs
+          tabCount={4}
+        />
         <StatChipsSkeleton count={3} />
-        <ScopeTabBarSkeleton tabs={4} />
         <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
           <div className="flex items-start gap-2">
             <Skeleton className="h-10 flex-1" />
@@ -299,7 +302,9 @@ function PaidTab({
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
       </div>
       {paid.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No paid tickets in scope yet.</p>
+        <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+          No paid tickets in scope yet.
+        </p>
       ) : visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No paid tickets match “{debouncedQuery}”.
@@ -368,7 +373,9 @@ function VoidsTab({
         <ListRefreshButton onRefresh={onRefresh} loading={refreshing} />
       </div>
       {voids.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No voided tickets.</p>
+        <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+          No voided tickets.
+        </p>
       ) : visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No voids match “{debouncedQuery}”.

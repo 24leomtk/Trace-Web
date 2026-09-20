@@ -30,6 +30,9 @@ export default function PersonDetailPage({
   const [candidates, setCandidates] = useState<
     Awaited<ReturnType<typeof searchPersons>>
   >([])
+  // Tracks whether a duplicate search has run — the empty shell below only
+  // shows after a search, never on first paint.
+  const [mergeSearched, setMergeSearched] = useState(false)
   const isMonitor =
     user.role === "DISTRICT_MONITOR" || user.role === "COUNTRY_MONITOR"
 
@@ -45,6 +48,7 @@ export default function PersonDetailPage({
     const term = debouncedMergeQuery || mergeQuery.trim()
     if (!term) return
     setCandidates((await searchPersons(term)).filter((row) => row.id !== id))
+    setMergeSearched(true)
   }
 
   async function merge(dropId: string) {
@@ -52,6 +56,7 @@ export default function PersonDetailPage({
       await mergePersons({ keepId: id, dropId })
       toast.success("Profiles merged.")
       setCandidates([])
+      setMergeSearched(false)
       await queryClient.invalidateQueries({ queryKey: ["person", id] })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Merge failed.")
@@ -96,6 +101,7 @@ export default function PersonDetailPage({
       mergeQuery={mergeQuery}
       setMergeQuery={setMergeQuery}
       candidates={candidates}
+      mergeSearched={mergeSearched}
       onFindDuplicates={findDuplicates}
       onMerge={merge}
       refreshing={isFetching}
@@ -113,6 +119,7 @@ function PersonDetailView({
   mergeQuery,
   setMergeQuery,
   candidates,
+  mergeSearched,
   onFindDuplicates,
   onMerge,
   refreshing,
@@ -134,6 +141,7 @@ function PersonDetailView({
   mergeQuery: string
   setMergeQuery: (value: string) => void
   candidates: Awaited<ReturnType<typeof searchPersons>>
+  mergeSearched: boolean
   onFindDuplicates: (event: React.SubmitEvent) => void
   onMerge: (dropId: string) => void
   refreshing?: boolean
@@ -247,7 +255,8 @@ function PersonDetailView({
               Find
             </Button>
           </form>
-          {candidates.map((candidate) => (
+          {candidates.length > 0 ? (
+            candidates.map((candidate) => (
             <div
               key={candidate.id}
               className="flex items-center justify-between gap-2 rounded-none border px-3 py-2 text-sm"
@@ -269,7 +278,12 @@ function PersonDetailView({
                 Merge into this profile
               </Button>
             </div>
-          ))}
+            ))
+          ) : mergeSearched ? (
+            <p className="rounded-none border border-dashed px-6 py-6 text-center text-sm text-muted-foreground">
+              No duplicates found — this looks like the only profile.
+            </p>
+          ) : null}
         </section>
       )}
     </div>

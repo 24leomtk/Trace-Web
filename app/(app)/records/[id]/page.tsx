@@ -359,7 +359,7 @@ export default function RecordDetailPage({
   }
 
   if (recordQuery.isLoading) {
-    return <DetailHeaderSkeleton withTabs={false} />
+    return <DetailHeaderSkeleton />
   }
 
   if (recordQuery.isError || !recordQuery.data) {

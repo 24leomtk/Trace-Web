@@ -1,11 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   PageHeaderSkeleton,
-  ScopeTabBarSkeleton,
   StatChipsSkeleton,
 } from "@/components/app/list-skeletons"
 
-/** Mirrors reconciliation: header + stat chips + 4 tabs + search card + rows. */
+/** Mirrors reconciliation: header row (title + tabs) + stat chips + rows. */
 export default function ReconciliationLoading() {
   return (
     <div
@@ -13,9 +12,8 @@ export default function ReconciliationLoading() {
       aria-busy="true"
       aria-label="Loading reconciliation"
     >
-      <PageHeaderSkeleton titleWidth="w-48" subWidth="w-64" />
+      <PageHeaderSkeleton titleWidth="w-48" subWidth="w-64" withTabs tabCount={4} />
       <StatChipsSkeleton count={3} />
-      <ScopeTabBarSkeleton tabs={4} />
       <div
         aria-hidden="true"
         className="flex flex-col gap-2 rounded-none border bg-card p-4"
