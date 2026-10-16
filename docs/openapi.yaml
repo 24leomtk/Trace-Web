@@ -81,6 +81,10 @@ paths:
       responses:
         "200": { description: Profile }
         "401": { description: Sign in again, content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } } }
+    delete:
+      summary: Self-service deactivation
+      responses:
+        "200": { description: "{ ok: true }" }
 
   /records:
     get:
@@ -122,6 +126,348 @@ paths:
         "200": { description: TraceRecord }
         "403": { description: Out of scope }
         "404": { description: Unknown record }
+    patch:
+      summary: Edit an active case payload (filer / in-scope monitor)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data]
+              properties:
+                data: { type: object }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /records/{id}/status:
+    get:
+      summary: Status transition hints (monitors)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ current, hints }" }
+    post:
+      summary: Change case status (monitors; reason required off active)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/CaseStatus' }
+                reason: { type: string }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /records/{id}/access:
+    post:
+      summary: Access mutations (access-level / reassign / link-person)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /records/{id}/attachments:
+    post:
+      summary: Append files to an active case
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /records/{id}/reviews:
+    get:
+      summary: Follow-up notes thread
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ items }" }
+    post:
+      summary: Add a review note
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ id }" }
+
+  /records/{id}/assignments:
+    get:
+      summary: Everyone tasked on one case
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /records/{id}/matches:
+    get:
+      summary: Live matches or link candidates (?view=matches|candidates)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: view, in: query, schema: { type: string, enum: [matches, candidates], default: matches } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /records/{id}/custody:
+    get:
+      summary: Custody card state (impoundments)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: CustodyState }
+    post:
+      summary: Custody transitions (hold / release / owner-notice)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /records/{id}/locate:
+    get:
+      summary: Locate card state
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: LocateState }
+    post:
+      summary: Locate transitions (report / confirm / disposition)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /records/{id}/citation:
+    get:
+      summary: Fine ledger for one citation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: CitationLedger }
+
+  /records/{id}/referrals:
+    get:
+      summary: Live court grants on one case (monitors)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /records/{id}/audit:
+    get:
+      summary: Per-record activity trail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /search:
+    get:
+      summary: Unified lookup (vehicles + persons + citations)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+      responses:
+        "200": { description: "{ vehicles, persons, citations }" }
+
+  /persons:
+    get:
+      summary: Person-profile search
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+      responses:
+        "200": { description: "{ items }" }
+    post:
+      summary: Create a person profile
+      responses:
+        "200": { description: "{ id }" }
+
+  /persons/{id}:
+    get:
+      summary: Person profile detail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Person detail }
+
+  /vehicles/search:
+    get:
+      summary: Vehicle search by plate
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /vehicles/{id}:
+    get:
+      summary: Vehicle detail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Vehicle detail }
+
+  /assignments:
+    get:
+      summary: My task queue (?view=mine) or assignable users (?view=assignable)
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [mine, assignable], default: mine } }
+      responses:
+        "200": { description: "{ open, recent } or { items }" }
+    post:
+      summary: Assign a case (monitors)
+      responses:
+        "200": { description: "{ id }" }
+
+  /assignments/{id}:
+    post:
+      summary: Complete or cancel a task
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /matches:
+    post:
+      summary: Propose a record link
+      responses:
+        "200": { description: "{ id }" }
+
+  /matches/review:
+    post:
+      summary: Confirm / exclude a proposed match (monitors)
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /referrals:
+    get:
+      summary: Liaison referrals (?view=mine|outcomes)
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [mine, outcomes] } }
+      responses:
+        "200": { description: "{ items }" }
+    post:
+      summary: Refer a case to court (monitors)
+      responses:
+        "200": { description: "{ id }" }
+
+  /referrals/{id}:
+    post:
+      summary: Renew / revoke (monitors) or record outcome (liaison)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /court-liaisons:
+    get:
+      summary: Referral target picker (monitors)
+      responses:
+        "200": { description: "{ items }" }
+
+  /citations/payments:
+    post:
+      summary: Record a fine payment
+      responses:
+        "200": { description: "{ receiptNo, balance, isPaid }" }
+
+  /citations/void:
+    post:
+      summary: Void a ticket (monitors)
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /citations/court-schedule:
+    post:
+      summary: Schedule a court appearance (monitors)
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /citations/search:
+    get:
+      summary: Ticket / violation / plate search
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /citations/lookup:
+    get:
+      summary: Resolve a ticket number
+      parameters:
+        - { name: ticket, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ recordId, balance, isPaid }" }
+
+  /courts:
+    get:
+      summary: Court picker (police)
+      responses:
+        "200": { description: "{ items }" }
+
+  /reconciliation/summary:
+    get:
+      summary: Daily money reconciliation (monitors)
+      responses:
+        "200": { description: ReconciliationSummary }
+
+  /locates/dormant:
+    get:
+      summary: Locates awaiting confirmation (monitors)
+      responses:
+        "200": { description: "{ items }" }
+
+  /watchlist/flagged:
+    get:
+      summary: Flagged plates in scope (police)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /audit/log:
+    get:
+      summary: Scoped audit trail
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /catalog/record-types:
+    get:
+      summary: Filing type picker
+      parameters:
+        - { name: domain, in: query, schema: { type: string, enum: [regular, traffic] } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /catalog/branches:
+    get:
+      summary: Filing branch picker
+      parameters:
+        - { name: domain, in: query, required: true, schema: { type: string, enum: [regular, traffic] } }
+      responses:
+        "200": { description: "{ items }" }
+
+  /notifications/{id}:
+    delete:
+      summary: Dismiss one notification
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: "{ ok: true }" }
+
+  /me/phone:
+    post:
+      summary: Number-change helpers (check / sync)
+      responses:
+        "200": { description: "{ ok: true }" }
 
   /lookups:
     post:

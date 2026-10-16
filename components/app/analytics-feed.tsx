@@ -346,6 +346,14 @@ function BreakdownBars({
 
   function drillType(key?: string): RecordType | null {
     if (!key || !(key in RECORD_TYPE_META)) return null
+    // Only roles with a case feed can drill into it — admins get a
+    // read-only breakdown.
+    if (
+      user.role !== "OFFICER" &&
+      user.role !== "DISTRICT_MONITOR" &&
+      user.role !== "COUNTRY_MONITOR"
+    )
+      return null
     const type = key as RecordType
     if (user.domain && RECORD_TYPE_META[type].domain !== user.domain)
       return null

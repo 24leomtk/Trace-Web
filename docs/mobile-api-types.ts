@@ -355,3 +355,124 @@ export interface ApiErrorBody {
   error: string
   details?: unknown
 }
+
+// ── Case mutations ───────────────────────────────────────────────────────
+
+export type CaseStatusBody =
+  | { status: "active" }
+  | { status: "resolved" | "closed" | "archived"; reason: string }
+
+export interface TransitionHint {
+  status: CaseStatus
+  allowed: boolean
+  message: string | null
+}
+
+export interface TransitionHints {
+  current: CaseStatus
+  hints: TransitionHint[]
+}
+
+export type RecordAccessBody =
+  | { action: "access-level"; level: AccessLevel }
+  | { action: "reassign"; branchId: string }
+  | { action: "link-person"; personId: string | null }
+
+export interface UpdateRecordBody {
+  data: Record<string, unknown>
+}
+
+// ── Reviews & assignments ────────────────────────────────────────────────
+
+export interface ReviewItem {
+  id: string
+  reviewerName: string
+  note: string
+  createdAt: string
+}
+
+export interface AssignmentItem {
+  id: string
+  recordId: string
+  recordTitle: string
+  state: string
+  note: string | null
+  dueAt: string | null
+  assigneeId: string
+  assigneeName: string
+  assignedByName: string
+  createdAt: string
+}
+
+export interface CreateAssignmentBody {
+  recordId: string
+  assigneeId: string
+  dueAt?: string // YYYY-MM-DD, today or future
+  note?: string
+}
+
+export type AssignmentActionBody =
+  | { action: "complete" }
+  | { action: "cancel" }
+
+// ── Court referrals ────────────────────────────────────────────────────
+
+export interface CreateReferralBody {
+  recordId: string
+  courtLiaisonId: string
+  reason?: string
+  expiresAt: string // YYYY-MM-DD
+}
+
+export type ReferralActionBody =
+  | { action: "renew" }
+  | { action: "revoke" }
+  | { action: "outcome"; outcome: string; outcomeNotes?: string }
+
+// ── Custody & locate ───────────────────────────────────────────────────
+
+export type CustodyActionBody =
+  | { action: "hold"; holdBasis: string; towCompany?: string; lotLocation?: string; bay?: string }
+  | { action: "release"; recipientName: string; recipientIdChecked: string; feesSnapshot?: number }
+  | { action: "owner-notice" }
+
+export type LocateActionBody =
+  | { action: "report"; place: string; note: string }
+  | { action: "confirm" }
+  | { action: "disposition"; disposition: "held" | "returned" | "destroyed" | "auctioned" }
+
+// ── Citations ──────────────────────────────────────────────────────────
+
+export interface CitationPaymentBody {
+  recordId: string
+  amount: number
+  receiptNo?: string
+  note?: string
+  payerName: string
+  paymentMethod: "cash" | "mobile" | "bank"
+  channel?: "counter" | "mobile" | "clerk"
+  receivingBranchId?: string
+  countersignedBy?: string
+}
+
+// ── Matches ────────────────────────────────────────────────────────────
+
+export interface ProposeMatchBody {
+  recordIdA: string
+  recordIdB: string
+  score?: number
+  reason: string
+}
+
+export interface ReviewMatchBody {
+  matchId: string
+  decision: "confirmed" | "excluded"
+  reason?: string
+}
+
+// ── Directory search ───────────────────────────────────────────────────
+
+export interface SearchQuery {
+  q: string
+  limit?: number
+}

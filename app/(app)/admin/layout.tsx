@@ -12,6 +12,6 @@ export default async function AdminLayout({
   if (user.role !== "SYSTEM_ADMIN") redirect("/")
 
   // Each admin page is standalone with its own header — global tabs were
-  // removed in favour of the existing FloatingNav + AdminHome navigation.
+  // removed in favour of the existing FloatingNav.
   return <div className="flex flex-col gap-6">{children}</div>
 }

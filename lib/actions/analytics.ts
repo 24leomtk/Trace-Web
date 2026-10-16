@@ -12,13 +12,17 @@ import { getViewerScope } from "@/lib/actions/records"
 
 interface Scope {
   userId: string
-  domain: Domain
-  /** Raw district enum for district monitors, null for country monitors. */
+  /** Null for system admins — national view across all domains. */
+  domain: Domain | null
+  /** Raw district enum for district monitors, null for country monitors/admins. */
   district: string | null
 }
 
 async function resolveScope(): Promise<Scope> {
   const scope = await getViewerScope()
+  if (scope.role === "SYSTEM_ADMIN") {
+    return { userId: scope.id, domain: null, district: null }
+  }
   if (scope.role !== "DISTRICT_MONITOR" && scope.role !== "COUNTRY_MONITOR") {
     throw new Error("Reports are for monitors.")
   }
@@ -31,13 +35,19 @@ async function resolveScope(): Promise<Scope> {
 }
 
 function scopeLabel(scope: Scope): string {
-  const domain = scope.domain === "regular" ? "Regular" : "Traffic"
+  const domain =
+    scope.domain == null
+      ? "All domains"
+      : scope.domain === "regular"
+        ? "Regular"
+        : "Traffic"
   if (!scope.district) return `${domain} · national · all districts`
   return `${domain} · ${formatDistrict(scope.district)} district`
 }
 
 function scopedConditions(scope: Scope, table: typeof records) {
-  const conditions = [eq(table.domain, scope.domain)]
+  const conditions = []
+  if (scope.domain) conditions.push(eq(table.domain, scope.domain))
   if (scope.district) conditions.push(eq(table.district, scope.district as never))
   return conditions
 }
@@ -143,7 +153,9 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
     })
 
     // 3. Accident trends (traffic domain): fatalities + injuries, last 30 days.
-    if (scope.domain === "traffic") {
+    // Admins (domain null) see the traffic sections too — the joins below
+    // stay scoped to traffic records via the accident/citation tables.
+    if (scope.domain === "traffic" || scope.domain == null) {
       const accidentRows = await tx
         .select({
           fatalities: accidents.fatalities,
@@ -268,7 +280,7 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
       })
     }
 
-    // 5. District breakdown (country monitors: where is the load?).
+    // 5. District breakdown (country monitors + admins: where is the load?).
     if (!scope.district) {
       const byDistrict = await tx
         .select({
@@ -276,7 +288,7 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
           total: count(),
         })
         .from(records)
-        .where(eq(records.domain, scope.domain))
+        .where(scope.domain ? eq(records.domain, scope.domain) : undefined)
         .groupBy(records.district)
         .orderBy(sql`count(*) desc`)
         .limit(8)
@@ -319,7 +331,7 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
         })
         .from(courtCaseAccess)
         .innerJoin(records, eq(courtCaseAccess.recordId, records.id))
-        .where(eq(records.domain, scope.domain))
+        .where(scope.domain ? eq(records.domain, scope.domain) : undefined)
         .limit(200)
       const inScope = grants.filter(
         (grant) =>
@@ -364,7 +376,7 @@ export async function getAnalyticsFeed(): Promise<AnalyticsEntry[]> {
     await writeAuditTx(tx, {
       actorId: scope.userId,
       actionType: "report_generated",
-      reason: `Pulled ${scope.domain} analytics feed (${scope.district ?? "national"}).`,
+      reason: `Pulled ${scope.domain ?? "all-domain"} analytics feed (${scope.district ?? "national"}).`,
     })
     return entries
   })

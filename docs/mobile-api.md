@@ -34,7 +34,11 @@ Keep it in sync with `lib/types.ts` and `validations/record.ts`, the
 server-side sources of truth.
 
 **Request types** — `RecordsQuery`, `CreateRecordBody` (+ `AttachmentInput`),
-`SafetyLookupBody`, `NotificationsQuery`, `MarkNotificationsReadBody`
+`SafetyLookupBody`, `NotificationsQuery`, `MarkNotificationsReadBody`,
+`UpdateRecordBody`, `CaseStatusBody`, `RecordAccessBody`,
+`CreateAssignmentBody`, `AssignmentActionBody`, `CreateReferralBody`,
+`ReferralActionBody`, `CustodyActionBody`, `LocateActionBody`,
+`CitationPaymentBody`, `ProposeMatchBody`, `ReviewMatchBody`, `SearchQuery`
 
 **Response types** — `User`, `RecordsPage` (= `Page<TraceRecord>`),
 `TraceRecord`, `CreateRecordResponse`, `UploadCredentials`, `WantedCheckResult`,
@@ -90,6 +94,18 @@ and are further bound by scopes. Pilot scope: `plate:read` on
 | `GET`  | `/records` | officer / monitor       | Paginated case feed (own scope)    |
 | `GET`  | `/records/{id}` | officer / monitor / referred liaison | Single case (visibility-gated) |
 | `POST` | `/records` | officer / monitor       | File a case in the caller's domain |
+| `PATCH` | `/records/{id}` | filer / monitor      | Edit an active case's typed payload |
+| `GET/POST` | `/records/{id}/status` | monitor | Transition hints / change status (`{ status, reason }`) |
+| `POST` | `/records/{id}/access` | filer / monitor | `{ action: access-level/reassign/link-person, ... }` |
+| `POST` | `/records/{id}/attachments` | filer / monitor | Append files (upload to Cloudinary first) |
+| `GET/POST` | `/records/{id}/reviews` | filer / monitor | Follow-up notes thread |
+| `GET`  | `/records/{id}/assignments` | viewer | Everyone tasked on the case |
+| `GET`  | `/records/{id}/matches?view=matches\|candidates` | police | Live matches / link candidates |
+| `GET/POST` | `/records/{id}/custody` | police | Hold state / `{ action: hold/release/owner-notice, ... }` |
+| `GET/POST` | `/records/{id}/locate` | police | Locate state / `{ action: report/confirm/disposition, ... }` |
+| `GET`  | `/records/{id}/citation` | police / liaison | Fine ledger (payments, balance) |
+| `GET`  | `/records/{id}/referrals` | monitor | Live court grants on the case |
+| `GET`  | `/records/{id}/audit` | monitor / auditor | Per-record activity trail |
 
 Query — `RecordsQuery`
 
@@ -133,12 +149,52 @@ response back (`{ …, "idempotentReplay": true }`) instead of filing twice.
 Generate one UUID per filing attempt on the device and reuse it across
 retries of that attempt only.
 
+### Tasking, referrals & matches
+
+| Method | Path | Who | Description |
+| ------ | ---- | --- | ----------- |
+| `GET`  | `/assignments?view=mine\|assignable` | police / monitor | My task queue / users a monitor may task |
+| `POST` | `/assignments` | monitor | Assign a case (`recordId, assigneeId, dueAt?, note?`) |
+| `POST` | `/assignments/{id}` | assignee / monitor | `{ action: complete/cancel }` |
+| `GET`  | `/referrals?view=mine\|outcomes` | liaison | Live referrals (with files) / outcome history |
+| `POST` | `/referrals` | monitor | Refer a case to a court liaison |
+| `POST` | `/referrals/{id}` | monitor / liaison | `{ action: renew/revoke/outcome, ... }` |
+| `GET`  | `/court-liaisons` | monitor | Referral target picker |
+| `POST` | `/matches` | police | Propose a record link |
+| `POST` | `/matches/review` | monitor | Confirm / exclude a proposed match |
+
+### Search & directory
+
+| Method | Path | Who | Description |
+| ------ | ---- | --- | ----------- |
+| `GET`  | `/search?q=&limit=` | officer / monitor / registrar / insurer | Vehicles + persons + citations in one call |
+| `GET/POST` | `/persons` (+ `GET /persons/{id}`) | police | Profile search / create / detail |
+| `GET`  | `/vehicles/search?q=` (+ `GET /vehicles/{id}`) | police / registrar | Plate search / detail |
+| `GET`  | `/catalog/record-types?domain=` | any | Filing type picker |
+| `GET`  | `/catalog/branches?domain=` | any | Filing branch picker (scoped) |
+
+### Citations, custody queues & audit
+
+| Method | Path | Who | Description |
+| ------ | ---- | --- | ----------- |
+| `POST` | `/citations/payments` | police | Record a fine payment (countersign when issuer receipts own ticket) |
+| `POST` | `/citations/void` | monitor | Void a spoiled/duplicate ticket |
+| `POST` | `/citations/court-schedule` | monitor | Set the court appearance date |
+| `GET`  | `/citations/search?q=` | police | Ticket / violation / plate search |
+| `GET`  | `/citations/lookup?ticket=` | police | Resolve a ticket number |
+| `GET`  | `/courts` | police | Court picker |
+| `GET`  | `/reconciliation/summary` | monitor | Daily money reconciliation |
+| `GET`  | `/locates/dormant` | monitor | Locates awaiting confirmation |
+| `GET`  | `/watchlist/flagged?limit=` | police | Flagged plates in scope |
+| `GET`  | `/audit/log?limit=` | monitor / auditor | Scoped audit trail |
+
 ### Notifications
 
 | Method | Path              | Who  | Description                                    |
 | ------ | ----------------- | ---- | ---------------------------------------------- |
 | `GET`  | `/notifications`  | any  | `{ unread, items }` — referrals, outcomes, status changes, reviews |
 | `POST` | `/notifications`  | any  | Mark read: `{ "id" }` for one, `{ "all": true }` for all |
+| `DELETE` | `/notifications/{id}` | any | Dismiss one notification |
 
 Poll `GET /notifications` on app foreground (or before showing a badge) —
 referral recipients and filing officers learn about outcomes and status
@@ -184,6 +240,8 @@ district monitors). Each pull is audit-logged as `report_generated`.
 | Method | Path                    | Who        | Description                          |
 | ------ | ----------------------- | ---------- | ------------------------------------ |
 | `GET`  | `/me`                   | any        | Signed-in profile (role, scope)      |
+| `DELETE` | `/me`                 | any        | Self-service deactivation            |
+| `POST` | `/me/phone`             | any        | `{ action: check/sync, phone }` number-change helpers |
 | `GET`  | `/uploads/credentials`  | filing roles | Short-lived Cloudinary signing material |
 | `GET`  | `/health`               | public     | Liveness probe                       |
 
