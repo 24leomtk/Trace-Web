@@ -22,6 +22,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 // DEMO-COMPETITION-ONLY — fallback if /api/demo/numbers is unreachable.
 // Matches the staff users in db/sql/Seed.sql. Removed by
@@ -64,38 +71,77 @@ type DemoNumber = {
 // DEMO-COMPETITION-ONLY — page size for the test-numbers dialog.
 const DEMO_PAGE_SIZE = 6
 
+// DEMO-COMPETITION-ONLY — in-memory fallback when /api/demo/numbers is
+// unreachable. Mirrors the query-level filter + pagination below.
+function queryFallbackNumbers(role: string, page: number) {
+  const filtered =
+    role === "all"
+      ? FALLBACK_DEMO_NUMBERS
+      : FALLBACK_DEMO_NUMBERS.filter((entry) => entry.role === role)
+  const counts = new Map<string, number>()
+  for (const entry of FALLBACK_DEMO_NUMBERS) {
+    counts.set(entry.role, (counts.get(entry.role) ?? 0) + 1)
+  }
+  return {
+    numbers: filtered.slice(page * DEMO_PAGE_SIZE, page * DEMO_PAGE_SIZE + DEMO_PAGE_SIZE),
+    total: filtered.length,
+    totalPages: Math.max(1, Math.ceil(filtered.length / DEMO_PAGE_SIZE)),
+    roles: [...counts.entries()]
+      .map(([roleName, count]) => ({ role: roleName, count }))
+      .sort((a, b) => a.role.localeCompare(b.role)),
+  }
+}
+
 export default function SignInPage() {
   const router = useRouter()
   const [phone, setPhone] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
   // DEMO-COMPETITION-ONLY state — remove with the dialog below.
   const [demoOpen, setDemoOpen] = useState(false)
-  const [demoNumbers, setDemoNumbers] = useState<DemoNumber[]>(
-    FALLBACK_DEMO_NUMBERS
+  const [demoItems, setDemoItems] = useState<DemoNumber[]>([])
+  const [demoTotal, setDemoTotal] = useState(0)
+  const [demoTotalPages, setDemoTotalPages] = useState(1)
+  const [demoRoles, setDemoRoles] = useState<{ role: string; count: number }[]>(
+    []
   )
   const [demoLoading, setDemoLoading] = useState(false)
   const [demoPage, setDemoPage] = useState(0)
+  const [demoRole, setDemoRole] = useState("all")
 
-  // DEMO-COMPETITION-ONLY — fetch seeded numbers when the dialog opens.
+  // DEMO-COMPETITION-ONLY — role filter + pagination live in the query.
   useEffect(() => {
     if (!demoOpen) return
-    setDemoPage(0)
     let cancelled = false
     async function load() {
       setDemoLoading(true)
       try {
-        const res = await fetch("/api/demo/numbers")
+        const params = new URLSearchParams({
+          page: String(demoPage),
+          pageSize: String(DEMO_PAGE_SIZE),
+        })
+        if (demoRole !== "all") params.set("role", demoRole)
+        const res = await fetch(`/api/demo/numbers?${params}`)
         if (!res.ok) throw new Error("fetch failed")
-        const data = (await res.json()) as { numbers?: DemoNumber[] }
-        if (
-          !cancelled &&
-          Array.isArray(data.numbers) &&
-          data.numbers.length > 0
-        ) {
-          setDemoNumbers(data.numbers)
+        const data = (await res.json()) as {
+          numbers?: DemoNumber[]
+          total?: number
+          totalPages?: number
+          roles?: { role: string; count: number }[]
+        }
+        if (!cancelled && Array.isArray(data.numbers)) {
+          setDemoItems(data.numbers)
+          setDemoTotal(data.total ?? data.numbers.length)
+          setDemoTotalPages(data.totalPages ?? 1)
+          if (Array.isArray(data.roles)) setDemoRoles(data.roles)
         }
       } catch {
-        if (!cancelled) setDemoNumbers(FALLBACK_DEMO_NUMBERS)
+        if (!cancelled) {
+          const fallback = queryFallbackNumbers(demoRole, demoPage)
+          setDemoItems(fallback.numbers)
+          setDemoTotal(fallback.total)
+          setDemoTotalPages(fallback.totalPages)
+          setDemoRoles(fallback.roles)
+        }
       } finally {
         if (!cancelled) setDemoLoading(false)
       }
@@ -104,18 +150,7 @@ export default function SignInPage() {
     return () => {
       cancelled = true
     }
-  }, [demoOpen])
-
-  // DEMO-COMPETITION-ONLY — paginate the dialog list, 6 per view.
-  const demoTotalPages = Math.max(
-    1,
-    Math.ceil(demoNumbers.length / DEMO_PAGE_SIZE)
-  )
-  const demoSafePage = Math.min(demoPage, demoTotalPages - 1)
-  const demoPageItems = demoNumbers.slice(
-    demoSafePage * DEMO_PAGE_SIZE,
-    demoSafePage * DEMO_PAGE_SIZE + DEMO_PAGE_SIZE
-  )
+  }, [demoOpen, demoRole, demoPage])
 
   async function handleSubmit(event: React.SubmitEvent) {
     event.preventDefault()
@@ -177,7 +212,16 @@ export default function SignInPage() {
         </Button>
       </form>
       {/* DEMO-COMPETITION-ONLY — delete this Dialog before production / after the competition. */}
-      <Dialog open={demoOpen} onOpenChange={setDemoOpen}>
+      <Dialog
+        open={demoOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setDemoPage(0)
+            setDemoRole("all")
+          }
+          setDemoOpen(open)
+        }}
+      >
         <DialogTrigger asChild>
           <Button variant="outline" size="lg" type="button">
             <FlaskConicalIcon data-icon="inline-start" />
@@ -192,60 +236,87 @@ export default function SignInPage() {
               real SMS is sent; the code appears on the verify page.
             </DialogDescription>
           </DialogHeader>
-          {demoLoading ? (
+          {demoLoading && demoItems.length === 0 ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <LoaderCircleIcon className="size-4 animate-spin" />
               Loading seeded numbers…
             </p>
           ) : (
             <>
-              <ul className="flex flex-col gap-2">
-                {demoPageItems.map((entry) => (
-                  <li
-                    key={entry.phoneNumber}
-                    className="flex items-center justify-between gap-3 rounded-none border px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {entry.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {entry.phoneNumber} · {entry.role} · {entry.domain}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setPhone(entry.phoneNumber)
-                        setDemoOpen(false)
-                      }}
+              <Select
+                value={demoRole}
+                disabled={demoLoading}
+                onValueChange={(value) => {
+                  setDemoRole(value)
+                  setDemoPage(0)
+                }}
+              >
+                <SelectTrigger aria-label="Filter by role">
+                  <SelectValue placeholder="Filter by role…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles ({demoTotal})</SelectItem>
+                  {demoRoles.map(({ role, count }) => (
+                    <SelectItem key={role} value={role}>
+                      {role.replace(/_/g, " ")} ({count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {demoItems.length === 0 ? (
+                <p className="rounded-none border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+                  No test numbers for this role.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {demoItems.map((entry) => (
+                    <li
+                      key={entry.phoneNumber}
+                      className="flex items-center justify-between gap-3 rounded-none border px-3 py-2"
                     >
-                      Use
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {entry.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {entry.phoneNumber} · {entry.role} · {entry.domain}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setPhone(entry.phoneNumber)
+                          setDemoOpen(false)
+                        }}
+                      >
+                        Use
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {demoTotalPages > 1 && (
                 <div className="flex items-center justify-between pt-1">
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
-                    disabled={demoSafePage === 0}
+                    disabled={demoLoading || demoPage === 0}
                     onClick={() => setDemoPage((p) => Math.max(0, p - 1))}
                   >
                     Previous
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    Page {demoSafePage + 1} of {demoTotalPages}
+                    Page {demoPage + 1} of {demoTotalPages}
+                    {demoLoading ? " · Loading…" : ""}
                   </p>
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
-                    disabled={demoSafePage >= demoTotalPages - 1}
+                    disabled={demoLoading || demoPage >= demoTotalPages - 1}
                     onClick={() =>
                       setDemoPage((p) => Math.min(demoTotalPages - 1, p + 1))
                     }

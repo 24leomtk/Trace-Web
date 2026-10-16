@@ -54,7 +54,7 @@ export function ReconciliationBoard() {
           tabCount={4}
         />
         <StatChipsSkeleton count={3} />
-        <div className="flex flex-col gap-2 rounded-none border bg-card p-4">
+        <div className="flex flex-col gap-2">
           <div className="flex items-start gap-2">
             <Skeleton className="h-10 flex-1" />
             <Skeleton className="size-10 shrink-0" />
@@ -182,7 +182,7 @@ function TakingsTab({
         .includes(q),
   })
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+    <section className="flex flex-col gap-2">
       <div className="flex items-start gap-2">
         <SearchInput
           value={query}
@@ -261,7 +261,7 @@ function UnpaidTab({
         .includes(q),
   })
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+    <section className="flex flex-col gap-2">
       <div className="flex items-start gap-2">
         <SearchInput
           value={query}
@@ -351,7 +351,7 @@ function PaidTab({
         .includes(q),
   })
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+    <section className="flex flex-col gap-2">
       <div className="flex items-start gap-2">
         <SearchInput
           value={query}
@@ -436,7 +436,7 @@ function VoidsTab({
         .includes(q),
   })
   return (
-    <section className="flex flex-col gap-2 rounded-none border bg-card p-4">
+    <section className="flex flex-col gap-2">
       <div className="flex items-start gap-2">
         <SearchInput
           value={query}
